@@ -97,3 +97,28 @@ def test_unlink_removes_dangling_secondary(project, skills_dir):
     (project / ".agents" / "skills" / "chanchi-a").unlink()
     result = skills_link.unlink(project, skills_dir=skills_dir)
     assert str(project.resolve() / ".claude" / "skills" / "chanchi-a") in result["removed"]
+
+
+def test_unlink_keeps_secondary_pointing_at_a_foreign_primary(project, skills_dir):
+    foreign = project / ".agents" / "skills" / "chanchi-x"
+    foreign.mkdir(parents=True)
+    secondary = project / ".claude" / "skills" / "chanchi-x"
+    secondary.parent.mkdir(parents=True)
+    secondary.symlink_to(os.path.join("..", "..", ".agents", "skills", "chanchi-x"))
+    result = skills_link.unlink(project, skills_dir=skills_dir)
+    assert result["removed"] == []
+    assert secondary.is_symlink()
+    assert foreign.is_dir()
+
+
+def test_link_reports_a_symlink_pointing_elsewhere_as_conflict(project, skills_dir, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    primary = project / ".agents" / "skills" / "chanchi-a"
+    primary.parent.mkdir(parents=True)
+    primary.symlink_to(elsewhere)
+    with pytest.raises(ChanchiError) as info:
+        skills_link.link(project, skills_dir=skills_dir)
+    assert info.value.code == "link_conflict"
+    assert str(primary.resolve().parent / "chanchi-a") in info.value.message or str(project.resolve() / ".agents" / "skills" / "chanchi-a") in info.value.message
+    assert os.readlink(primary) == str(elsewhere)

@@ -89,8 +89,9 @@ def link(base: Path, *, global_: bool = False, skills_dir: Path | None = None) -
 def _is_own(entry: Path, primary: Path, skills_dir: Path) -> bool:
     if not entry.is_symlink() or not entry.name.startswith(SKILL_PREFIX):
         return False
-    if os.readlink(entry) == os.path.relpath(primary / entry.name, entry.parent):
-        return True
+    relative_to_primary = os.path.relpath(primary / entry.name, entry.parent)
+    if os.readlink(entry) == relative_to_primary and not os.path.lexists(primary / entry.name):
+        return True  # dangling secondary left behind after its primary was removed
     try:
         return entry.resolve().is_relative_to(skills_dir)
     except OSError:
