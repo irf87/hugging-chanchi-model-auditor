@@ -18,7 +18,7 @@ commands print JSON; errors carry `field`, `valid_values` and `hint`.
    `chanchi session start <change-ref> S1 --executor agy:gemini-3.8-flash-high:high --task-type ui-component --complexity medium --tasks 10 --groups 8,9,10`
    Use the executor, task type and complexity written in the session protocol. `--tasks` is the
    number of tasks the session owns. Re-running a session creates a new attempt and requires
-   `--retry-reason executor_failure|plan_fix|human_change|env`.
+   `--retry-reason executor_failure|plan_fix|human_change|env`. Before starting the new attempt, record the previous attempt's report and verdict (usually `rejected`) so it is counted.
 2. **When the report or handoff arrives**:
    `chanchi session report <change-ref> S1 --status STOPPED`
    (`COMPLETE`, `STOPPED` or `BLOCKED`, exactly as the executor reported). Report again with the new

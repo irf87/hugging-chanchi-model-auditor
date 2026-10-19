@@ -19,7 +19,7 @@ uv tool install --editable .
 ```
 
 `--editable` keeps this checkout as the live source, which the skill symlinks rely on. The first
-command creates the operational database by copying the committed template.
+command that opens the database (anything except `chanchi db status` and `chanchi db migrate --template`) creates the operational database by copying the committed template.
 
 ## Give the skills to a project
 

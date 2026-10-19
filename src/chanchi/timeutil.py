@@ -20,9 +20,9 @@ def parse(ts: str) -> datetime:
 def since_to_iso(day: str) -> str:
     """Turn a --since YYYY-MM-DD value into the start-of-day timestamp."""
     try:
-        datetime.strptime(day, "%Y-%m-%d")
+        parsed = datetime.strptime(day, "%Y-%m-%d")
     except ValueError:
         raise ChanchiError(
             "invalid_value", f"{day!r} is not a date", field="since", hint="use YYYY-MM-DD"
         ) from None
-    return f"{day}T00:00:00Z"
+    return parsed.strftime(FORMAT)

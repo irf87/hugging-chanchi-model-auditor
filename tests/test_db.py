@@ -164,3 +164,41 @@ def test_bootstrap_does_not_clobber_a_database_created_concurrently(db_env, monk
     finally:
         conn.close()
     assert not list(db_env.parent.glob(".chanchi.db.tmp-*"))
+
+
+def test_prune_ignores_non_numeric_backup_names(tmp_path):
+    path = tmp_path / "chanchi.db"
+    path.write_bytes(b"")
+    for name in ("chanchi.db.bak-v1", "chanchi.db.bak-v2", "chanchi.db.bak-v3", "chanchi.db.bak-v4",
+                 "chanchi.db.bak-v4-wal", "chanchi.db.bak-vX"):
+        (tmp_path / name).write_bytes(b"")
+    db._prune_backups(path)
+    remaining = sorted(p.name for p in tmp_path.glob("chanchi.db.bak-v*"))
+    assert remaining == ["chanchi.db.bak-v2", "chanchi.db.bak-v3", "chanchi.db.bak-v4",
+                         "chanchi.db.bak-v4-wal", "chanchi.db.bak-vX"]
+
+
+def test_fresh_operational_database_is_already_in_wal_mode(db_env):
+    db_env.parent.mkdir(parents=True)
+    assert db._create_from_template(db.template_path(), db_env) is True
+    raw = sqlite3.connect(str(db_env))
+    try:
+        assert raw.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    finally:
+        raw.close()
+    assert not list(db_env.parent.glob(".chanchi.db.tmp-*"))
+
+
+def test_concurrent_first_use_succeeds(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "CHANCHI_DB": str(tmp_path / "data" / "chanchi.db")}
+    code = "from chanchi import db; c = db.open_operational(); c.execute('SELECT 1'); c.close()"
+    procs = [
+        subprocess.Popen([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for _ in range(8)
+    ]
+    results = [p.communicate(timeout=60) + (p.returncode,) for p in procs]
+    assert all(rc == 0 for _, _, rc in results), [err for _, err, rc in results if rc]

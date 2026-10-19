@@ -107,3 +107,7 @@ def test_timeutil_roundtrip_and_since():
     with pytest.raises(ChanchiError) as info:
         since_to_iso("yesterday")
     assert info.value.field == "since"
+
+
+def test_since_to_iso_normalises_unpadded_dates():
+    assert since_to_iso("2026-9-1") == "2026-09-01T00:00:00Z"

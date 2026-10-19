@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.resources
 import os
+import re
 import shutil
 import sqlite3
 from collections.abc import Iterator
@@ -69,7 +70,8 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     try:
         yield conn
     except BaseException:
-        conn.execute("ROLLBACK")
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
         raise
     conn.execute("COMMIT")
 
@@ -115,7 +117,8 @@ def apply_migrations(conn: sqlite3.Connection) -> list[int]:
                 conn.execute(statement)
             conn.execute(f"PRAGMA user_version = {version}")
         except BaseException:
-            conn.execute("ROLLBACK")
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
         conn.execute("COMMIT")
         applied.append(version)
@@ -138,11 +141,14 @@ def migrate_template(path: Path | None = None) -> dict:
 
 
 def _prune_backups(path: Path) -> None:
-    backups = sorted(
-        path.parent.glob(f"{path.name}.bak-v*"),
-        key=lambda p: int(p.name.rsplit("-v", 1)[1]),
-    )
-    for old in backups[:-BACKUPS_KEPT]:
+    pattern = re.compile(rf"{re.escape(path.name)}\.bak-v(\d+)")
+    backups = []
+    for candidate in path.parent.glob(f"{path.name}.bak-v*"):
+        match = pattern.fullmatch(candidate.name)
+        if match:
+            backups.append((int(match.group(1)), candidate))
+    backups.sort()
+    for _, old in backups[:-BACKUPS_KEPT]:
         old.unlink()
 
 
@@ -162,20 +168,26 @@ def _backup(path: Path, version: int) -> str:
 
 
 def _create_from_template(template: Path, path: Path) -> bool:
-    """Copy the template beside the target, then hard-link it into place atomically.
+    """Copy the template beside the target, switch it to WAL, then hard-link it into place atomically.
 
     Returns False when another process created the database first.
     """
     tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     try:
         shutil.copyfile(template, tmp)
+        staging = sqlite3.connect(str(tmp))
+        try:
+            staging.execute("PRAGMA journal_mode = WAL")
+        finally:
+            staging.close()
         try:
             os.link(tmp, path)
         except FileExistsError:
             return False
         return True
     finally:
-        tmp.unlink(missing_ok=True)
+        for leftover in (tmp, tmp.with_name(tmp.name + "-wal"), tmp.with_name(tmp.name + "-shm")):
+            leftover.unlink(missing_ok=True)
 
 
 def bootstrap() -> dict:

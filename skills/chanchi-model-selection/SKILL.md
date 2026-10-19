@@ -46,6 +46,7 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
    - Each candidate shows `level` (how specific the data is: `task_type+complexity`, `task_type`,
      `complexity`, `global`), `n`, `confidence` (`insufficient` < 3, `low` < 10, `ok`),
      `clean_rate`, `honesty_flags_per_session`, `retry_rate` and `top_codes`.
+   - Treat data found at the `complexity` or `global` level as weak evidence: it says how the model does in general, not on this kind of task.
    - With `null`, choose by judgement — that choice is how data accumulates.
 5. **Write it into the session protocol** of the plan, one line per session, e.g.:
    `chanchi: recommended agy:gemini-3.8-flash-high:high (99.6, low confidence, task_type+complexity) · chosen agy:gemini-3.8-flash-high:high`

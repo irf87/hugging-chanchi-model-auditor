@@ -98,6 +98,10 @@ def set_model(
     notes: str | None = None,
 ) -> dict:
     parsed = modelspec.parse(spec, field="spec")
+    if parsed.agent in taxonomy.PLANNER_ONLY_AGENTS:
+        raise ChanchiError(
+            "invalid_value", "the built-in human:human entry cannot be modified", field="spec"
+        )
     if parsed.effort is not None:
         raise ChanchiError(
             "invalid_value", "models set takes agent:model without an effort", field="spec"

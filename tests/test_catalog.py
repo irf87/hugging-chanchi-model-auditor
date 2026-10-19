@@ -107,3 +107,9 @@ def test_task_types(conn):
         catalog.require_task_type(conn, "nope")
     assert info.value.field == "task_type"
     assert "ui-component" in info.value.valid_values
+
+
+def test_human_row_cannot_be_modified(seeded):
+    with pytest.raises(ChanchiError) as info:
+        catalog.set_model(seeded, spec="human:human", active=False)
+    assert info.value.field == "spec"

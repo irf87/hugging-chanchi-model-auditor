@@ -172,3 +172,8 @@ def test_internal_errors_are_wrapped(capsys, db_env, monkeypatch):
     monkeypatch.setattr(scoring, "explain", boom)
     error = fail(capsys, "scoring", "explain", exit_code=1)
     assert error["code"] == "internal" and "kaboom" in error["message"]
+
+
+def test_abbreviated_options_are_rejected(ready):
+    error = fail(ready, "models", "list", "--form", "text")
+    assert error["code"] == "invalid_value"

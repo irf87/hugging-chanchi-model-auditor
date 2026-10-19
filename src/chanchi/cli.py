@@ -17,6 +17,10 @@ FORMATS = ("json", "text")
 
 
 class _Parser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("allow_abbrev", False)
+        super().__init__(*args, **kwargs)
+
     def error(self, message: str):  # argparse calls this on bad input
         raise ChanchiError("invalid_value", message, hint=f"run `{self.prog} --help`")
 
@@ -207,7 +211,7 @@ def cmd_scoring_explain(args):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    common = argparse.ArgumentParser(add_help=False)
+    common = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     common.add_argument("--format", choices=FORMATS, default="json", help="output format (default: json)")
     common.add_argument("--project", default=None, help="project slug (default: git toplevel name)")
 
@@ -358,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
     fmt = _sniff_format(argv)
     try:
         args = build_parser().parse_args(argv)
+        fmt = args.format
         payload = args.handler(args)
         _emit({"ok": True, **payload}, fmt, sys.stdout)
         return EXIT_OK
