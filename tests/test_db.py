@@ -215,3 +215,39 @@ def test_concurrent_first_use_succeeds(tmp_path):
     ]
     results = [p.communicate(timeout=60) + (p.returncode,) for p in procs]
     assert all(rc == 0 for _, _, rc in results), [err for _, err, rc in results if rc]
+
+
+def test_migration_v1_to_v2_preserves_data(tmp_path):
+    db_file = tmp_path / "v1_to_v2.db"
+    conn = db.connect(db_file, wal=False)
+    try:
+        applied = db.apply_migrations(conn)
+        assert applied == [1]
+        assert db.user_version(conn) == 1
+
+        conn.execute("INSERT INTO projects (slug, path, created_at) VALUES ('demo', '/demo', '2026-10-18T00:00:00Z')")
+        conn.execute(
+            "INSERT INTO changes (project_id, ref, kind, planner_model_id, orchestrator_model_id, opened_at) "
+            "VALUES (1, 'c1', 'openspec', 1, 1, '2026-10-18T00:00:00Z')"
+        )
+        conn.execute(
+            "INSERT INTO sessions (change_id, session_ref, attempt, executor_model_id, task_type, complexity, tasks_total, started_at) "
+            "VALUES (1, 'S1', 1, 1, 'ui-component', 'medium', 5, '2026-10-18T00:00:00Z')"
+        )
+
+        synthetic_migrations = [
+            *db.migrations(),
+            (2, "002_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
+        ]
+        new_applied = db.apply_migrations(conn, migrations_list=synthetic_migrations)
+        assert new_applied == [2]
+        assert db.user_version(conn) == 2
+
+        assert conn.execute("SELECT slug FROM projects WHERE id = 1").fetchone()[0] == "demo"
+        assert conn.execute("SELECT ref FROM changes WHERE id = 1").fetchone()[0] == "c1"
+        session_row = conn.execute("SELECT session_ref, tasks_total, probe FROM sessions WHERE id = 1").fetchone()
+        assert session_row["session_ref"] == "S1"
+        assert session_row["tasks_total"] == 5
+        assert session_row["probe"] is None
+    finally:
+        conn.close()

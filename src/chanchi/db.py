@@ -113,11 +113,16 @@ def _statements(sql: str) -> Iterator[str]:
         raise ChanchiError("internal", "migration ends with an incomplete SQL statement")
 
 
-def apply_migrations(conn: sqlite3.Connection) -> list[int]:
+def apply_migrations(
+    conn: sqlite3.Connection,
+    migrations_list: list[tuple[int, str, str]] | None = None,
+) -> list[int]:
     """Apply every pending migration, one transaction each. Returns the versions applied."""
-    latest = latest_version()
+    if migrations_list is None:
+        migrations_list = migrations()
+    latest = max((version for version, _, _ in migrations_list), default=0)
     applied = []
-    for version, _name, sql in migrations():
+    for version, _name, sql in migrations_list:
         conn.execute("BEGIN IMMEDIATE")
         try:
             current = user_version(conn)
