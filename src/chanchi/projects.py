@@ -11,10 +11,11 @@ from chanchi.timeutil import utc_now
 
 
 def detect(cwd: Path | None = None) -> tuple[str, str]:
+    target_cwd = cwd or Path.cwd()
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
-            cwd=cwd or Path.cwd(),
+            cwd=target_cwd,
             capture_output=True,
             text=True,
             check=False,
@@ -29,7 +30,22 @@ def detect(cwd: Path | None = None) -> tuple[str, str]:
             hint="run from the project's repository or pass --project <slug>",
         )
     top = Path(result.stdout.strip())
-    return top.name, str(top)
+    slug = top.name
+    try:
+        common_res = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=target_cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if common_res.returncode == 0:
+            common_dir = common_res.stdout.strip()
+            if common_dir.endswith("/.git"):
+                slug = Path(common_dir).parent.name
+    except FileNotFoundError:
+        pass
+    return slug, str(top)
 
 
 def identify(slug: str | None = None, cwd: Path | None = None) -> tuple[str, str | None]:

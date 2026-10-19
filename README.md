@@ -46,6 +46,8 @@ chanchi scoring explain
 chanchi taxonomy list
 ```
 
+Commands detect the project from git (deriving the slug from the main repository across git worktrees); `--project` still overrides.
+
 ## Databases and migrations
 
 | | Template | Operational |
