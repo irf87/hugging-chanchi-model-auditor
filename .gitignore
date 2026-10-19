@@ -1,0 +1,44 @@
+# --- Python bytecode & packaging ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# --- Virtual environments (uv creates .venv; uv.lock IS committed) ---
+.venv/
+venv/
+
+# --- Test, coverage & tooling caches ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# --- SQLite databases ---
+# The real database lives outside the repo (~/.local/share/chanchi/chanchi.db).
+# Never commit a local or test database, nor its WAL/shared-memory sidecars.
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# --- Environment & secrets ---
+.env
+.env.*
+
+# --- Agent-local settings (per machine, never shared) ---
+.claude/settings.local.json
+.claude/worktrees/
+
+# --- OS & editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
