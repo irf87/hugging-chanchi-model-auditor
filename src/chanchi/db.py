@@ -31,12 +31,25 @@ def template_path() -> Path:
     return Path(str(importlib.resources.files("chanchi") / "data" / "template.db"))
 
 
+MIGRATION_NAME_PATTERN = re.compile(r"^\d{3}_[a-z0-9_]+\.sql$")
+
+
+def _migration_version(name: str) -> int:
+    if not MIGRATION_NAME_PATTERN.match(name):
+        raise ChanchiError(
+            "internal",
+            f"invalid migration file name: {name}",
+            hint="migrations are named NNN_<name>.sql",
+        )
+    return int(name.split("_", 1)[0])
+
+
 def migrations() -> list[tuple[int, str, str]]:
     root = importlib.resources.files("chanchi") / "migrations"
     found = []
     for entry in root.iterdir():
         if entry.name.endswith(".sql"):
-            version = int(entry.name.split("_", 1)[0])
+            version = _migration_version(entry.name)
             found.append((version, entry.name, entry.read_text(encoding="utf-8")))
     found.sort()
     numbers = [version for version, _, _ in found]

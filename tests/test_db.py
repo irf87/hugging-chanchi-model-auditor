@@ -28,6 +28,19 @@ def test_migrations_are_contiguous():
     assert db.latest_version() == len(versions)
 
 
+def test_migration_version_validation():
+    assert db._migration_version("001_init.sql") == 1
+    assert db._migration_version("042_add_table.sql") == 42
+    assert db._migration_version("999_final_step_v2.sql") == 999
+
+    for bad_name in ("stray.sql", "1_init.sql", "01_init.sql", "0001_init.sql", "001_foo-bar.sql", "001_Init.sql"):
+        with pytest.raises(ChanchiError) as info:
+            db._migration_version(bad_name)
+        assert info.value.code == "internal"
+        assert info.value.message == f"invalid migration file name: {bad_name}"
+        assert info.value.hint == "migrations are named NNN_<name>.sql"
+
+
 def test_template_is_at_latest_version():
     template = db.connect(db.template_path(), wal=False)
     try:
