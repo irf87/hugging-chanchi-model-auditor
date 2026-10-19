@@ -10,7 +10,7 @@ from contextlib import closing
 from pathlib import Path
 
 from chanchi import __version__, catalog, db, projects, record, scoring, skills_link, taxonomy
-from chanchi.errors import EXIT_INTERNAL, EXIT_OK, ChanchiError
+from chanchi.errors import EXIT_OK, ChanchiError
 from chanchi.render import render_text
 from chanchi.timeutil import since_to_iso
 
