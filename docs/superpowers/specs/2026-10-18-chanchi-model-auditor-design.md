@@ -61,7 +61,12 @@ Rejected alternatives:
 hugging-chanchi-model-auditor/
 ├── pyproject.toml              # console script: chanchi = chanchi.cli:main
 ├── src/chanchi/
-│   ├── cli.py                  # argparse, subcommands, output formatting, error envelope
+│   ├── __main__.py             # python -m chanchi
+│   ├── cli.py                  # argparse, subcommands, error envelope
+│   ├── render.py               # --format text rendering
+│   ├── errors.py               # ChanchiError + exit codes
+│   ├── timeutil.py             # ISO-8601 UTC timestamps
+│   ├── catalog.py              # model catalog and task types
 │   ├── db.py                   # connection, pragmas, bootstrap from template, migrations
 │   ├── migrations/001_init.sql # schema + seed (task types, human:human)
 │   ├── data/template.db        # committed template database (schema + seed, no operational rows)
@@ -87,7 +92,8 @@ Unit boundaries:
 | `modelspec` | Parses and formats `agent:model[:effort]`. | `taxonomy` (effort values) |
 | `db` | Bootstraps the operational database from the template, opens it, applies pragmas and pending migrations; rebuilds/migrates the template on demand. | `sqlite3`, `data/template.db` |
 | `projects` | Resolves the current project from cwd or `--project`. | `git`, `db` |
-| `record` | Validates and writes changes, sessions, incidents, verdicts. | `db`, `taxonomy`, `modelspec`, `projects` |
+| `catalog` | Manages the model catalog and task types; resolves a model spec to a catalog row. | `db`, `taxonomy`, `modelspec` |
+| `record` | Validates and writes changes, sessions, incidents, verdicts. | `db`, `taxonomy`, `catalog`, `projects` |
 | `scoring` | Reads raw rows and computes scores, stats and recommendations. Never writes. | `db`, `taxonomy` |
 | `skills_link` | Creates/removes skill symlinks. No database access. | filesystem |
 | `cli` | Parses arguments, calls one unit, renders JSON/text, maps exceptions to exit codes. | all of the above |
@@ -128,7 +134,7 @@ The directory is created on first use; the database itself is created from the t
 
 ### 3.2 Project detection
 
-`git rev-parse --show-toplevel` from the cwd; the project slug is the toplevel directory's basename, and the absolute path is stored. `--project <slug>` overrides detection. A monorepo with sub-projects (e.g. `cacao-api/`, `cacao-app/`) is one project; use `--tags` to distinguish. Outside a git repository, `--project` is required.
+`git rev-parse --show-toplevel` from the cwd; the project slug is the toplevel directory's basename, and the absolute path is stored. `--project <slug>` overrides detection. A monorepo with sub-projects (e.g. `cacao-api/`, `cacao-app/`) is one project; use `--tags` to distinguish. Outside a git repository, `--project` is required. Projects are created only by `chanchi change open`; every other command referencing a project requires it to exist. `stats` and `recommend` are global (all projects) unless `stats --project` filters them.
 
 ### 3.3 Skills distribution (mirror)
 
@@ -138,13 +144,13 @@ The directory is created on first use; the database itself is created from the t
 
 - `<path>/.agents/skills/<skill>` → **absolute** symlink to `<repo>/skills/<skill>`.
 - `<path>/.claude/skills/<skill>` → **relative** symlink to `../../.agents/skills/<skill>` (the pattern already used in `~/.claude/skills`).
-- Additionally, if `<path>/.agent/skills` or `<path>/.opencode/skills` already exists, a relative symlink there as well.
 
-`--global` targets `~` instead of a project. The command is idempotent, never overwrites a non-symlink or a symlink pointing elsewhere (it reports a conflict instead), and `chanchi skills unlink [path]` removes only symlinks that resolve into this repo's `skills/`.
+Verified reading paths (2026-10-18): opencode reads `.agents/skills` and `.claude/skills` (project and global); Antigravity (agy) reads `.agents/skills` at workspace level and keeps legacy support for `.agent/skills`; Claude Code reads `.claude/skills`. Linking into `.agent/skills` or `.opencode/skills` as well would make agents see each skill twice, so those directories are never targeted.
+
+`--global` targets `~` instead of a project: `~/.agents/skills` (absolute) and `~/.claude/skills` (relative), plus `~/.gemini/antigravity-cli/skills` (relative) when `~/.gemini/antigravity-cli` exists, because the agy CLI reads its global skills there. The command is idempotent, never overwrites a non-symlink or a symlink pointing elsewhere (it reports a conflict instead), and `chanchi skills unlink [path]` removes only symlinks that resolve into this repo's `skills/`.
 
 On success, `skills link` prints a **suggested line** for the project's `openspec/config.yaml` (it does not edit it), e.g.: *"When assigning sessions use the `chanchi-model-selection` skill; when orchestrating and auditing sessions use the `chanchi-session-audit` skill."*
 
-**Implementation must verify** (via each agent's `--help`/docs, not assumption) which skill directories opencode and agy actually read, and adjust the target list accordingly.
 
 ## 4. Taxonomy
 
@@ -289,7 +295,9 @@ CREATE TABLE incidents (
 Rules enforced by `record` (not only by SQL):
 
 - Every enum value is validated against `taxonomy`.
-- A model must exist in the catalog before use; unknown models are an error suggesting `chanchi models add`. Models are never created implicitly.
+- A model must exist in the catalog before use; unknown models are an error suggesting `chanchi models add`. Models are never created implicitly. Inactive models are rejected.
+- Effort validation: when a catalog model lists `efforts`, a given effort must be one of them or `unknown`; when `efforts` is NULL (no CLI flag, e.g. opencode carrying effort as a prompt instruction) any effort value is accepted.
+- A model name may not end in `:<effort>` (it would be ambiguous in a spec).
 - A role-`executor` incident requires a session. A role-`planner` incident may omit it.
 - `hallucination` requires `--role planner|executor`; any other code rejects `--role`.
 - Incidents may be added to closed changes (late discoveries use `detected_by = human | post_merge`).
@@ -353,7 +361,7 @@ Grouping key: `(agent, model, effort) × (task_type, complexity)`. A NULL effort
 
 - **Smoothed score:** `(n × mean + 3 × prior) ÷ (n + 3)`, where `prior` is the mean session score of all models for that `(task_type, complexity)`, falling back to the global mean, and to `70` with no data at all.
 - **Confidence:** `n < 3` → `insufficient`, `3 ≤ n < 10` → `low`, `n ≥ 10` → `ok`.
-- **Reported metrics alongside the score:** `n`, clean-session rate (verdict `accepted` and no executor incident of severity ≥ medium), first-attempt acceptance rate, honesty flags per session (`false_claim` + executor `hallucination`), mean attempts, mean duration, top three incident codes.
+- **Reported metrics alongside the score:** `n`, clean-session rate (verdict `accepted` and no executor incident of severity ≥ medium), first-attempt acceptance rate (attempt-1 sessions accepted or accepted with fixes and not superseded by an `executor_failure` retry), honesty flags per session (`false_claim` + executor `hallucination`), retry rate (share of sessions superseded by an `executor_failure` retry), mean duration, top three incident codes.
 - **Honesty red flag:** honesty flags per session > 0.2.
 
 Planner aggregation uses the same smoothing over change scores, grouped by `(agent, model, effort)`.
@@ -367,7 +375,7 @@ chanchi recommend --task-type <code> --complexity <level> --available "<spec>,<s
 1. Candidates are exactly the `--available` specs (the human/planner states what is available; never assumed). Unknown specs are an error.
 2. For each candidate, find data at the first level that has `n ≥ 3`: (task_type, complexity) → (task_type, any) → (any, complexity) → (any, any). The output states the level used.
 3. Rank by smoothed score. Among candidates with confidence `low` or `ok` and no honesty red flag, the **recommendation** is the cheapest (lowest `cost_tier`) whose smoothed score is within 5 points of the best.
-4. If no candidate reaches confidence `low` at any level, the output says so explicitly (`"recommendation": null`, reason `insufficient_data`) and still lists whatever data exists. The planner then chooses by judgement, and that choice becomes data.
+4. If no candidate is eligible, the output says so explicitly (`"recommendation": null`) with reason `insufficient_data` (no candidate reaches confidence `low`) or `all_candidates_red_flagged` (some do, but every one carries the honesty red flag), and still lists whatever data exists. A candidate with no data at the first level that has `n ≥ 3` reports the most specific level that has any data (or `null` with `n = 0`). The planner then chooses by judgement, and that choice becomes data.
 
 The recommendation is an input, not an order: the selection skill requires the planner to write, in the session protocol, what `chanchi` recommended, what it chose, and why if it deviated.
 
