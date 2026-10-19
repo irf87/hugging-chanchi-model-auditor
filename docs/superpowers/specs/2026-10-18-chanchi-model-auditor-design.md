@@ -425,7 +425,7 @@ Behaviour details:
 ### 7.1 Output and errors
 
 - Success: a JSON object on stdout (`{"ok": true, ...}`), or text with `--format text`.
-- Failure: exit code `2` for validation errors, `1` for internal errors, with JSON on stderr:
+- Failure: exit code `2` for validation errors, `1` for internal errors, with the error envelope on stderr — JSON by default, rendered as text when `--format text` was requested:
 
 ```json
 {"ok": false, "error": {"code": "invalid_value", "field": "complexity",
