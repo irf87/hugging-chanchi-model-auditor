@@ -174,6 +174,20 @@ def test_internal_errors_are_wrapped(capsys, db_env, monkeypatch):
     assert error["code"] == "internal" and "kaboom" in error["message"]
 
 
+def test_database_busy_maps_to_code_and_exit_two(capsys, db_env, monkeypatch):
+    import sqlite3
+    from chanchi import scoring
+
+    def locked(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(scoring, "explain", locked)
+    error = fail(capsys, "scoring", "explain", exit_code=2)
+    assert error["code"] == "database_busy"
+    assert error["message"] == "the database is busy; another chanchi process is writing"
+    assert error["hint"] == "retry the same command in a few seconds"
+
+
 def test_abbreviated_options_are_rejected(ready):
     error = fail(ready, "models", "list", "--form", "text")
     assert error["code"] == "invalid_value"

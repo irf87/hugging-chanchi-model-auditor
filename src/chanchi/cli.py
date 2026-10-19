@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
@@ -372,10 +373,17 @@ def main(argv: list[str] | None = None) -> int:
         _emit(exc.to_dict(), fmt, sys.stderr)
         return exc.exit_code
     except Exception as exc:  # noqa: BLE001 - every failure must reach the caller as JSON
-        error = ChanchiError(
-            "internal",
-            f"{type(exc).__name__}: {exc}",
-            hint="this is a chanchi bug; report the command you ran",
-        )
+        if isinstance(exc, sqlite3.OperationalError) and ("locked" in str(exc).lower() or "busy" in str(exc).lower()):
+            error = ChanchiError(
+                "database_busy",
+                "the database is busy; another chanchi process is writing",
+                hint="retry the same command in a few seconds",
+            )
+        else:
+            error = ChanchiError(
+                "internal",
+                f"{type(exc).__name__}: {exc}",
+                hint="this is a chanchi bug; report the command you ran",
+            )
         _emit(error.to_dict(), fmt, sys.stderr)
-        return EXIT_INTERNAL
+        return error.exit_code
