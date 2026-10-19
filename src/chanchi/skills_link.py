@@ -80,7 +80,7 @@ def link(base: Path, *, global_: bool = False, skills_dir: Path | None = None) -
     if conflicts:
         raise ChanchiError(
             "link_conflict",
-            "these paths already exist and were left untouched: " + ", ".join(conflicts),
+            f"created: {', '.join(created)}; conflicts: {', '.join(conflicts)}",
             field="path",
             hint="remove or rename the conflicting entries, then run `chanchi skills link` again",
         )

@@ -63,6 +63,10 @@ def test_link_reports_conflicts_without_overwriting(project, skills_dir):
     assert str(blocker.resolve()) in info.value.message
     assert blocker.is_dir() and not blocker.is_symlink()
     assert (project / ".claude" / "skills" / "chanchi-b").is_symlink()
+    created_primary = project / ".agents" / "skills" / "chanchi-a"
+    assert str(created_primary) in info.value.message
+    assert "created:" in info.value.message
+    assert "conflicts:" in info.value.message
 
 
 def test_global_link_adds_agy_cli_dir_only_when_present(tmp_path, skills_dir):
