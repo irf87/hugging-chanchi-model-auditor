@@ -188,6 +188,17 @@ def test_database_busy_maps_to_code_and_exit_two(capsys, db_env, monkeypatch):
     assert error["hint"] == "retry the same command in a few seconds"
 
 
+def test_oversized_integer_is_rejected(ready):
+    ok(ready, "change", "open", "add-login", "--kind", "openspec", "--planner", "claude:opus:high")
+    error = fail(
+        ready, "session", "start", "add-login", "S1", "--executor", "agy:gemini-3.8-flash-high:high",
+        "--task-type", "ui-component", "--complexity", "medium", "--tasks", "99999999999999999999",
+    )
+    assert error["code"] == "invalid_value"
+    assert error["field"] == "tasks"
+    assert error["hint"] == "use an integer between 0 and 1000000"
+
+
 def test_abbreviated_options_are_rejected(ready):
     error = fail(ready, "models", "list", "--form", "text")
     assert error["code"] == "invalid_value"

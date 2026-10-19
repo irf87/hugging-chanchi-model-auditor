@@ -29,9 +29,17 @@ class _Parser(argparse.ArgumentParser):
 def _int(field: str):
     def convert(value: str) -> int:
         try:
-            return int(value)
+            val = int(value)
         except ValueError:
             raise ChanchiError("invalid_value", f"{field} must be an integer, got {value!r}", field=field) from None
+        if not (0 <= val <= 1_000_000):
+            raise ChanchiError(
+                "invalid_value",
+                f"{field} must be between 0 and 1000000, got {value!r}",
+                field=field,
+                hint="use an integer between 0 and 1000000",
+            )
+        return val
 
     return convert
 
