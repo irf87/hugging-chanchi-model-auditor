@@ -149,3 +149,18 @@ def test_status_reports_both_databases(db_env):
     after = db.status()
     assert after["operational"]["version"] == db.latest_version()
     assert after["operational"]["pending"] == 0
+
+
+def test_bootstrap_does_not_clobber_a_database_created_concurrently(db_env, monkeypatch):
+    db.bootstrap()
+    raw = sqlite3.connect(str(db_env))
+    raw.execute("INSERT INTO task_types (code, description) VALUES ('race-marker', 'x')")
+    raw.commit()
+    raw.close()
+    assert db._create_from_template(db.template_path(), db_env) is False
+    conn = db.connect(db_env, wal=True)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM task_types WHERE code = 'race-marker'").fetchone()[0] == 1
+    finally:
+        conn.close()
+    assert not list(db_env.parent.glob(".chanchi.db.tmp-*"))

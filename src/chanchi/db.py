@@ -161,6 +161,23 @@ def _backup(path: Path, version: int) -> str:
     return str(dest)
 
 
+def _create_from_template(template: Path, path: Path) -> bool:
+    """Copy the template beside the target, then hard-link it into place atomically.
+
+    Returns False when another process created the database first.
+    """
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        shutil.copyfile(template, tmp)
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def bootstrap() -> dict:
     """Create the operational database from the template if missing, then migrate it."""
     path = operational_path()
@@ -174,8 +191,7 @@ def bootstrap() -> dict:
                 f"template database not found at {template}",
                 hint="run `chanchi db migrate --template` in the chanchi repository",
             )
-        shutil.copyfile(template, path)
-        created = True
+        created = _create_from_template(template, path)
     conn = connect(path, wal=True)
     try:
         current = user_version(conn)
