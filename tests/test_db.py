@@ -28,6 +28,19 @@ def test_migrations_are_contiguous():
     assert db.latest_version() == len(versions)
 
 
+def test_migration_version_validation():
+    assert db._migration_version("001_init.sql") == 1
+    assert db._migration_version("042_add_table.sql") == 42
+    assert db._migration_version("999_final_step_v2.sql") == 999
+
+    for bad_name in ("stray.sql", "1_init.sql", "01_init.sql", "0001_init.sql", "001_foo-bar.sql", "001_Init.sql"):
+        with pytest.raises(ChanchiError) as info:
+            db._migration_version(bad_name)
+        assert info.value.code == "internal"
+        assert info.value.message == f"invalid migration file name: {bad_name}"
+        assert info.value.hint == "migrations are named NNN_<name>.sql"
+
+
 def test_template_is_at_latest_version():
     template = db.connect(db.template_path(), wal=False)
     try:
@@ -202,3 +215,39 @@ def test_concurrent_first_use_succeeds(tmp_path):
     ]
     results = [p.communicate(timeout=60) + (p.returncode,) for p in procs]
     assert all(rc == 0 for _, _, rc in results), [err for _, err, rc in results if rc]
+
+
+def test_migration_v1_to_v2_preserves_data(tmp_path):
+    db_file = tmp_path / "v1_to_v2.db"
+    conn = db.connect(db_file, wal=False)
+    try:
+        applied = db.apply_migrations(conn)
+        assert applied == [1]
+        assert db.user_version(conn) == 1
+
+        conn.execute("INSERT INTO projects (slug, path, created_at) VALUES ('demo', '/demo', '2026-10-18T00:00:00Z')")
+        conn.execute(
+            "INSERT INTO changes (project_id, ref, kind, planner_model_id, orchestrator_model_id, opened_at) "
+            "VALUES (1, 'c1', 'openspec', 1, 1, '2026-10-18T00:00:00Z')"
+        )
+        conn.execute(
+            "INSERT INTO sessions (change_id, session_ref, attempt, executor_model_id, task_type, complexity, tasks_total, started_at) "
+            "VALUES (1, 'S1', 1, 1, 'ui-component', 'medium', 5, '2026-10-18T00:00:00Z')"
+        )
+
+        synthetic_migrations = [
+            *db.migrations(),
+            (2, "002_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
+        ]
+        new_applied = db.apply_migrations(conn, migrations_list=synthetic_migrations)
+        assert new_applied == [2]
+        assert db.user_version(conn) == 2
+
+        assert conn.execute("SELECT slug FROM projects WHERE id = 1").fetchone()[0] == "demo"
+        assert conn.execute("SELECT ref FROM changes WHERE id = 1").fetchone()[0] == "c1"
+        session_row = conn.execute("SELECT session_ref, tasks_total, probe FROM sessions WHERE id = 1").fetchone()
+        assert session_row["session_ref"] == "S1"
+        assert session_row["tasks_total"] == 5
+        assert session_row["probe"] is None
+    finally:
+        conn.close()

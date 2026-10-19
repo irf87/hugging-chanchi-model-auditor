@@ -19,6 +19,7 @@ ERROR_CODES = frozenset(
         "project_not_detected",
         "link_conflict",
         "schema_too_new",
+        "database_busy",
         "internal",
     }
 )

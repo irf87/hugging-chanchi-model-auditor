@@ -434,7 +434,7 @@ Behaviour details:
   "hint": "run `chanchi taxonomy list` to see every enum"}}
 ```
 
-Error codes: `invalid_value`, `unknown_model`, `unknown_change`, `unknown_session`, `duplicate`, `missing_prerequisite`, `project_not_detected`, `link_conflict`, `schema_too_new`, `internal`.
+Error codes: `invalid_value`, `unknown_model`, `unknown_change`, `unknown_session`, `duplicate`, `missing_prerequisite`, `project_not_detected`, `link_conflict`, `schema_too_new`, `database_busy`, `internal`.
 
 ## 8. Skills
 

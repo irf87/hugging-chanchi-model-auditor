@@ -63,6 +63,10 @@ def test_link_reports_conflicts_without_overwriting(project, skills_dir):
     assert str(blocker.resolve()) in info.value.message
     assert blocker.is_dir() and not blocker.is_symlink()
     assert (project / ".claude" / "skills" / "chanchi-b").is_symlink()
+    created_primary = project / ".agents" / "skills" / "chanchi-a"
+    assert str(created_primary) in info.value.message
+    assert "created:" in info.value.message
+    assert "conflicts:" in info.value.message
 
 
 def test_global_link_adds_agy_cli_dir_only_when_present(tmp_path, skills_dir):
@@ -122,3 +126,22 @@ def test_link_reports_a_symlink_pointing_elsewhere_as_conflict(project, skills_d
     assert info.value.code == "link_conflict"
     assert str(primary.resolve().parent / "chanchi-a") in info.value.message or str(project.resolve() / ".agents" / "skills" / "chanchi-a") in info.value.message
     assert os.readlink(primary) == str(elsewhere)
+
+
+def test_link_nonexistent_path_raises_and_creates_nothing(tmp_path, skills_dir):
+    missing = tmp_path / "does_not_exist"
+    with pytest.raises(ChanchiError) as info:
+        skills_link.link(missing, skills_dir=skills_dir)
+    assert info.value.code == "invalid_value"
+    assert info.value.field == "path"
+    assert info.value.hint == "pass an existing project directory"
+    assert not missing.exists()
+
+
+def test_unlink_nonexistent_path_raises(tmp_path, skills_dir):
+    missing = tmp_path / "does_not_exist"
+    with pytest.raises(ChanchiError) as info:
+        skills_link.unlink(missing, skills_dir=skills_dir)
+    assert info.value.code == "invalid_value"
+    assert info.value.field == "path"
+    assert info.value.hint == "pass an existing project directory"

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
 
 from chanchi import __version__, catalog, db, projects, record, scoring, skills_link, taxonomy
-from chanchi.errors import EXIT_INTERNAL, EXIT_OK, ChanchiError
+from chanchi.errors import EXIT_OK, ChanchiError
 from chanchi.render import render_text
 from chanchi.timeutil import since_to_iso
 
@@ -28,9 +29,17 @@ class _Parser(argparse.ArgumentParser):
 def _int(field: str):
     def convert(value: str) -> int:
         try:
-            return int(value)
+            val = int(value)
         except ValueError:
             raise ChanchiError("invalid_value", f"{field} must be an integer, got {value!r}", field=field) from None
+        if not (0 <= val <= 1_000_000):
+            raise ChanchiError(
+                "invalid_value",
+                f"{field} must be between 0 and 1000000, got {value!r}",
+                field=field,
+                hint="use an integer between 0 and 1000000",
+            )
+        return val
 
     return convert
 
@@ -372,10 +381,17 @@ def main(argv: list[str] | None = None) -> int:
         _emit(exc.to_dict(), fmt, sys.stderr)
         return exc.exit_code
     except Exception as exc:  # noqa: BLE001 - every failure must reach the caller as JSON
-        error = ChanchiError(
-            "internal",
-            f"{type(exc).__name__}: {exc}",
-            hint="this is a chanchi bug; report the command you ran",
-        )
+        if isinstance(exc, sqlite3.OperationalError) and ("locked" in str(exc).lower() or "busy" in str(exc).lower()):
+            error = ChanchiError(
+                "database_busy",
+                "the database is busy; another chanchi process is writing",
+                hint="retry the same command in a few seconds",
+            )
+        else:
+            error = ChanchiError(
+                "internal",
+                f"{type(exc).__name__}: {exc}",
+                hint="this is a chanchi bug; report the command you ran",
+            )
         _emit(error.to_dict(), fmt, sys.stderr)
-        return EXIT_INTERNAL
+        return error.exit_code
