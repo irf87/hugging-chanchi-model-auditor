@@ -5,7 +5,9 @@ from __future__ import annotations
 import sqlite3
 from collections import Counter, defaultdict
 
+from chanchi import catalog, record
 from chanchi import taxonomy as tx
+from chanchi.errors import ChanchiError
 from chanchi.modelspec import format_spec
 from chanchi.timeutil import parse as parse_ts
 
@@ -318,3 +320,160 @@ def stats(
     else:
         rows = _human_stats(conn, project_id, since)
     return {"role": role, "by": by if role != "human" else "project", "rows": rows}
+
+
+# --- recommend -------------------------------------------------------------
+
+LEVELS = (
+    ("task_type+complexity", True, True),
+    ("task_type", True, False),
+    ("complexity", False, True),
+    ("global", False, False),
+)
+
+
+def _level_subset(records, task_type, complexity, use_type, use_complexity):
+    return [
+        r
+        for r in records
+        if (not use_type or r["task_type"] == task_type)
+        and (not use_complexity or r["complexity"] == complexity)
+    ]
+
+
+def recommend(
+    conn: sqlite3.Connection, *, task_type: str, complexity: str, available: list[str]
+) -> dict:
+    catalog.require_task_type(conn, task_type)
+    tx.validate_choice("complexity", complexity, tx.COMPLEXITIES)
+    if not available:
+        raise ChanchiError(
+            "invalid_value",
+            "--available must list at least one agent:model[:effort]",
+            field="available",
+            hint="take the list from the human's prompt; never assume availability",
+        )
+    records = executor_records(conn)
+    candidates = []
+    seen = set()
+    for spec in available:
+        row, effort = catalog.resolve_model(conn, spec, role="executor")
+        key = (row["agent"], row["model"], effort)
+        if key in seen:
+            continue
+        seen.add(key)
+        own = [r for r in records if (r["agent"], r["model"], r["effort"]) == key]
+        chosen = None
+        for name, use_type, use_complexity in LEVELS:
+            subset = _level_subset(own, task_type, complexity, use_type, use_complexity)
+            if len(subset) >= tx.CONFIDENCE_LOW_MIN:
+                chosen = (name, subset, use_type, use_complexity)
+                break
+        if chosen is None:
+            for name, use_type, use_complexity in LEVELS:
+                subset = _level_subset(own, task_type, complexity, use_type, use_complexity)
+                if subset:
+                    chosen = (name, subset, use_type, use_complexity)
+                    break
+        if chosen is None:
+            level, subset = None, []
+            prior = prior_for(records, task_type, complexity)
+        else:
+            level, subset, use_type, use_complexity = chosen
+            prior = prior_for(
+                records, task_type if use_type else None, complexity if use_complexity else None
+            )
+        entry = {
+            "spec": format_spec(*key),
+            "agent": key[0],
+            "model": key[1],
+            "effort": key[2],
+            "cost_tier": row["cost_tier"],
+            "level": level,
+        }
+        entry.update(summarize(subset, prior))
+        candidates.append(entry)
+    eligible = [c for c in candidates if c["confidence"] in ("low", "ok") and not c["red_flag"]]
+    recommendation = None
+    reason = None
+    if eligible:
+        best = max(c["smoothed_score"] for c in eligible)
+        window = [c for c in eligible if c["smoothed_score"] >= best - tx.RECOMMEND_WINDOW]
+        pick = min(window, key=lambda c: (c["cost_tier"], -c["smoothed_score"], c["spec"]))
+        recommendation = {k: pick[k] for k in ("spec", "cost_tier", "smoothed_score", "confidence", "level")}
+    elif any(c["confidence"] in ("low", "ok") for c in candidates):
+        reason = "all_candidates_red_flagged"
+    else:
+        reason = "insufficient_data"
+    candidates.sort(key=lambda c: (-c["smoothed_score"], c["spec"]))
+    return {
+        "task_type": task_type,
+        "complexity": complexity,
+        "recommendation": recommendation,
+        "reason": reason,
+        "window": tx.RECOMMEND_WINDOW,
+        "candidates": candidates,
+    }
+
+
+# --- show / explain --------------------------------------------------------
+
+
+def show_change(conn: sqlite3.Connection, *, project_id: int, ref: str) -> dict:
+    change = record.get_change(conn, project_id, ref)
+    by_session = _incidents_by(conn, "session_id")
+    sessions = []
+    for row in conn.execute("SELECT id, verdict FROM sessions WHERE change_id = ? ORDER BY id", (change["id"],)):
+        entry = record.session_dict(conn, row["id"])
+        score = session_score(row["verdict"], by_session.get(row["id"], []))
+        entry["score"] = None if score is None else round(score, 2)
+        sessions.append(entry)
+    incidents = [
+        record.incident_dict(conn, r["id"])
+        for r in conn.execute("SELECT id FROM incidents WHERE change_id = ? ORDER BY id", (change["id"],))
+    ]
+    active = [i for i in incidents if i["voided_at"] is None]
+    planner_score = None
+    if any(s["verdict"] is not None for s in sessions):
+        latest: dict = {}
+        for s in sessions:
+            latest[s["session"]] = s["tasks_total"]
+        planner_score = round(planner_change_score(sum(latest.values()), active), 2)
+    return {
+        "change": record.change_dict(conn, change["id"]),
+        "sessions": sessions,
+        "incidents": incidents,
+        "planner_score": planner_score,
+        "incident_counts_by_role": dict(Counter(i["role"] for i in active)),
+    }
+
+
+def explain() -> dict:
+    return {
+        "executor_session_score": {
+            "formula": "clamp(base - penalty + credit, 0, 100)",
+            "base": tx.VERDICT_BASE,
+            "weights": tx.EXECUTOR_WEIGHTS,
+            "correct_stop_credit": tx.CORRECT_STOP_CREDIT,
+        },
+        "planner_change_score": {
+            "formula": "clamp(100 - 5 * (penalty / max(tasks, 10) * 10), 0, 100)",
+            "weights": tx.PLANNER_WEIGHTS,
+            "density_factor": tx.PLANNER_DENSITY_FACTOR,
+            "min_tasks": tx.PLANNER_MIN_TASKS,
+        },
+        "severity_multipliers": tx.SEVERITY_MULT,
+        "late_detection": {"detected_by": list(tx.LATE_DETECTION), "multiplier": tx.LATE_DETECTION_MULT},
+        "smoothing": {
+            "formula": "(n * mean + k * prior) / (n + k)",
+            "k": tx.SMOOTHING_K,
+            "default_prior": tx.DEFAULT_PRIOR,
+        },
+        "confidence": {"insufficient": "n < 3", "low": "3 <= n < 10", "ok": "n >= 10"},
+        "recommendation": {
+            "levels": [name for name, _, _ in LEVELS],
+            "window": tx.RECOMMEND_WINDOW,
+            "honesty_red_flag_above": tx.HONESTY_RED_FLAG,
+        },
+        "retry_reasons_excluded_from_executor_metrics": list(tx.NON_EXECUTOR_RETRY_REASONS),
+    }

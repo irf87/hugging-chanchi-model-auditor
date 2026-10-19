@@ -212,3 +212,135 @@ def test_human_stats(recorder):
             "human_stop_share": 0.5,
         }
     ]
+
+
+# --- recommend -------------------------------------------------------------
+
+
+def test_recommend_without_data(recorder):
+    result = scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[FLASH, SONNET])
+    assert result["recommendation"] is None
+    assert result["reason"] == "insufficient_data"
+    assert [c["level"] for c in result["candidates"]] == [None, None]
+    assert all(c["n"] == 0 for c in result["candidates"])
+
+
+def test_recommend_prefers_cheapest_within_window(recorder):
+    recorder.change("c1")
+    for ref in ("S1", "S2", "S3"):
+        recorder.session("c1", ref, SONNET)
+    recorder.session("c1", "S4", FLASH)
+    recorder.session("c1", "S5", FLASH)
+    recorder.session("c1", "S6", FLASH, incidents=[inc("rule_violation")])
+    result = scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[SONNET, FLASH])
+    by_spec = {c["spec"]: c for c in result["candidates"]}
+    assert by_spec[SONNET]["smoothed_score"] == pytest.approx(99.88, abs=0.01)
+    assert by_spec[FLASH]["smoothed_score"] == pytest.approx(99.62, abs=0.01)
+    assert result["candidates"][0]["spec"] == SONNET
+    assert result["recommendation"]["spec"] == FLASH
+    assert result["recommendation"]["level"] == "task_type+complexity"
+    assert result["reason"] is None
+
+
+def test_recommend_outside_window_picks_best(recorder):
+    recorder.change("c1")
+    for ref in ("S1", "S2", "S3"):
+        recorder.session("c1", ref, SONNET)
+    for ref in ("S4", "S5", "S6"):
+        recorder.session("c1", ref, FLASH, verdict="accepted_with_fixes")
+    result = scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[FLASH, SONNET])
+    by_spec = {c["spec"]: c for c in result["candidates"]}
+    assert by_spec[FLASH]["smoothed_score"] == pytest.approx(77.5)
+    assert by_spec[SONNET]["smoothed_score"] == pytest.approx(92.5)
+    assert result["recommendation"]["spec"] == SONNET
+
+
+def test_recommend_excludes_red_flagged(recorder):
+    recorder.change("c1")
+    for ref in ("S1", "S2", "S3"):
+        recorder.session("c1", ref, FLASH, incidents=[inc("false_claim")])
+    result = scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[FLASH, SONNET])
+    flash = next(c for c in result["candidates"] if c["spec"] == FLASH)
+    assert flash["red_flag"] is True and flash["confidence"] == "low"
+    assert result["recommendation"] is None
+    assert result["reason"] == "all_candidates_red_flagged"
+
+
+def test_recommend_fallback_levels(recorder):
+    recorder.change("c1")
+    for ref in ("S1", "S2", "S3"):
+        recorder.session("c1", ref, FLASH, complexity="high")
+    recorder.session("c1", "S4", SONNET, task_type="docs", complexity="medium")
+    result = scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[FLASH, SONNET])
+    by_spec = {c["spec"]: c for c in result["candidates"]}
+    assert by_spec[FLASH]["level"] == "task_type"
+    assert by_spec[FLASH]["n"] == 3
+    assert by_spec[SONNET]["level"] == "complexity"
+    assert by_spec[SONNET]["confidence"] == "insufficient"
+    assert result["recommendation"]["spec"] == FLASH
+
+
+def test_recommend_matches_effort_exactly(recorder):
+    recorder.change("c1")
+    for ref in ("S1", "S2", "S3"):
+        recorder.session("c1", ref, FLASH)
+    result = scoring.recommend(
+        recorder.conn, task_type="ui-component", complexity="medium", available=["agy:gemini-3.8-flash-high:medium"]
+    )
+    assert result["candidates"][0]["n"] == 0
+
+
+def test_recommend_validations(recorder):
+    with pytest.raises(ChanchiError) as info:
+        scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=["claude:gpt-9"])
+    assert info.value.code == "unknown_model"
+    with pytest.raises(ChanchiError) as info:
+        scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=["human"])
+    assert info.value.field == "executor"
+    with pytest.raises(ChanchiError) as info:
+        scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[])
+    assert info.value.field == "available"
+    with pytest.raises(ChanchiError) as info:
+        scoring.recommend(recorder.conn, task_type="nope", complexity="medium", available=[FLASH])
+    assert info.value.field == "task_type"
+
+
+def test_recommend_deduplicates_candidates(recorder):
+    result = scoring.recommend(recorder.conn, task_type="ui-component", complexity="medium", available=[FLASH, FLASH])
+    assert len(result["candidates"]) == 1
+
+
+# --- show / explain --------------------------------------------------------
+
+
+def test_show_change(recorder):
+    recorder.change("c1")
+    recorder.session("c1", "S1", FLASH, tasks=10, incidents=[inc("correct_stop", detected_by="executor_stop")])
+    pid = recorder.pid
+    gap = record.add_incident(recorder.conn, project_id=pid, ref="c1", **inc("plan_gap", "blocking", "executor_stop"))
+    extra = record.add_incident(recorder.conn, project_id=pid, ref="c1", **inc("plan_conflict", "high"))
+    record.void_incident(recorder.conn, incident_id=extra["id"], reason="duplicate of the gap")
+    shown = scoring.show_change(recorder.conn, project_id=pid, ref="c1")
+    assert shown["change"]["ref"] == "c1"
+    assert shown["sessions"][0]["score"] == 100
+    assert [i["id"] for i in shown["incidents"]] == [1, gap["id"], extra["id"]]
+    assert shown["incidents"][-1]["voided_at"] is not None
+    assert shown["planner_score"] == pytest.approx(50)
+    assert shown["incident_counts_by_role"] == {"executor": 1, "planner": 1}
+
+
+def test_show_change_without_audit_has_no_planner_score(recorder):
+    recorder.change("c1")
+    recorder.session("c1", "S1", FLASH, verdict=None)
+    assert scoring.show_change(recorder.conn, project_id=recorder.pid, ref="c1")["planner_score"] is None
+
+
+def test_explain_reflects_taxonomy():
+    from chanchi import taxonomy
+
+    explained = scoring.explain()
+    assert explained["executor_session_score"]["weights"] == taxonomy.EXECUTOR_WEIGHTS
+    assert explained["planner_change_score"]["weights"] == taxonomy.PLANNER_WEIGHTS
+    assert explained["severity_multipliers"] == taxonomy.SEVERITY_MULT
+    assert explained["smoothing"]["k"] == 3
+    assert explained["recommendation"]["window"] == 5.0
