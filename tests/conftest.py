@@ -44,3 +44,10 @@ def seeded(conn):
     )
     catalog.add_model(conn, agent="opencode", model="openrouter/qwen/qwen3-coder:free", cost_tier=1)
     return conn
+
+
+@pytest.fixture
+def recorder(seeded, git_repo):
+    from helpers import Recorder
+
+    return Recorder(seeded)
