@@ -60,6 +60,13 @@ def _ensure(link_path: Path, target: Path, *, absolute: bool, created: list, exi
 
 def link(base: Path, *, global_: bool = False, skills_dir: Path | None = None) -> dict:
     base = Path(base).expanduser().resolve()
+    if not base.is_dir():
+        raise ChanchiError(
+            "invalid_value",
+            f"path {base} does not exist or is not a directory",
+            field="path",
+            hint="pass an existing project directory",
+        )
     skills_dir = (skills_dir or repo_skills_dir()).resolve()
     names = available_skills(skills_dir)
     primary, secondaries = plan_targets(base, global_=global_)
@@ -100,6 +107,13 @@ def _is_own(entry: Path, primary: Path, skills_dir: Path) -> bool:
 
 def unlink(base: Path, *, global_: bool = False, skills_dir: Path | None = None) -> dict:
     base = Path(base).expanduser().resolve()
+    if not base.is_dir():
+        raise ChanchiError(
+            "invalid_value",
+            f"path {base} does not exist or is not a directory",
+            field="path",
+            hint="pass an existing project directory",
+        )
     skills_dir = (skills_dir or repo_skills_dir()).resolve()
     primary, secondaries = plan_targets(base, global_=global_)
     removed: list[str] = []

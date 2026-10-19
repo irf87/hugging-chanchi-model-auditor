@@ -122,3 +122,22 @@ def test_link_reports_a_symlink_pointing_elsewhere_as_conflict(project, skills_d
     assert info.value.code == "link_conflict"
     assert str(primary.resolve().parent / "chanchi-a") in info.value.message or str(project.resolve() / ".agents" / "skills" / "chanchi-a") in info.value.message
     assert os.readlink(primary) == str(elsewhere)
+
+
+def test_link_nonexistent_path_raises_and_creates_nothing(tmp_path, skills_dir):
+    missing = tmp_path / "does_not_exist"
+    with pytest.raises(ChanchiError) as info:
+        skills_link.link(missing, skills_dir=skills_dir)
+    assert info.value.code == "invalid_value"
+    assert info.value.field == "path"
+    assert info.value.hint == "pass an existing project directory"
+    assert not missing.exists()
+
+
+def test_unlink_nonexistent_path_raises(tmp_path, skills_dir):
+    missing = tmp_path / "does_not_exist"
+    with pytest.raises(ChanchiError) as info:
+        skills_link.unlink(missing, skills_dir=skills_dir)
+    assert info.value.code == "invalid_value"
+    assert info.value.field == "path"
+    assert info.value.hint == "pass an existing project directory"
