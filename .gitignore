@@ -26,6 +26,8 @@ htmlcov/
 *.db-journal
 *.sqlite
 *.sqlite3
+# ...except the committed template database (schema + seed only)
+!src/chanchi/data/template.db
 
 # --- Environment & secrets ---
 .env

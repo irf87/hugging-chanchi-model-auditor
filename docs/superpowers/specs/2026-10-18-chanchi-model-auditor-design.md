@@ -62,8 +62,9 @@ hugging-chanchi-model-auditor/
 ├── pyproject.toml              # console script: chanchi = chanchi.cli:main
 ├── src/chanchi/
 │   ├── cli.py                  # argparse, subcommands, output formatting, error envelope
-│   ├── db.py                   # connection, pragmas, migrations via PRAGMA user_version
-│   ├── migrations/001_init.sql
+│   ├── db.py                   # connection, pragmas, bootstrap from template, migrations
+│   ├── migrations/001_init.sql # schema + seed (task types, human:human)
+│   ├── data/template.db        # committed template database (schema + seed, no operational rows)
 │   ├── taxonomy.py             # enums, incident codes, roles, weights, multipliers
 │   ├── modelspec.py            # parse "agent:model[:effort]"
 │   ├── projects.py             # project detection (git toplevel)
@@ -84,21 +85,46 @@ Unit boundaries:
 |---|---|---|
 | `taxonomy` | Holds every closed set and every weight. Pure data + validation helpers. | nothing |
 | `modelspec` | Parses and formats `agent:model[:effort]`. | `taxonomy` (effort values) |
-| `db` | Opens the database, applies pragmas and pending migrations. | `sqlite3` |
+| `db` | Bootstraps the operational database from the template, opens it, applies pragmas and pending migrations; rebuilds/migrates the template on demand. | `sqlite3`, `data/template.db` |
 | `projects` | Resolves the current project from cwd or `--project`. | `git`, `db` |
 | `record` | Validates and writes changes, sessions, incidents, verdicts. | `db`, `taxonomy`, `modelspec`, `projects` |
 | `scoring` | Reads raw rows and computes scores, stats and recommendations. Never writes. | `db`, `taxonomy` |
 | `skills_link` | Creates/removes skill symlinks. No database access. | filesystem |
 | `cli` | Parses arguments, calls one unit, renders JSON/text, maps exceptions to exit codes. | all of the above |
 
-### 3.1 Database location
+### 3.1 Databases: template and operational
+
+There are always two SQLite databases with the same schema:
+
+| | Template | Operational |
+|---|---|---|
+| Path | `src/chanchi/data/template.db` (resolved via `importlib.resources`, so it works for editable and regular installs) | see location below |
+| Content | Schema + seed rows only (task types, `human:human` model). Never operational rows. | Real data |
+| In git | **Committed** (a `.gitignore` exception) | **Never committed** (lives outside the repo) |
+| Written by | Only `chanchi db migrate --template` | Every recording command |
+
+**Bootstrap:** on any command, if the operational database does not exist, it is created by **copying the template**, then any pending migrations are applied (normally none). The template itself is never opened for writing by normal commands.
+
+**Every migration affects both databases.** Adding a migration means: add `migrations/NNN_<name>.sql`, run `chanchi db migrate --template` to bring the committed template to the new version, and commit both. The operational database picks the migration up automatically on its next command. Tests enforce that the two never drift (see §10).
+
+**Before migrating the operational database**, `chanchi` copies it to `chanchi.db.bak-v<old_version>` next to it, and keeps only the three most recent backups.
+
+Database commands:
+
+```text
+chanchi db status                 # paths, versions of template and operational, pending migrations
+chanchi db migrate                # apply pending migrations to the operational database (also automatic)
+chanchi db migrate --template     # apply pending migrations to the committed template (developer step)
+```
+
+#### Operational database location
 
 A single **global** database (cross-project comparison is the point):
 
 1. `$CHANCHI_DB` if set (tests use this).
 2. Otherwise `$XDG_DATA_HOME/chanchi/chanchi.db`, defaulting to `~/.local/share/chanchi/chanchi.db`.
 
-The directory is created on first use. Pending migrations are applied automatically by every command.
+The directory is created on first use; the database itself is created from the template (bootstrap above). Pending migrations are applied automatically by every command.
 
 ### 3.2 Project detection
 
@@ -400,7 +426,7 @@ Behaviour details:
   "hint": "run `chanchi taxonomy list` to see every enum"}}
 ```
 
-Error codes: `invalid_value`, `unknown_model`, `unknown_change`, `unknown_session`, `duplicate`, `missing_prerequisite`, `project_not_detected`, `link_conflict`, `internal`.
+Error codes: `invalid_value`, `unknown_model`, `unknown_change`, `unknown_session`, `duplicate`, `missing_prerequisite`, `project_not_detected`, `link_conflict`, `schema_too_new`, `internal`.
 
 ## 8. Skills
 
@@ -431,7 +457,8 @@ Also covers catalog maintenance (`models list/set`, `taxonomy add-type`) when th
 ## 9. Robustness
 
 - Pragmas on every connection: `journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=ON`.
-- Migrations: numbered SQL files applied in one transaction each, tracked by `PRAGMA user_version`.
+- Migrations: numbered SQL files applied in one transaction each, tracked by `PRAGMA user_version`, identical for template and operational databases.
+- If the operational database reports a `user_version` higher than the latest known migration (a newer `chanchi` wrote it), every command refuses to run with `error.code = schema_too_new`.
 - Each command runs in a single transaction; a validation failure leaves the database unchanged.
 
 ## 10. Testing
@@ -440,6 +467,8 @@ Also covers catalog maintenance (`models list/set`, `taxonomy add-type`) when th
 - **Integration:** the CLI run as a subprocess against a temp database (`CHANCHI_DB` in `tmp_path`) through the full flow: catalog → change open → sessions → report → incidents → audit → close → stats → recommend → show. Error envelope and exit codes are asserted.
 - **Scenario:** a fixture embedded in the test suite (it never reads the DATEMApp repository) replaying DATEMApp's `clinical-summary-doctor-addressee-and-polish` change (S1–S10 on `agy` with `gemini-4-argon-high` and `gemini-3.8-flash-*`) plus synthetic incidents; `recommend` must produce the expected ranking.
 - **Skills link:** in a temp directory — absolute vs relative targets, idempotency, conflict reporting, `unlink` touching only its own symlinks, optional `.agent`/`.opencode` targets.
+- **Template integrity:** the committed `template.db` has `user_version` equal to the latest migration number; its schema (`sqlite_master` minus internal tables) equals the schema produced by applying every migration to an empty database; its seed rows match; and it contains zero rows in `projects`, `changes`, `sessions` and `incidents`. This test is what forces every migration to update the template.
+- **Bootstrap:** a missing operational database is created from the template; an outdated one is backed up and migrated; a too-new one is refused.
 - **Skills:** every `skills/*/SKILL.md` has valid frontmatter with `name` matching its directory and a non-empty `description`.
 
 ## 11. Delivery
