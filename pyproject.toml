@@ -1,0 +1,23 @@
+[project]
+name = "chanchi"
+version = "0.1.0"
+description = "Local auditor that turns planner/executor agent audits into model ratings."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+chanchi = "chanchi.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chanchi"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
