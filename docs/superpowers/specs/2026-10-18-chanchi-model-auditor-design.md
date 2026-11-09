@@ -201,6 +201,8 @@ Each code has a fixed role, except `hallucination`, which requires `--role plann
 | `false_claim` | executor | Reported a number or status that did not reproduce on audit. |
 | `incomplete_work` | executor | Marked work done that was not done or was wrong. |
 | `quality_defect` | executor | Bug, weak test or incorrect implementation despite passing verification. |
+| `architecture_violation` | executor | Broke layering, module boundaries or dependency direction, or added coupling the design forbids. |
+| `code_smell` | executor | Works and passes verification but hurts maintainability: duplication, oversized functions, misleading names, dead code. |
 | `correct_stop` | executor | **Positive.** Stopped at a real gap instead of improvising. |
 | `hallucination` | planner or executor | Invented something that does not exist: file, hook, function, library API, CLI flag, project rule, domain fact. Distinct from `false_claim`, which misreports a *result*. |
 | `human_unclear_requirement` | human | The requirement was ambiguous or incomplete at its origin. |
@@ -324,8 +326,9 @@ Sessions without a verdict are not scored.
 |---|---|
 | 3 | `false_claim`, `hallucination` |
 | 2.5 | `improvised_decision` |
-| 2 | `scope_drift`, `incomplete_work` |
+| 2 | `scope_drift`, `incomplete_work`, `architecture_violation` |
 | 1.5 | `rule_violation`, `quality_defect` |
+| 1 | `code_smell` |
 
 Severity multipliers: `low 1`, `medium 2`, `high 3`, `blocking 5`.
 

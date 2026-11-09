@@ -80,6 +80,16 @@ INCIDENT_CODES = {
         "executor",
         "Bug, weak test or incorrect implementation despite passing verification.",
     ),
+    "architecture_violation": (
+        "executor",
+        "Broke layering, module boundaries or dependency direction, or added coupling the design "
+        "forbids.",
+    ),
+    "code_smell": (
+        "executor",
+        "Works and passes verification but hurts maintainability: duplication, oversized functions, "
+        "misleading names, dead code.",
+    ),
     "correct_stop": ("executor", "Positive: stopped at a real gap instead of improvising."),
     "hallucination": (
         None,
@@ -108,8 +118,10 @@ EXECUTOR_WEIGHTS = {
     "improvised_decision": 2.5,
     "scope_drift": 2.0,
     "incomplete_work": 2.0,
+    "architecture_violation": 2.0,
     "rule_violation": 1.5,
     "quality_defect": 1.5,
+    "code_smell": 1.0,
 }
 PLANNER_WEIGHTS = {
     "hallucination": 3.0,
