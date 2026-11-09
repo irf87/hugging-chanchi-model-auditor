@@ -32,7 +32,8 @@ COMPLEXITY_CRITERIA = {
     "or meaningful domain ambiguity",
 }
 
-# Seed rows for the task_types table. Migration 001 inserts exactly these.
+# Seed rows for the task_types table. Migration 001 inserts exactly the first eleven
+# and migration 002 inserts exactly the last two, in this order.
 TASK_TYPES = (
     ("ui-component", "Build or change a reusable or screen-level UI component"),
     ("ui-layout-styling", "Layout, spacing, theming or styling with no new behaviour"),
@@ -45,6 +46,14 @@ TASK_TYPES = (
     ("infra-config-ci", "Build, configuration, CI or tooling"),
     ("docs", "Documentation, spec sync or archive steps"),
     ("integration", "Integrate an external SDK, service or API"),
+    (
+        "architecture-design",
+        "Define or change module boundaries, layering, dependency direction or public interfaces",
+    ),
+    (
+        "unit-tests",
+        "Write or repair isolated unit tests (use tests for integration, device or end-to-end work)",
+    ),
 )
 
 # code -> (fixed role, or None when the caller must pass --role; description)
@@ -70,6 +79,16 @@ INCIDENT_CODES = {
     "quality_defect": (
         "executor",
         "Bug, weak test or incorrect implementation despite passing verification.",
+    ),
+    "architecture_violation": (
+        "executor",
+        "Broke layering, module boundaries or dependency direction, or added coupling the design "
+        "forbids.",
+    ),
+    "code_smell": (
+        "executor",
+        "Works and passes verification but hurts maintainability: duplication, oversized functions, "
+        "misleading names, dead code.",
     ),
     "correct_stop": ("executor", "Positive: stopped at a real gap instead of improvising."),
     "hallucination": (
@@ -99,8 +118,10 @@ EXECUTOR_WEIGHTS = {
     "improvised_decision": 2.5,
     "scope_drift": 2.0,
     "incomplete_work": 2.0,
+    "architecture_violation": 2.0,
     "rule_violation": 1.5,
     "quality_defect": 1.5,
+    "code_smell": 1.0,
 }
 PLANNER_WEIGHTS = {
     "hallucination": 3.0,

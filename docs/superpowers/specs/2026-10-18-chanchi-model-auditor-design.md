@@ -69,6 +69,7 @@ hugging-chanchi-model-auditor/
 │   ├── catalog.py              # model catalog and task types
 │   ├── db.py                   # connection, pragmas, bootstrap from template, migrations
 │   ├── migrations/001_init.sql # schema + seed (task types, human:human)
+│   ├── migrations/002_more_task_types.sql # two more task types (architecture design, unit tests)
 │   ├── data/template.db        # committed template database (schema + seed, no operational rows)
 │   ├── taxonomy.py             # enums, incident codes, roles, weights, multipliers
 │   ├── modelspec.py            # parse "agent:model[:effort]"
@@ -158,7 +159,7 @@ All closed sets live in `taxonomy.py`, except task types, which live in a table 
 
 ### 4.1 Task types (table `task_types`, seeded)
 
-`ui-component`, `ui-layout-styling`, `api-endpoint`, `business-logic`, `db-schema-migration`, `refactor`, `bugfix`, `tests`, `infra-config-ci`, `docs`, `integration`.
+`ui-component`, `ui-layout-styling`, `api-endpoint`, `business-logic`, `db-schema-migration`, `refactor`, `bugfix`, `tests`, `infra-config-ci`, `docs`, `integration`, `architecture-design`, `unit-tests`.
 
 Extended with `chanchi taxonomy add-type <code> --description "..."`. Codes are kebab-case.
 
@@ -200,6 +201,8 @@ Each code has a fixed role, except `hallucination`, which requires `--role plann
 | `false_claim` | executor | Reported a number or status that did not reproduce on audit. |
 | `incomplete_work` | executor | Marked work done that was not done or was wrong. |
 | `quality_defect` | executor | Bug, weak test or incorrect implementation despite passing verification. |
+| `architecture_violation` | executor | Broke layering, module boundaries or dependency direction, or added coupling the design forbids. |
+| `code_smell` | executor | Works and passes verification but hurts maintainability: duplication, oversized functions, misleading names, dead code. |
 | `correct_stop` | executor | **Positive.** Stopped at a real gap instead of improvising. |
 | `hallucination` | planner or executor | Invented something that does not exist: file, hook, function, library API, CLI flag, project rule, domain fact. Distinct from `false_claim`, which misreports a *result*. |
 | `human_unclear_requirement` | human | The requirement was ambiguous or incomplete at its origin. |
@@ -323,8 +326,9 @@ Sessions without a verdict are not scored.
 |---|---|
 | 3 | `false_claim`, `hallucination` |
 | 2.5 | `improvised_decision` |
-| 2 | `scope_drift`, `incomplete_work` |
+| 2 | `scope_drift`, `incomplete_work`, `architecture_violation` |
 | 1.5 | `rule_violation`, `quality_defect` |
+| 1 | `code_smell` |
 
 Severity multipliers: `low 1`, `medium 2`, `high 3`, `blocking 5`.
 

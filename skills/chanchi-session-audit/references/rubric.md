@@ -30,6 +30,8 @@
 | A reported number or status did not reproduce | `false_claim` | executor |
 | Work marked done was not done or was wrong | `incomplete_work` | executor |
 | Bug, weak test or wrong implementation that passed verification | `quality_defect` | executor |
+| Layering, module boundaries or dependency direction were broken, or forbidden coupling was added | `architecture_violation` | executor |
+| Works and passes verification but hurts maintainability (duplication, oversized function, misleading name, dead code) | `code_smell` | executor |
 | The executor stopped at a real gap instead of improvising | `correct_stop` | executor (positive) |
 | Something that does not exist was invented (file, hook, API, flag, rule, domain fact) | `hallucination` + `--role planner` or `--role executor` | whoever invented it |
 | The requirement was ambiguous or incomplete at its origin | `human_unclear_requirement` | human |
@@ -40,6 +42,17 @@
 
 `hallucination` vs `false_claim`: a hallucination invents something that does not exist; a false
 claim misreports a result (e.g. "tests PASS" when they fail).
+
+### Precedence between executor quality codes
+
+One incident per fault: pick the most specific code.
+
+1. A broken *written* project rule → `rule_violation`.
+2. Wrong behaviour or a weak test → `quality_defect`.
+3. A structural fault (layering, module boundaries, dependency direction, forbidden coupling) with
+   no written rule → `architecture_violation`.
+4. Working but hard to maintain (duplication, oversized functions, misleading names, dead code) →
+   `code_smell`, usually severity `low`.
 
 ## Severity
 
@@ -81,3 +94,8 @@ missed them.
 4. The design cites a hook that does not exist in the codebase: `hallucination --role planner`.
 5. Halfway through, the human asks to also fix an unrelated screen: `human_scope_addition`; the new
    attempt uses `--retry-reason human_change`.
+6. The executor put a domain rule inside the UI layer, so the service now imports the view module:
+   `architecture_violation` (medium, `planner_audit`) — the design forbids that dependency direction
+   and no written project rule covers it.
+7. The executor's new parser duplicates the one in `lib/parse.py` and leaves the old helper as dead
+   code, but everything works: `code_smell` (low, `planner_audit`).

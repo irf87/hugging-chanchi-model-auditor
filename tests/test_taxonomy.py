@@ -100,6 +100,23 @@ def test_describe_lists_every_incident_code():
     assert hallucination["executor_weight"] == 3.0
 
 
+def test_new_quality_codes_are_executor_codes_with_weights():
+    assert tx.INCIDENT_CODES["architecture_violation"][0] == "executor"
+    assert tx.INCIDENT_CODES["code_smell"][0] == "executor"
+    assert tx.EXECUTOR_WEIGHTS["architecture_violation"] == 2.0
+    assert tx.EXECUTOR_WEIGHTS["code_smell"] == 1.0
+    assert tx.resolve_role("architecture_violation", None) == "executor"
+    assert tx.resolve_role("code_smell", None) == "executor"
+
+
+def test_describe_lists_new_quality_codes():
+    described = {c["code"]: c for c in tx.describe()["incident_codes"]}
+    assert described["architecture_violation"]["role"] == "executor"
+    assert described["architecture_violation"]["executor_weight"] == 2.0
+    assert described["code_smell"]["role"] == "executor"
+    assert described["code_smell"]["executor_weight"] == 1.0
+
+
 def test_timeutil_roundtrip_and_since():
     ts = utc_now()
     assert parse(ts).strftime("%Y-%m-%dT%H:%M:%SZ") == ts

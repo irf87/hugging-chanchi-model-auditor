@@ -36,6 +36,16 @@ def test_session_score_penalties_and_credit():
     assert scoring.session_score("accepted", [i("hallucination", "high", role="executor")]) == pytest.approx(91)
 
 
+def test_session_score_architecture_violation():
+    incident = i("architecture_violation", "medium", detected_by="planner_audit")
+    assert scoring.session_score("accepted_with_fixes", [incident]) == pytest.approx(66)
+
+
+def test_session_score_code_smell():
+    incident = i("code_smell", "low", detected_by="planner_audit")
+    assert scoring.session_score("accepted", [incident]) == pytest.approx(99)
+
+
 def test_planner_change_score():
     assert scoring.planner_change_score(74, [i("plan_wrong_expectation")]) == pytest.approx(99.3243, abs=1e-4)
     assert scoring.planner_change_score(5, [i("plan_gap", "blocking")]) == pytest.approx(50)
