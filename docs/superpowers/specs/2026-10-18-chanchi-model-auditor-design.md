@@ -69,6 +69,7 @@ hugging-chanchi-model-auditor/
 │   ├── catalog.py              # model catalog and task types
 │   ├── db.py                   # connection, pragmas, bootstrap from template, migrations
 │   ├── migrations/001_init.sql # schema + seed (task types, human:human)
+│   ├── migrations/002_more_task_types.sql # two more task types (architecture design, unit tests)
 │   ├── data/template.db        # committed template database (schema + seed, no operational rows)
 │   ├── taxonomy.py             # enums, incident codes, roles, weights, multipliers
 │   ├── modelspec.py            # parse "agent:model[:effort]"
@@ -158,7 +159,7 @@ All closed sets live in `taxonomy.py`, except task types, which live in a table 
 
 ### 4.1 Task types (table `task_types`, seeded)
 
-`ui-component`, `ui-layout-styling`, `api-endpoint`, `business-logic`, `db-schema-migration`, `refactor`, `bugfix`, `tests`, `infra-config-ci`, `docs`, `integration`.
+`ui-component`, `ui-layout-styling`, `api-endpoint`, `business-logic`, `db-schema-migration`, `refactor`, `bugfix`, `tests`, `infra-config-ci`, `docs`, `integration`, `architecture-design`, `unit-tests`.
 
 Extended with `chanchi taxonomy add-type <code> --description "..."`. Codes are kebab-case.
 

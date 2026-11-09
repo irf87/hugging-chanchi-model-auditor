@@ -221,7 +221,7 @@ def test_migration_v1_to_v2_preserves_data(tmp_path):
     db_file = tmp_path / "v1_to_v2.db"
     conn = db.connect(db_file, wal=False)
     try:
-        applied = db.apply_migrations(conn)
+        applied = db.apply_migrations(conn, db.migrations()[:1])
         assert applied == [1]
         assert db.user_version(conn) == 1
 
@@ -237,11 +237,11 @@ def test_migration_v1_to_v2_preserves_data(tmp_path):
 
         synthetic_migrations = [
             *db.migrations(),
-            (2, "002_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
+            (3, "003_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
         ]
         new_applied = db.apply_migrations(conn, migrations_list=synthetic_migrations)
-        assert new_applied == [2]
-        assert db.user_version(conn) == 2
+        assert new_applied == [2, 3]
+        assert db.user_version(conn) == 3
 
         assert conn.execute("SELECT slug FROM projects WHERE id = 1").fetchone()[0] == "demo"
         assert conn.execute("SELECT ref FROM changes WHERE id = 1").fetchone()[0] == "c1"
@@ -249,5 +249,37 @@ def test_migration_v1_to_v2_preserves_data(tmp_path):
         assert session_row["session_ref"] == "S1"
         assert session_row["tasks_total"] == 5
         assert session_row["probe"] is None
+    finally:
+        conn.close()
+
+
+def test_migration_v2_keeps_user_task_types(tmp_path):
+    db_file = tmp_path / "v1_to_v2_task_types.db"
+    conn = db.connect(db_file, wal=False)
+    try:
+        applied = db.apply_migrations(conn, db.migrations()[:1])
+        assert applied == [1]
+        assert db.user_version(conn) == 1
+
+        conn.execute(
+            "INSERT INTO task_types (code, description) VALUES ('custom-type', 'A user-defined type')"
+        )
+        conn.execute(
+            "INSERT INTO task_types (code, description) VALUES ('unit-tests', 'My own unit tests')"
+        )
+
+        new_applied = db.apply_migrations(conn)
+        assert new_applied == [2]
+        assert db.user_version(conn) == 2
+
+        rows = {
+            row["code"]: row["description"]
+            for row in conn.execute("SELECT code, description FROM task_types")
+        }
+        assert rows["architecture-design"] == (
+            "Define or change module boundaries, layering, dependency direction or public interfaces"
+        )
+        assert rows["unit-tests"] == "My own unit tests"
+        assert rows["custom-type"] == "A user-defined type"
     finally:
         conn.close()

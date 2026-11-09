@@ -90,7 +90,7 @@ def test_resolve_model_errors(seeded):
 
 def test_task_types(conn):
     codes = [t["code"] for t in catalog.list_task_types(conn)]
-    assert codes[0] == "ui-component" and len(codes) == 11
+    assert codes[0] == "ui-component" and len(codes) == 13
     added = catalog.add_task_type(conn, code="mobile-native", description="Native iOS/Android code")
     assert added == {"code": "mobile-native", "description": "Native iOS/Android code"}
     catalog.require_task_type(conn, "mobile-native")

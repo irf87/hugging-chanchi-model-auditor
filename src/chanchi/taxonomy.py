@@ -32,7 +32,8 @@ COMPLEXITY_CRITERIA = {
     "or meaningful domain ambiguity",
 }
 
-# Seed rows for the task_types table. Migration 001 inserts exactly these.
+# Seed rows for the task_types table. Migration 001 inserts exactly the first eleven
+# and migration 002 inserts exactly the last two, in this order.
 TASK_TYPES = (
     ("ui-component", "Build or change a reusable or screen-level UI component"),
     ("ui-layout-styling", "Layout, spacing, theming or styling with no new behaviour"),
@@ -45,6 +46,14 @@ TASK_TYPES = (
     ("infra-config-ci", "Build, configuration, CI or tooling"),
     ("docs", "Documentation, spec sync or archive steps"),
     ("integration", "Integrate an external SDK, service or API"),
+    (
+        "architecture-design",
+        "Define or change module boundaries, layering, dependency direction or public interfaces",
+    ),
+    (
+        "unit-tests",
+        "Write or repair isolated unit tests (use tests for integration, device or end-to-end work)",
+    ),
 )
 
 # code -> (fixed role, or None when the caller must pass --role; description)
