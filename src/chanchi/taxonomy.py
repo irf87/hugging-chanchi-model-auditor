@@ -133,6 +133,20 @@ PLANNER_WEIGHTS = {
 SEVERITY_MULT = {"low": 1, "medium": 2, "high": 3, "blocking": 5}
 LATE_DETECTION = ("human", "post_merge")
 LATE_DETECTION_MULT = 1.5
+
+# Code-quality dimensions: the closed set of codes each dimension scores. Every code of
+# EXECUTOR_WEIGHTS belongs to exactly one dimension; `correct_stop` belongs to none because
+# it only feeds the session score.
+DIMENSIONS: dict[str, tuple[str, ...]] = {
+    "correctness": ("quality_defect", "incomplete_work"),
+    "architecture": ("architecture_violation",),
+    "clean-code": ("code_smell",),
+    "honesty": ("false_claim", "hallucination"),
+    "discipline": ("rule_violation", "scope_drift", "improvised_decision"),
+}
+DIMENSION_OF: dict[str, str] = {
+    code: dimension for dimension, codes in DIMENSIONS.items() for code in codes
+}
 VERDICT_BASE = {"accepted": 100.0, "accepted_with_fixes": 70.0, "rejected": 0.0}
 CORRECT_STOP_CREDIT = 5.0
 PLANNER_DENSITY_FACTOR = 5.0
@@ -217,5 +231,8 @@ def describe() -> dict:
                 "planner_weight": PLANNER_WEIGHTS.get(code),
             }
             for code, (role, description) in INCIDENT_CODES.items()
+        ],
+        "dimensions": [
+            {"dimension": dimension, "codes": list(codes)} for dimension, codes in DIMENSIONS.items()
         ],
     }

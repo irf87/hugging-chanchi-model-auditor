@@ -179,6 +179,107 @@ def test_executor_stats_by_task_type_and_project(recorder):
     assert info.value.field == "role"
 
 
+# --- dimensions ------------------------------------------------------------
+
+
+def test_dimension_score_penalises_only_its_own_codes():
+    incident = i("architecture_violation", "medium")
+    assert scoring.dimension_score("architecture", [incident]) == pytest.approx(96)
+    assert scoring.dimension_score("clean-code", [incident]) == 100
+    assert scoring.dimension_score("discipline", [incident]) == 100
+
+
+def test_dimension_score_counts_late_detection():
+    late = [i("false_claim", "high", detected_by="post_merge")]
+    assert scoring.dimension_score("honesty", late) == pytest.approx(86.5)
+    assert scoring.dimension_score("correctness", late) == 100
+
+
+def test_dimension_score_ignores_correct_stop_and_planner_incidents():
+    assert scoring.dimension_score("discipline", [i("correct_stop")]) == 100
+    assert scoring.dimension_score("honesty", [i("hallucination", "high", role="planner")]) == 100
+
+
+def test_stats_by_dimension(recorder):
+    recorder.change("c1")
+    recorder.session("c1", "S1", FLASH, incidents=[inc("architecture_violation", "medium")])
+    recorder.session("c1", "S2", FLASH, incidents=[inc("code_smell", "low")])
+    recorder.session("c1", "S3", FLASH, incidents=[inc("rule_violation", "medium")])
+    result = scoring.stats(recorder.conn, role="executor", by="dimension")
+    assert result["role"] == "executor" and result["by"] == "dimension"
+    assert result["note"] == scoring.DIMENSION_NOTE
+    rows = {r["dimension"]: r for r in result["rows"]}
+    assert [r["dimension"] for r in result["rows"]] == [
+        "correctness",
+        "architecture",
+        "clean-code",
+        "honesty",
+        "discipline",
+    ]
+    assert rows["architecture"]["mean_score"] == pytest.approx(98.67, abs=0.01)
+    assert rows["clean-code"]["mean_score"] == pytest.approx(99.67, abs=0.01)
+    assert rows["discipline"]["mean_score"] == pytest.approx(99.0, abs=0.01)
+    assert rows["correctness"]["mean_score"] == 100.0
+    assert rows["honesty"]["mean_score"] == 100.0
+    for row in rows.values():
+        assert row["n"] == 3
+        assert row["spec"] == FLASH
+        assert row["cost_tier"] == 1
+        assert row["confidence"] == "low"
+    assert rows["architecture"]["incident_count"] == 1
+    assert rows["clean-code"]["incident_count"] == 1
+    assert rows["discipline"]["incident_count"] == 1
+    assert rows["correctness"]["incident_count"] == 0
+    assert rows["honesty"]["incident_count"] == 0
+    assert rows["architecture"]["sessions_with_incidents"] == 1
+    assert rows["architecture"]["incidents_per_session"] == pytest.approx(0.333)
+    assert rows["correctness"]["sessions_with_incidents"] == 0
+    assert rows["architecture"]["top_codes"] == ["architecture_violation"]
+    assert rows["correctness"]["top_codes"] == []
+    assert rows["honesty"]["top_codes"] == []
+    assert rows["architecture"]["prior"] == pytest.approx(98.67, abs=0.01)
+    assert rows["architecture"]["smoothed_score"] == pytest.approx(
+        scoring.smoothed(rows["architecture"]["mean_score"], 3, rows["architecture"]["prior"]), abs=0.01
+    )
+
+
+def test_stats_by_dimension_is_executor_only(recorder):
+    with pytest.raises(ChanchiError) as info:
+        scoring.stats(recorder.conn, role="planner", by="dimension")
+    assert info.value.field == "by"
+    assert info.value.valid_values == ["model", "project"]
+
+
+def test_stats_by_dimension_has_no_note_in_other_views(recorder):
+    recorder.change("c1")
+    recorder.session("c1", "S1", FLASH)
+    assert "note" not in scoring.stats(recorder.conn, role="executor", by="model")
+    assert "note" not in scoring.stats(recorder.conn, role="planner", by="model")
+    assert "note" not in scoring.stats(recorder.conn, role="human")
+
+
+def test_executor_records_keep_executor_incidents(recorder):
+    recorder.change("c1")
+    recorder.session(
+        "c1", "S1", FLASH, incidents=[inc("rule_violation", "medium"), inc("correct_stop")]
+    )
+    executor_record = scoring.executor_records(recorder.conn)[0]
+    assert [i["code"] for i in executor_record["executor_incidents"]] == [
+        "rule_violation",
+        "correct_stop",
+    ]
+
+
+def test_explain_has_dimension_score():
+    from chanchi import taxonomy
+
+    explained = scoring.explain()["dimension_score"]
+    assert explained["formula"] == "clamp(100 - penalty, 0, 100)"
+    assert explained["correct_stop_excluded"] is True
+    assert explained["note"] == scoring.DIMENSION_NOTE
+    assert [d["dimension"] for d in explained["dimensions"]] == list(taxonomy.DIMENSIONS)
+
+
 def test_planner_stats(recorder):
     recorder.change("c1")
     recorder.session("c1", "S1", FLASH, tasks=10)

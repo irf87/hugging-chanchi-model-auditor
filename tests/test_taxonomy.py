@@ -117,6 +117,47 @@ def test_describe_lists_new_quality_codes():
     assert described["code_smell"]["executor_weight"] == 1.0
 
 
+# --- dimensions ------------------------------------------------------------
+
+
+def test_every_executor_weight_code_is_in_exactly_one_dimension():
+    seen = [code for codes in tx.DIMENSIONS.values() for code in codes]
+    assert sorted(seen) == sorted(tx.EXECUTOR_WEIGHTS)
+    assert len(seen) == len(set(seen))
+    assert set(tx.DIMENSION_OF) == set(tx.EXECUTOR_WEIGHTS)
+    for code in tx.EXECUTOR_WEIGHTS:
+        assert tx.DIMENSION_OF[code] in tx.DIMENSIONS
+
+
+def test_dimension_codes_are_executor_codes():
+    for dimension, codes in tx.DIMENSIONS.items():
+        for code in codes:
+            assert code in tx.INCIDENT_CODES, code
+            role = tx.INCIDENT_CODES[code][0]
+            assert role not in ("planner", "human"), (dimension, code, role)
+            assert tx.resolve_role(code, "executor" if role is None else None) == "executor"
+
+
+def test_correct_stop_belongs_to_no_dimension():
+    assert "correct_stop" not in tx.DIMENSION_OF
+    assert "correct_stop" not in [code for codes in tx.DIMENSIONS.values() for code in codes]
+
+
+def test_describe_lists_every_dimension_in_order():
+    described = tx.describe()["dimensions"]
+    assert [d["dimension"] for d in described] == [
+        "correctness",
+        "architecture",
+        "clean-code",
+        "honesty",
+        "discipline",
+    ]
+    assert described[0]["codes"] == ["quality_defect", "incomplete_work"]
+    assert {d["dimension"]: d["codes"] for d in described} == {
+        dimension: list(codes) for dimension, codes in tx.DIMENSIONS.items()
+    }
+
+
 def test_timeutil_roundtrip_and_since():
     ts = utc_now()
     assert parse(ts).strftime("%Y-%m-%dT%H:%M:%SZ") == ts
