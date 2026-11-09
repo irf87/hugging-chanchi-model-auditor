@@ -58,5 +58,6 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
 - `chanchi models set claude:sonnet --cost 2` — change a cost tier.
 - `chanchi models set claude:haiku --active 0` — retire a model without losing its history.
 - `chanchi stats --by task-type` — see how every model performs per task type.
+- `chanchi stats --by dimension` — see how every model performs per code-quality dimension (correctness, architecture, clean code, honesty, discipline). 100 means no recorded fault, not proven quality; read it with `n` and `confidence`.
 - `chanchi stats --role planner` — see how planners perform.
 - `chanchi scoring explain` — show the formulas and weights behind every number.

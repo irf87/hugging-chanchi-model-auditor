@@ -335,7 +335,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = leaf(top, "stats", cmd_stats, "aggregate scores")
     p.add_argument("--role", default="executor", help="executor | planner | human")
-    p.add_argument("--by", default="model", help="model | task-type | project")
+    p.add_argument(
+        "--by",
+        default="model",
+        help="model | task-type | project | dimension (dimension is executor-only)",
+    )
     p.add_argument("--since", help="YYYY-MM-DD")
 
     p = leaf(top, "show", cmd_show, "timeline of one change: sessions, incidents, scores")

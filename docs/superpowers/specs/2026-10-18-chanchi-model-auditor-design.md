@@ -213,6 +213,20 @@ Each code has a fixed role, except `hallucination`, which requires `--role plann
 
 **Planner vs human test** (in the rubric): *Could the planner have detected this from what it had — the requirement plus the codebase and project rules?* Yes → `plan_*`. No, or the human changed their mind → `human_*`.
 
+#### Dimensions
+
+Dimensions group the executor incident codes into a closed set of code-quality axes. Every executor code with a weight belongs to exactly one dimension; `correct_stop` belongs to none, because it only feeds the session score.
+
+| Dimension | Codes |
+|---|---|
+| `correctness` | `quality_defect`, `incomplete_work` |
+| `architecture` | `architecture_violation` |
+| `clean-code` | `code_smell` |
+| `honesty` | `false_claim`, `hallucination` |
+| `discipline` | `rule_violation`, `scope_drift`, `improvised_decision` |
+
+Planner, human and neutral codes belong to no dimension.
+
 ## 5. Data model
 
 All timestamps are ISO-8601 UTC text. Foreign keys are enforced.
@@ -370,6 +384,14 @@ Grouping key: `(agent, model, effort) × (task_type, complexity)`. A NULL effort
 
 Planner aggregation uses the same smoothing over change scores, grouped by `(agent, model, effort)`.
 
+#### Dimension view
+
+`chanchi stats --by dimension` (executor only) shows how each model performs on each code-quality dimension. It is a read-only view derived from the incidents already recorded, so it also works on existing history.
+
+- **Dimension score of one audited session:** `clamp(100 - penalty, 0, 100)`, where `penalty` sums `weight × severity_multiplier × late_multiplier` over the session's executor-role incidents whose code belongs to that dimension. The verdict base and the `correct_stop` credit are not used.
+- **Aggregation:** the same machinery as above — the mean over a model's audited sessions, smoothed with the mean of that dimension's session scores across all records in scope as `prior`, plus `confidence(n)`. Each row reports `n`, `incident_count`, `sessions_with_incidents` and `incidents_per_session`.
+- **Honesty about the number:** a dimension with no recorded incidents scores 100. That is the absence of a recorded fault, not proof of quality, so the view carries a note and every row must be read together with `n` and `confidence`.
+
 ### 6.6 Recommendation
 
 ```
@@ -414,7 +436,7 @@ chanchi incident void <id> --reason "..."
 
 # Querying
 chanchi recommend --task-type <code> --complexity <level> --available "<spec>,..."
-chanchi stats [--role executor|planner|human] [--by model|task-type|project] [--since YYYY-MM-DD]
+chanchi stats [--role executor|planner|human] [--by model|task-type|project|dimension] [--since YYYY-MM-DD]
 chanchi show <ref>                             # change timeline: sessions, incidents, scores
 chanchi scoring explain                        # current weights and formulas
 ```

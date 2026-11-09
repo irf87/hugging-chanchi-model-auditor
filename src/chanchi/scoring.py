@@ -15,6 +15,7 @@ EXECUTOR_GROUPINGS = {
     "model": ("agent", "model", "effort"),
     "task-type": ("agent", "model", "effort", "task_type", "complexity"),
     "project": ("project", "agent", "model", "effort"),
+    "dimension": ("agent", "model", "effort", "dimension"),
 }
 PLANNER_GROUPINGS = {
     "model": ("agent", "model", "effort"),
@@ -51,6 +52,15 @@ def planner_change_score(tasks: int, incidents: list[dict]) -> float:
     planner = [i for i in incidents if i["role"] == "planner"]
     density = _penalty(planner, tx.PLANNER_WEIGHTS) / max(tasks, tx.PLANNER_MIN_TASKS) * 10
     return _clamp(100 - tx.PLANNER_DENSITY_FACTOR * density)
+
+
+def dimension_score(dimension: str, incidents: list[dict]) -> float:
+    """Score of one dimension for one session: 100 minus the penalty of that dimension's faults."""
+    codes = tx.DIMENSIONS[dimension]
+    relevant = [
+        i for i in incidents if i["role"] == "executor" and i["code"] in codes
+    ]
+    return _clamp(100 - _penalty(relevant, tx.EXECUTOR_WEIGHTS))
 
 
 def smoothed(mean: float, n: int, prior: float) -> float:
@@ -116,6 +126,7 @@ def executor_records(
             (parse_ts(r["ended_at"]) - parse_ts(r["started_at"])).total_seconds() if r["ended_at"] else None
         )
         r["codes"] = [i["code"] for i in executor]
+        r["executor_incidents"] = executor
         records.append(r)
     return records
 
@@ -172,6 +183,8 @@ def summarize(records: list[dict], prior: float) -> dict:
 def _executor_stats(conn, by, project_id, since) -> list[dict]:
     tx.validate_choice("by", by, EXECUTOR_GROUPINGS)
     records = executor_records(conn, project_id=project_id, since=since)
+    if by == "dimension":
+        return _dimension_stats(records)
     keys = EXECUTOR_GROUPINGS[by]
     groups: dict = defaultdict(list)
     for r in records:
@@ -184,6 +197,64 @@ def _executor_stats(conn, by, project_id, since) -> list[dict]:
         entry.update(summarize(members, prior_for(records, entry.get("task_type"), entry.get("complexity"))))
         rows.append(entry)
     rows.sort(key=lambda e: (-e["smoothed_score"], e["spec"], e.get("project") or "", e.get("task_type") or ""))
+    return rows
+
+
+# --- dimensions ------------------------------------------------------------
+
+DIMENSION_NOTE = (
+    "Dimension scores count only faults the auditor recorded: 100 means no recorded fault, "
+    "not proven quality. Read them with n and confidence."
+)
+
+
+def _dimension_stats(records: list[dict]) -> list[dict]:
+    """One row per model and dimension, scored from the executor incidents already recorded."""
+    scores = [
+        {dimension: dimension_score(dimension, r["executor_incidents"]) for dimension in tx.DIMENSIONS}
+        for r in records
+    ]
+    priors = {
+        dimension: _mean([s[dimension] for s in scores]) for dimension in tx.DIMENSIONS
+    }
+    groups: dict = defaultdict(list)
+    for r, s in zip(records, scores):
+        for dimension in tx.DIMENSIONS:
+            groups[(r["agent"], r["model"], r["effort"], dimension)].append((r, s))
+    rows = []
+    for key, members in groups.items():
+        agent, model, effort, dimension = key
+        n = len(members)
+        codes = tx.DIMENSIONS[dimension]
+        mean = sum(s[dimension] for _, s in members) / n
+        prior = priors[dimension]
+        prior = tx.DEFAULT_PRIOR if prior is None else prior
+        incidents = [
+            i for r, _ in members for i in r["executor_incidents"] if i["code"] in codes
+        ]
+        rows.append(
+            {
+                "agent": agent,
+                "model": model,
+                "effort": effort,
+                "dimension": dimension,
+                "spec": format_spec(agent, model, effort),
+                "cost_tier": members[0][0]["cost_tier"],
+                "n": n,
+                "incident_count": len(incidents),
+                "sessions_with_incidents": sum(
+                    1 for r, _ in members if any(i["code"] in codes for i in r["executor_incidents"])
+                ),
+                "incidents_per_session": round(len(incidents) / n, 3),
+                "mean_score": round(mean, 2),
+                "smoothed_score": round(smoothed(mean, n, prior), 2),
+                "prior": round(prior, 2),
+                "confidence": tx.confidence(n),
+                "top_codes": _top_codes(i["code"] for i in incidents),
+            }
+        )
+    order = {dimension: index for index, dimension in enumerate(tx.DIMENSIONS)}
+    rows.sort(key=lambda e: (order[e["dimension"]], -e["smoothed_score"], e["spec"]))
     return rows
 
 
@@ -319,7 +390,10 @@ def stats(
         rows = _planner_stats(conn, by, project_id, since)
     else:
         rows = _human_stats(conn, project_id, since)
-    return {"role": role, "by": by if role != "human" else "project", "rows": rows}
+    result = {"role": role, "by": by if role != "human" else "project", "rows": rows}
+    if role == "executor" and by == "dimension":
+        result["note"] = DIMENSION_NOTE
+    return result
 
 
 # --- recommend -------------------------------------------------------------
@@ -461,6 +535,14 @@ def explain() -> dict:
             "weights": tx.PLANNER_WEIGHTS,
             "density_factor": tx.PLANNER_DENSITY_FACTOR,
             "min_tasks": tx.PLANNER_MIN_TASKS,
+        },
+        "dimension_score": {
+            "formula": "clamp(100 - penalty, 0, 100)",
+            "dimensions": [
+                {"dimension": dimension, "codes": list(codes)} for dimension, codes in tx.DIMENSIONS.items()
+            ],
+            "correct_stop_excluded": True,
+            "note": DIMENSION_NOTE,
         },
         "severity_multipliers": tx.SEVERITY_MULT,
         "late_detection": {"detected_by": list(tx.LATE_DETECTION), "multiplier": tx.LATE_DETECTION_MULT},
