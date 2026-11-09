@@ -41,6 +41,7 @@ This creates `.agents/skills/chanchi-*` (read by opencode and agy) and `.claude/
 chanchi models add --agent agy --model gemini-3.8-flash-high --cost 1 --efforts low,medium,high
 chanchi recommend --task-type ui-component --complexity medium --available "agy:gemini-3.8-flash-high:high,claude:sonnet:medium"
 chanchi stats --by task-type
+chanchi stats --by dimension
 chanchi show <change-ref>
 chanchi scoring explain
 chanchi taxonomy list

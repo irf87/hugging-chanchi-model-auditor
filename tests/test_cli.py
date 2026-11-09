@@ -69,6 +69,7 @@ def test_models_and_taxonomy(ready):
     assert len(ok(capsys, "models", "list", "--all")["models"]) == 3
     taxonomy = ok(capsys, "taxonomy", "list")
     assert "hallucination" in [c["code"] for c in taxonomy["taxonomy"]["incident_codes"]]
+    assert "dimensions" in taxonomy["taxonomy"]
     assert taxonomy["task_types"][0]["code"] == "ui-component"
     added = ok(capsys, "taxonomy", "add-type", "mobile-native", "--description", "Native code")
     assert added["task_type"]["code"] == "mobile-native"
@@ -115,6 +116,10 @@ def test_full_flow(ready):
     assert ok(capsys, "stats", "--role", "planner", "--by", "project")["rows"][0]["project"] == "demo-app"
     assert ok(capsys, "stats", "--role", "human", "--project", "demo-app")["rows"][0]["stops_total"] == 0
     assert ok(capsys, "stats", "--since", "2026-01-01")["rows"]
+    dimensions = ok(capsys, "stats", "--by", "dimension")
+    assert dimensions["rows"]
+    assert all(row["dimension"] for row in dimensions["rows"])
+    assert dimensions["note"]
     rec = ok(
         capsys, "recommend", "--task-type", "ui-component", "--complexity", "high",
         "--available", "agy:gemini-3.8-flash-high:high, claude:opus:high",
