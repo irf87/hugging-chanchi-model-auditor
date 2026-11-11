@@ -56,3 +56,8 @@ commands print JSON; errors carry `field`, `valid_values` and `hint`.
 - One incident per distinct fault, not one per symptom.
 - Apply the planner-vs-human test before blaming the plan.
 - Never answer a product or plan decision on the executor's behalf; surface it to the human.
+- One `incident add` per call, with `--desc` and `--evidence` quoted literally (a heredoc or a
+  single quoted string). There is no `incident update`: a description mangled by a shell loop or
+  word-splitting trick can only be voided and re-added.
+- Audit findings are recorded with `--detected-by planner_audit`, whether the planner or its
+  auditor agent found them; `executor_stop` is only for stops the executor reported.
