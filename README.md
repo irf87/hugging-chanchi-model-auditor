@@ -5,7 +5,8 @@ executor session and every incident found while auditing it; `chanchi` turns tho
 scores and recommends which `(agent, model, effort)` to use for a given task type and complexity.
 
 - **Local only:** one SQLite database at `~/.local/share/chanchi/chanchi.db` (override with
-  `CHANCHI_DB`). Nothing leaves the machine.
+  `CHANCHI_DB`). The `chanchi` package imports no network module; one maintainer script in
+  `scripts/` fetches public benchmark metadata into a committed file.
 - **Agent-first:** JSON output by default (`--format text` for humans), structured errors with
   `field`, `valid_values` and `hint`.
 - **No runtime dependencies:** Python ≥ 3.11 standard library.
@@ -70,6 +71,26 @@ The owner classifies models (`yes`, `no`, or `unknown` to clear) on `agent:model
 ```bash
 chanchi models set <agent:model> --capability vision=yes
 ```
+
+## Refreshing Hugging Face signals (maintainers only)
+
+`chanchi` never contacts the network. Maintainers refresh the committed benchmark snapshot (`src/chanchi/data/hf_snapshot.json`) in a git worktree of this repository, so other projects keep using the previous snapshot until the change merges to `main`.
+
+1. Check that the keys in `scripts/hf_model_map.json` match `chanchi models list --all`.
+2. From the worktree root, run a dry run (`HF_TOKEN` is optional for higher Hub rate limits):
+
+```bash
+uv run python scripts/fetch_hf_benchmarks.py
+```
+
+3. Review the printed summary, then write the snapshot:
+
+```bash
+uv run python scripts/fetch_hf_benchmarks.py --write
+```
+
+4. Compare `vision_candidates` in the summary with `chanchi models list`, check each provider's model page, and update capabilities with the installed `chanchi` (`chanchi models set <agent:model> --capability vision=yes|no`).
+5. Review `git diff src/chanchi/data/hf_snapshot.json`, commit, and merge to `main`. Every project's next `chanchi recommend` call uses the new snapshot automatically through the editable install.
 
 ## Databases and migrations
 

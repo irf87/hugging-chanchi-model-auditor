@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "models": {
+    "opencode:opencode-go/deepseek-v4.1-flash": {
+      "hf_repo": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/glm-5.2": {
+      "hf_repo": "zai-org/GLM-5.2",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/glm-5.3": {
+      "hf_repo": "zai-org/GLM-5.3",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/glm-5.3-flash": {
+      "hf_repo": "zai-org/GLM-5.3-Flash",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/hy3": {
+      "hf_repo": "tencent/Hy3",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/hy4": {
+      "hf_repo": "tencent/Hy4-preview",
+      "match_quality": "family"
+    },
+    "opencode:opencode-go/kimi-k2.7-code": {
+      "hf_repo": "moonshotai/Kimi-K2.7-Code",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/kimi-k3": {
+      "hf_repo": "moonshotai/Kimi-K3",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/longcat-2.0": {
+      "hf_repo": "meituan-longcat/LongCat-2.0",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/mimo-v2.5": {
+      "hf_repo": "XiaomiMiMo/MiMo-V2.5",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/mimo-v2.5-pro": {
+      "hf_repo": "XiaomiMiMo/MiMo-V2.5-Pro",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/mimo-v2.6-flash": {
+      "hf_repo": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
+      "match_quality": "family"
+    },
+    "opencode:opencode-go/mimo-v2.6-pro": {
+      "hf_repo": "XiaomiMiMo/MiMo-V2.6-Pro-RL",
+      "match_quality": "family"
+    },
+    "opencode:opencode-go/minimax-m3": {
+      "hf_repo": "MiniMaxAI/MiniMax-M3",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/minimax-m3#thinking": {
+      "hf_repo": "MiniMaxAI/MiniMax-M3",
+      "match_quality": "family"
+    },
+    "opencode:opencode-go/minimax-m3.1-flash": {
+      "hf_repo": "MiniMaxAI/MiniMax-M3.1-Flash",
+      "match_quality": "exact"
+    },
+    "opencode:opencode-go/step-5-preview": {
+      "hf_repo": "stepfun-ai/Step-5-Preview",
+      "match_quality": "exact"
+    }
+  }
+}

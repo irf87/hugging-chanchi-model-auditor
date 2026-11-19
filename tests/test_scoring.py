@@ -486,7 +486,13 @@ def test_explore_complexity_gate(explore_catalog):
             explore_catalog.conn, task_type="ui-component", complexity=complexity, available=[GLM_LOW]
         )
         assert result["explore"] == [
-            {"spec": GLM_LOW, "cost_tier": 1, "n_task_type": 0, "deprioritized": None}
+            {
+                "spec": GLM_LOW,
+                "cost_tier": 1,
+                "n_task_type": 0,
+                "deprioritized": None,
+                "external_signals": None,
+            }
         ]
         assert result["explore_reason"] is None
 
@@ -705,7 +711,7 @@ def test_explore_caps_at_three_and_exact_keys(explore_catalog):
     )
     assert len(result["explore"]) == 3
     for entry in result["explore"]:
-        assert set(entry) == {"spec", "cost_tier", "n_task_type", "deprioritized"}
+        assert set(entry) == {"spec", "cost_tier", "n_task_type", "deprioritized", "external_signals"}
 
 
 def test_explore_no_explorable_candidates_reason(explore_catalog):

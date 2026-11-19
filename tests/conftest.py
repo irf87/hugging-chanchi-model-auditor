@@ -1,6 +1,14 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def hide_hf_snapshot(tmp_path, monkeypatch):
+    """Point hfsignals.SNAPSHOT_PATH at a nonexistent path so Phase 1-2 tests never read a committed snapshot."""
+    from chanchi import hfsignals
+
+    monkeypatch.setattr(hfsignals, "SNAPSHOT_PATH", tmp_path / "missing_hf_snapshot.json")
+
+
 @pytest.fixture
 def db_env(tmp_path, monkeypatch):
     """Point chanchi at a throwaway operational database."""
