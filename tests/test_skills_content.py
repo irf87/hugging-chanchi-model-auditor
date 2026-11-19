@@ -63,5 +63,15 @@ def test_selection_skill_documents_exploration_rules():
         "· explore: <spec>",
         "every effort of a model",
         "At `high` complexity, a `task_type` level is weak evidence too",
+        "external_signals",
+        "unverified",
+        "never count as audit evidence",
     ):
         assert token in text, token
+
+
+def test_skills_do_not_mention_fetch_script_or_hub():
+    for path in sorted(SKILLS.rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for forbidden in ("fetch_hf_benchmarks", "HF_TOKEN", "huggingface.co"):
+            assert forbidden not in text, f"{path}: forbidden reference {forbidden!r}"

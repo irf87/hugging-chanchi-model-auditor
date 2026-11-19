@@ -35,7 +35,7 @@ The reference implementation of this workflow (DATEMApp) already produces per-se
 
 ### 1.3 Non-goals
 
-- No server, no network, no multi-machine sync. One SQLite file per machine.
+- No server. The `chanchi` package imports no network module; one maintainer script in `scripts/` fetches public benchmark metadata into a committed file. No multi-machine sync. One SQLite file per machine.
 - No MCP server (a skill already is the interface; an MCP layer could be added later over the same core).
 - No token or monetary cost tracking (only a manual relative cost tier).
 - No automatic parsing of agent transcripts or report files — the orchestrating agent reads them and calls the CLI.
@@ -76,6 +76,7 @@ hugging-chanchi-model-auditor/
 │   ├── projects.py             # project detection (git toplevel)
 │   ├── record.py               # changes, sessions, incidents, verdicts
 │   ├── scoring.py              # per-session and per-change scores, aggregation, recommend
+│   ├── hfsignals.py            # offline Hugging Face benchmark signal derivation
 │   └── skills_link.py          # mirror skills into projects via symlinks
 ├── skills/
 │   ├── chanchi-model-selection/SKILL.md
@@ -95,7 +96,8 @@ Unit boundaries:
 | `projects` | Resolves the current project from cwd or `--project`. | `git`, `db` |
 | `catalog` | Manages the model catalog and task types; resolves a model spec to a catalog row. | `db`, `taxonomy`, `modelspec` |
 | `record` | Validates and writes changes, sessions, incidents, verdicts. | `db`, `taxonomy`, `catalog`, `projects` |
-| `scoring` | Reads raw rows and computes scores, stats and recommendations. Never writes. | `db`, `taxonomy` |
+| `scoring` | Reads raw rows and computes scores, stats and recommendations. Never writes. | `db`, `taxonomy`, `hfsignals` |
+| `hfsignals` | Derives offline ordering signals from the committed Hugging Face snapshot. Pure functions, no network imports. | `data/hf_snapshot.json` |
 | `skills_link` | Creates/removes skill symlinks. No database access. | filesystem |
 | `cli` | Parses arguments, calls one unit, renders JSON/text, maps exceptions to exit codes. | all of the above |
 
@@ -413,7 +415,7 @@ chanchi recommend --task-type <code> --complexity <level> --available "<spec>,<s
 3. For each remaining candidate, find data at the first level that has `n ≥ 3`: (task_type, complexity) → (task_type, any) → (any, complexity) → (any, any). The output states the level used.
 4. Rank by smoothed score. Among candidates with confidence `low` or `ok` and no honesty red flag, the **recommendation** is the cheapest (lowest `cost_tier`) whose smoothed score is within 5 points of the best.
 5. If no candidate is eligible, the output says so explicitly (`"recommendation": null`) with reason `insufficient_data` (no candidate reaches confidence `low`) or `all_candidates_red_flagged` (some do, but every one carries the honesty red flag), and still lists whatever data exists. A candidate with no data at the first level that has `n ≥ 3` reports the most specific level that has any data (or `null` with `n = 0`). The planner then chooses by judgement, and that choice becomes data.
-6. **Exploration (`explore` and `explore_reason`):** at `low` or `medium` complexity (`EXPLORE_COMPLEXITIES`), `recommend` returns an `explore` list of up to 3 (`EXPLORE_MAX`) models (one spec per `(agent, model)`, keeping the listed effort with the highest `n_task_type`, breaking ties by `--available` order) where among the listed efforts none has `n_task_type ≥ 3`, none is red-flagged on 3 or more sessions, and the model is not the `recommendation`. Kept specs are sorted with `deprioritized` (`"red_flag_low_data"` when any listed effort has a red flag on fewer than 3 sessions, `"weak_start"` when `n_task_type` is 1 or 2 and its mean is more than 5 points below `prior_for(records, task_type, None)`, or `null`) last, then `cost_tier` ascending, `n_task_type` descending, and `spec` ascending. `explore_reason` is `null` when `explore` has entries, `complexity_not_explorable` at `high` complexity, and `no_explorable_candidates` otherwise.
+6. **Exploration (`explore` and `explore_reason`):** at `low` or `medium` complexity (`EXPLORE_COMPLEXITIES`), `recommend` returns an `explore` list of up to 3 (`EXPLORE_MAX`) models (one spec per `(agent, model)`, keeping the listed effort with the highest `n_task_type`, breaking ties by `--available` order) where among the listed efforts none has `n_task_type ≥ 3`, none is red-flagged on 3 or more sessions, and the model is not the `recommendation`. Kept specs are sorted with `deprioritized` (`"red_flag_low_data"` when any listed effort has a red flag on fewer than 3 sessions, `"weak_start"` when `n_task_type` is 1 or 2 and its mean is more than 5 points below `prior_for(records, task_type, None)`, or `null`) last, then `cost_tier` ascending, then external signal quartile bucket descending (with no signal sorting between bucket 1 and bucket 0), then `n_task_type` descending, and `spec` ascending. Each `explore` entry carries `external_signals` (`null` when unmapped, no snapshot, or the task type has no signal), and every `recommend` result includes `explore_signal_source` and `explore_signal_generated_at`. `explore_reason` is `null` when `explore` has entries, `complexity_not_explorable` at `high` complexity, and `no_explorable_candidates` otherwise.
 
 The recommendation is an input, not an order: the selection skill requires the planner to write, in the session protocol, what `chanchi` recommended, what it chose, and why if it deviated.
 

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from collections import Counter, defaultdict
 
-from chanchi import catalog, record
+from chanchi import catalog, hfsignals, record
 from chanchi import taxonomy as tx
 from chanchi.errors import ChanchiError
 from chanchi.modelspec import format_spec
@@ -415,11 +416,26 @@ def _level_subset(records, task_type, complexity, use_type, use_complexity):
     ]
 
 
-def _explore_sort_key(entry: dict) -> tuple:
-    """Sort explore candidates: non-deprioritized first, lowest cost, most task-type data, spec."""
+_SIGNAL_BUCKET_RANK = {3: 0, 2: 1, 1: 2, None: 3, 0: 4}
+
+
+def _signal_bucket(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return min(3, math.floor(value * 4))
+
+
+def _explore_sort_key(entry: dict, signal_bucket: int | None = None) -> tuple:
+    """Sort explore candidates: non-deprioritized first, lowest cost, signal bucket, most data, spec."""
+    bucket = signal_bucket
+    if bucket is None:
+        ext = entry.get("external_signals")
+        val = ext.get("value") if isinstance(ext, dict) else None
+        bucket = _signal_bucket(val)
     return (
         entry["deprioritized"] is not None,
         entry["cost_tier"],
+        _SIGNAL_BUCKET_RANK[bucket],
         -entry["n_task_type"],
         entry["spec"],
     )
@@ -433,6 +449,7 @@ def _build_explore(
     task_type: str,
     complexity: str,
     recommended_model: tuple[str, str] | None,
+    snapshot: dict | None = None,
 ) -> tuple[list[dict], str | None]:
     """Select up to EXPLORE_MAX explorable models (one spec each) for low/medium complexity."""
     if complexity not in tx.EXPLORE_COMPLEXITIES:
@@ -443,7 +460,8 @@ def _build_explore(
         by_model[(entry["agent"], entry["model"])].append(entry)
 
     task_prior = prior_for(records, task_type, None)
-    kept_entries: list[dict] = []
+    pct_table = hfsignals.percentiles(hfsignals.canonical_values(snapshot)) if snapshot is not None else {}
+    kept_pairs: list[tuple[dict, float | None]] = []
     for model_key, specs in by_model.items():
         if model_key == recommended_model:
             continue
@@ -469,17 +487,24 @@ def _build_explore(
         else:
             deprioritized = None
 
-        kept_entries.append(
-            {
-                "spec": kept["spec"],
-                "cost_tier": kept["cost_tier"],
-                "n_task_type": meta["n_task_type"],
-                "deprioritized": deprioritized,
-            }
+        external, raw_signal_value = hfsignals._signal_for(
+            snapshot, model_key[0], model_key[1], task_type, pct_table=pct_table
+        )
+        kept_pairs.append(
+            (
+                {
+                    "spec": kept["spec"],
+                    "cost_tier": kept["cost_tier"],
+                    "n_task_type": meta["n_task_type"],
+                    "deprioritized": deprioritized,
+                    "external_signals": external,
+                },
+                raw_signal_value,
+            )
         )
 
-    kept_entries.sort(key=_explore_sort_key)
-    explore = kept_entries[: tx.EXPLORE_MAX]
+    kept_pairs.sort(key=lambda pair: _explore_sort_key(pair[0], _signal_bucket(pair[1])))
+    explore = [entry for entry, _ in kept_pairs[: tx.EXPLORE_MAX]]
     reason = None if explore else "no_explorable_candidates"
     return explore, reason
 
@@ -589,6 +614,8 @@ def recommend(
         reason = "insufficient_data"
     candidates_in_order = list(candidates)
     candidates.sort(key=lambda c: (-c["smoothed_score"], c["spec"]))
+    snapshot, signal_source = hfsignals.load_snapshot()
+    signal_generated_at = snapshot.get("generated_at") if signal_source == "snapshot" else None
     explore, explore_reason = _build_explore(
         candidates_in_order,
         spec_meta,
@@ -596,6 +623,7 @@ def recommend(
         task_type=task_type,
         complexity=complexity,
         recommended_model=recommended_model,
+        snapshot=snapshot,
     )
     return {
         "task_type": task_type,
@@ -607,6 +635,8 @@ def recommend(
         "explore": explore,
         "explore_reason": explore_reason,
         "excluded": excluded,
+        "explore_signal_source": signal_source,
+        "explore_signal_generated_at": signal_generated_at,
     }
 
 
@@ -717,6 +747,25 @@ def explain() -> dict:
             ),
             "capabilities": list(tx.CAPABILITIES),
             "values": list(tx.CAPABILITY_VALUES),
+        },
+        "external_signals": {
+            "rule": (
+                "Signals from the Hub snapshot only order explore, after cost_tier, "
+                "as quartile buckets with no signal between bucket 1 and bucket 0; "
+                "they never change scores."
+            ),
+            "benchmarks": [
+                {
+                    "dataset_id": dataset_id,
+                    "signal": spec["signal"],
+                    "task_ids": list(spec["task_ids"]),
+                    "unit": spec["unit"],
+                    "range": list(spec["range"]),
+                }
+                for dataset_id, spec in hfsignals.HF_BENCHMARKS.items()
+            ],
+            "task_signals": dict(hfsignals.TASK_SIGNALS),
+            "min_reporters": hfsignals.HF_MIN_REPORTERS,
         },
         "retry_reasons_excluded_from_executor_metrics": list(tx.NON_EXECUTOR_RETRY_REASONS),
     }

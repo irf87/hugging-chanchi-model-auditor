@@ -1316,8 +1316,17 @@ In test descriptions, `glm-5.3:low` is short for `opencode:opencode-go/glm-5.3:l
     *   Entry point `main(argv=None, *, root=None, opener=None) -> int`. `root` defaults to
         `Path(__file__).resolve().parents[1]`; the guard compares the current directory with it,
         and the map and snapshot paths are derived from it. `opener` defaults to
-        `urllib.request.urlopen`. Also `fetch_repo(repo, token, opener) -> dict` (raises on any
-        failure) and `merge(previous, fetched) -> dict`.
+        `urllib.request.urlopen`.
+    *   `fetch_repo(repo, token, opener) -> dict` returns the mapped result `{"pipeline_tag":
+        <str or None>, "eval_rows": [<rows per the Technical Plan field mapping>]}` and raises
+        on any failure (non-200 status, timeout, bad JSON).
+    *   `merge(previous, fetched, model_map, now) -> dict` returns the whole new snapshot.
+        `previous` is the previous snapshot dict or `None`; `fetched` maps each map key
+        (`agent:model`) to the `fetch_repo` result or to `{"error": "<message>"}`; `model_map`
+        is the map's `models` dict; `now` is the run time as `YYYY-MM-DDTHH:MM:SSZ`. `hf_repo`
+        and `match_quality` always come from `model_map`. On success: `fetched_at = now`,
+        `last_error = null`. On error: previous `eval_rows`, `pipeline_tag` and `fetched_at` are
+        kept and `last_error` is the message. `generated_at = now`, `schema_version = 1`.
     *   Dry-run summary, printed as JSON: `{"models": {"<agent:model>": {"hf_repo": ...,
         "rows": <rows now held>, "rows_changed": <rows added plus rows removed, compared as
         whole rows>, "error": <message or null>}}, "vision_candidates": [...], "failed":
@@ -1326,6 +1335,8 @@ In test descriptions, `glm-5.3:low` is short for `opencode:opencode-go/glm-5.3:l
         `pipeline_tag: null`, `fetched_at: null` and `last_error` set.
     *   Snapshot entries whose key is no longer in the map are removed.
     *   `generated_at` is the time of the run, set even when repos fail.
+    *   Directory guard failure: message on stderr as plain text, naming the repository root,
+        and exit code 2 (exit code 1 stays for failed repos).
 *   **Tests import it** with `importlib.util.spec_from_file_location` (`scripts/` is not a
     package).
 
@@ -1346,11 +1357,22 @@ In test descriptions, `glm-5.3:low` is short for `opencode:opencode-go/glm-5.3:l
     *   `canonical_values(snapshot) -> dict[tuple[hf_repo, dataset_id, task_id], float]`, keyed
         by Hub repo so two map entries sharing a repo count as one peer, with dates taken as the
         first 10 characters of `date`.
-    *   `percentiles(values) -> dict` and `signal_for(snapshot, agent, model, task_type) -> dict
-        | None`, which maps the catalog entry to its repo and returns the `external_signals`
-        object (allowlisted fields only).
+    *   `percentiles(values) -> dict[tuple[hf_repo, dataset_id, task_id], dict]`: `values` is
+        already restricted to peers (repos with `match_quality` `exact` or `family`, done by
+        the caller); each key maps to `{"percentile": <float 0-1>, "peers": <N>}`; a
+        `(dataset_id, task_id)` with fewer than `HF_MIN_REPORTERS` peers is omitted.
+    *   `signal_for(snapshot, agent, model, task_type) -> dict | None` maps the catalog entry to
+        its repo and returns the `external_signals` object (allowlisted fields only).
+        `benchmarks` holds one entry per counted `(dataset_id, task_id)`, sorted by
+        `(dataset_id, task_id)`: `value` is the canonical value (mean of the latest-date rows)
+        rounded to 2 decimals, `date` the latest date, `pull_request` `true` when any of those
+        rows has `pull_request` set, `peers` the `N` from `percentiles` (`null` for `proxy`).
+        The signal `value` is rounded to 4 decimals; the bucket is computed from the unrounded
+        value.
     *   Constants at the top: `HF_BENCHMARKS` (dataset id → signal, allowed task ids, unit and
-        range), `TASK_SIGNALS` (task type → signal) and `HF_MIN_REPORTERS = 5`, not in
+        range, as `{dataset_id: {"signal": str, "task_ids": tuple[str, ...], "unit":
+        "percent", "range": (0, 100)}}`), `TASK_SIGNALS` (task type → signal) and
+        `HF_MIN_REPORTERS = 5`, not in
         `taxonomy.py`. SWE-bench_Verified and SWE-bench_Multilingual start with `task_ids: ()`,
         so they count for nothing until the planner step after file 25. `scoring.explain()`
         reports the constants.
@@ -1360,9 +1382,19 @@ In test descriptions, `glm-5.3:low` is short for `opencode:opencode-go/glm-5.3:l
 *   **Type / Scope**: Read-side scoring.
 *   **Proposed Changes**: `recommend()` calls `load_snapshot()` once, adds the signal bucket to
     `_explore_sort_key` after `cost_tier` (Technical Plan, Phase 3, "Ordering with signals"),
-    and gives each `explore` entry `external_signals` as its last key. Every result gains
-    `explore_signal_source` and `explore_signal_generated_at`, after `explore_reason`.
-    `explain()` adds the signal rules; it stays static and does not load the snapshot.
+    and gives each `explore` entry `external_signals` as its last key, `null` when there is
+    no snapshot, the model is unmapped or the task type has no signal. Every result gains
+    `explore_signal_source` and `explore_signal_generated_at`, after `excluded`. `explain()`
+    gains a top-level `external_signals` entry after `require`: `{"rule": "<one sentence:
+    signals from the Hub snapshot only order explore, after cost_tier, as quartile buckets
+    with no signal between bucket 1 and bucket 0; they never change scores>", "benchmarks":
+    [{"dataset_id", "signal", "task_ids", "unit", "range"} per HF_BENCHMARKS entry, as lists],
+    "task_signals": TASK_SIGNALS, "min_reporters": HF_MIN_REPORTERS}`. It stays static and
+    does not load the snapshot.
+*   Also modify `tests/test_scoring.py`: the two Phase 1 assertions that pin the four entry
+    keys (`test_explore_complexity_gate`, `test_explore_caps_at_three_and_exact_keys`) now
+    include `external_signals` (`None` there, since the autouse fixture of file 28 hides the
+    snapshot).
 
 ##### 28. `tests/conftest.py` (Modify)
 
