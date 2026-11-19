@@ -55,6 +55,22 @@ At `low` and `medium` complexity, `chanchi recommend` also returns an `explore` 
 
 Planners keep exploration within a budget of `max(1, floor(n / 4))` sessions for a change of `n` executor sessions (`0` when `n` is 1), start each explore session and its retries with `--tags explore`, and verify the count and `over_budget` in the `exploration` block of `chanchi show <change>`.
 
+## Capabilities
+
+Planners can filter recommendations by model capability with `--require`:
+
+```bash
+chanchi recommend --task-type ui-component --complexity low --require vision --available "..."
+```
+
+Only models with `vision=yes` stay in `candidates` and `explore`; models with `no` or `unknown` are listed in `excluded`. If none remain, `recommendation` is `null` with `reason: no_capable_candidates`.
+
+The owner classifies models (`yes`, `no`, or `unknown` to clear) on `agent:model` (`models set` rejects `agent:model:effort`):
+
+```bash
+chanchi models set <agent:model> --capability vision=yes
+```
+
 ## Databases and migrations
 
 | | Template | Operational |

@@ -22,7 +22,8 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
 3. Make sure each one is in the catalog: `chanchi models list`. For a missing model, ask the human
    for its cost tier (1 = $, 2 = $$, 3 = $$$) and register it:
    `chanchi models add --agent agy --model gemini-3.8-flash-high --cost 1 --efforts low,medium,high`
-   (omit `--efforts` when the agent has no effort flag).
+   (omit `--efforts` when the agent has no effort flag). Never pass `--capability` to `models add`
+   or `models set` — capability values are maintained by the owner alone.
 
 ## Steps
 
@@ -40,10 +41,13 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
    with `chanchi taxonomy add-type <code> --description "..."`.
 3. **Ask for a recommendation per session**:
    `chanchi recommend --task-type ui-component --complexity medium --available "agy:gemini-3.8-flash-high:high,claude:sonnet:medium"`
+   Add `--require vision` when the session needs to read screenshots or images.
 4. **Read the result**:
    - `recommendation.spec` is the cheapest candidate within 5 points of the best smoothed score,
      excluding candidates with an honesty red flag. It is `null` when there is not enough data
-     (`reason: insufficient_data`) or every candidate is red-flagged (`reason: all_candidates_red_flagged`).
+     (`reason: insufficient_data`), every candidate is red-flagged (`reason: all_candidates_red_flagged`),
+     or `--require` filtered out every listed spec (`reason: no_capable_candidates`).
+   - `excluded` lists every spec removed by `--require` with its missing capability values (`no` or `unknown`). Report excluded `unknown` models to the owner so the owner can classify them, and choose among the remaining candidates.
    - Each candidate shows `level` (how specific the data is: `task_type+complexity`, `task_type`,
      `complexity`, `global`), `n`, `confidence` (`insufficient` < 3, `low` < 10, `ok`),
      `clean_rate`, `honesty_flags_per_session`, `retry_rate` and `top_codes`.
@@ -60,6 +64,7 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
 
 - `chanchi models set claude:sonnet --cost 2` — change a cost tier.
 - `chanchi models set claude:haiku --active 0` — retire a model without losing its history.
+- Never pass `--capability` to `models set` or `models add`; report excluded `unknown` models to the owner instead.
 - `chanchi stats --by task-type` — see how every model performs per task type.
 - `chanchi stats --by dimension` — see how every model performs per code-quality dimension (correctness, architecture, clean code, honesty, discipline). 100 means no recorded fault, not proven quality; read it with `n` and `confidence`.
 - `chanchi stats --role planner` — see how planners perform.

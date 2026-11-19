@@ -485,7 +485,12 @@ def _build_explore(
 
 
 def recommend(
-    conn: sqlite3.Connection, *, task_type: str, complexity: str, available: list[str]
+    conn: sqlite3.Connection,
+    *,
+    task_type: str,
+    complexity: str,
+    available: list[str],
+    require: list[str] | None = None,
 ) -> dict:
     catalog.require_task_type(conn, task_type)
     tx.validate_choice("complexity", complexity, tx.COMPLEXITIES)
@@ -496,16 +501,39 @@ def recommend(
             field="available",
             hint="take the list from the human's prompt; never assume availability",
         )
+    required: list[str] = []
+    for item in require or ():
+        cap = item.strip()
+        if not cap or cap in required:
+            continue
+        tx.validate_choice("require", cap, tx.CAPABILITIES)
+        required.append(cap)
     records = executor_records(conn)
     candidates = []
+    excluded = []
     spec_meta: dict[str, dict] = {}
     seen = set()
+    caps_by_model: dict[int, dict[str, str]] = {}
     for spec in available:
         row, effort = catalog.resolve_model(conn, spec, role="executor")
         key = (row["agent"], row["model"], effort)
         if key in seen:
             continue
         seen.add(key)
+        formatted_spec = format_spec(*key)
+        if required:
+            caps = caps_by_model.get(row["id"])
+            if caps is None:
+                caps = catalog.capabilities_for(conn, row["id"])
+                caps_by_model[row["id"]] = caps
+            missing = [
+                {"capability": cap, "value": caps.get(cap, "unknown")}
+                for cap in required
+                if caps.get(cap) != "yes"
+            ]
+            if missing:
+                excluded.append({"spec": formatted_spec, "missing": missing})
+                continue
         own = [r for r in records if (r["agent"], r["model"], r["effort"]) == key]
         chosen = None
         for name, use_type, use_complexity in LEVELS:
@@ -528,7 +556,7 @@ def recommend(
                 records, task_type if use_type else None, complexity if use_complexity else None
             )
         entry = {
-            "spec": format_spec(*key),
+            "spec": formatted_spec,
             "agent": key[0],
             "model": key[1],
             "effort": key[2],
@@ -547,7 +575,9 @@ def recommend(
     recommendation = None
     recommended_model = None
     reason = None
-    if eligible:
+    if not candidates:
+        reason = "no_capable_candidates"
+    elif eligible:
         best = max(c["smoothed_score"] for c in eligible)
         window = [c for c in eligible if c["smoothed_score"] >= best - tx.RECOMMEND_WINDOW]
         pick = min(window, key=lambda c: (c["cost_tier"], -c["smoothed_score"], c["spec"]))
@@ -576,6 +606,7 @@ def recommend(
         "candidates": candidates,
         "explore": explore,
         "explore_reason": explore_reason,
+        "excluded": excluded,
     }
 
 
@@ -677,6 +708,15 @@ def explain() -> dict:
                 "n_task_type descending",
                 "spec ascending",
             ],
+        },
+        "require": {
+            "rule": (
+                "A candidate stays only if every required capability is yes; "
+                "others go to excluded with missing values no or unknown; "
+                "the prior still uses all executor records."
+            ),
+            "capabilities": list(tx.CAPABILITIES),
+            "values": list(tx.CAPABILITY_VALUES),
         },
         "retry_reasons_excluded_from_executor_metrics": list(tx.NON_EXECUTOR_RETRY_REASONS),
     }

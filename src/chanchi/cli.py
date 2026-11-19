@@ -70,11 +70,12 @@ def cmd_db_migrate(args):
 
 
 def cmd_models_add(args):
+    capabilities = catalog.parse_capabilities(args.capability) if args.capability else None
     with _conn() as conn:
         return {
             "model": catalog.add_model(
                 conn, agent=args.agent, model=args.model, cost_tier=args.cost,
-                efforts=_split(args.efforts), notes=args.notes,
+                efforts=_split(args.efforts), notes=args.notes, capabilities=capabilities,
             )
         }
 
@@ -86,11 +87,12 @@ def cmd_models_list(args):
 
 def cmd_models_set(args):
     active = None if args.active is None else bool(taxonomy.validate_choice("active", args.active, (0, 1)))
+    capabilities = catalog.parse_capabilities(args.capability) if args.capability else None
     with _conn() as conn:
         return {
             "model": catalog.set_model(
                 conn, spec=args.spec, cost_tier=args.cost, active=active,
-                efforts=_split(args.efforts), notes=args.notes,
+                efforts=_split(args.efforts), notes=args.notes, capabilities=capabilities,
             )
         }
 
@@ -196,7 +198,11 @@ def cmd_incident_void(args):
 def cmd_recommend(args):
     with _conn() as conn:
         return scoring.recommend(
-            conn, task_type=args.task_type, complexity=args.complexity, available=_split(args.available) or []
+            conn,
+            task_type=args.task_type,
+            complexity=args.complexity,
+            available=_split(args.available) or [],
+            require=_split(args.require),
         )
 
 
@@ -250,6 +256,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cost", required=True, type=_int("cost"), help="1=$ 2=$$ 3=$$$")
     p.add_argument("--efforts", help="comma list of supported efforts, e.g. low,medium,high")
     p.add_argument("--notes")
+    p.add_argument(
+        "--capability", action="append", metavar="NAME=VALUE",
+        help="capability setting, e.g. vision=yes (repeatable)",
+    )
     p = leaf(g, "list", cmd_models_list, "list active catalog models")
     p.add_argument("--all", dest="include_inactive", action="store_true", help="include inactive models")
     p = leaf(g, "set", cmd_models_set, "update a catalog model")
@@ -258,6 +268,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--active", type=_int("active"), help="0 or 1")
     p.add_argument("--efforts")
     p.add_argument("--notes")
+    p.add_argument(
+        "--capability", action="append", metavar="NAME=VALUE",
+        help="capability setting, e.g. vision=yes (repeatable)",
+    )
 
     g = group("taxonomy", "enums, incident codes and task types")
     leaf(g, "list", cmd_taxonomy_list, "list every enum, incident code, role, weight and task type")
@@ -332,6 +346,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--task-type", required=True)
     p.add_argument("--complexity", required=True)
     p.add_argument("--available", required=True, help="comma list of agent:model[:effort]")
+    p.add_argument("--require", help="comma list of required capabilities, e.g. vision")
 
     p = leaf(top, "stats", cmd_stats, "aggregate scores")
     p.add_argument("--role", default="executor", help="executor | planner | human")

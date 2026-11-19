@@ -781,3 +781,98 @@ def test_show_change_exploration_budget(recorder):
         "allowed": 0,
         "over_budget": True,
     }
+
+
+def test_recommend_require_filters_and_preserves_scores(explore_catalog):
+    conn = explore_catalog.conn
+    catalog.set_model(conn, spec="claude:sonnet", capabilities={"vision": "yes"})
+    catalog.set_model(conn, spec="opencode:opencode-go/glm-5.3", capabilities={"vision": "yes"})
+    catalog.set_model(conn, spec="opencode:opencode-go/kimi-k3", capabilities={"vision": "no"})
+    # opencode:opencode-go/minimax-m3 stays unknown
+
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", SONNET, task_type="ui-component", verdict="accepted")
+    for idx in range(3):
+        explore_catalog.session("c1", f"K{idx + 1}", KIMI, task_type="ui-component", verdict="rejected")
+
+    unfiltered = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[SONNET, GLM_LOW, KIMI, MINIMAX],
+    )
+    assert unfiltered["excluded"] == []
+
+    filtered = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[SONNET, GLM_LOW, KIMI, MINIMAX, KIMI],
+        require=["", " vision ", "vision", "  "],
+    )
+    assert [c["spec"] for c in filtered["candidates"]] == [SONNET, GLM_LOW]
+    assert filtered["recommendation"]["spec"] == SONNET
+    assert [e["spec"] for e in filtered["explore"]] == [GLM_LOW]
+    assert filtered["excluded"] == [
+        {"spec": KIMI, "missing": [{"capability": "vision", "value": "no"}]},
+        {"spec": MINIMAX, "missing": [{"capability": "vision", "value": "unknown"}]},
+    ]
+    # Scores of remaining candidates equal the scores without --require (prior still uses all records).
+    unfiltered_by_spec = {c["spec"]: c for c in unfiltered["candidates"]}
+    for cand in filtered["candidates"]:
+        assert cand == unfiltered_by_spec[cand["spec"]]
+
+
+def test_recommend_require_all_excluded(explore_catalog):
+    conn = explore_catalog.conn
+    catalog.set_model(conn, spec="opencode:opencode-go/kimi-k3", capabilities={"vision": "no"})
+
+    medium = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[KIMI, MINIMAX],
+        require=["vision"],
+    )
+    assert medium["recommendation"] is None
+    assert medium["reason"] == "no_capable_candidates"
+    assert medium["candidates"] == []
+    assert medium["explore"] == []
+    assert medium["explore_reason"] == "no_explorable_candidates"
+    assert medium["excluded"] == [
+        {"spec": KIMI, "missing": [{"capability": "vision", "value": "no"}]},
+        {"spec": MINIMAX, "missing": [{"capability": "vision", "value": "unknown"}]},
+    ]
+
+    high = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="high",
+        available=[KIMI, MINIMAX],
+        require=["vision"],
+    )
+    assert high["recommendation"] is None
+    assert high["reason"] == "no_capable_candidates"
+    assert high["candidates"] == []
+    assert high["explore"] == []
+    assert high["explore_reason"] == "complexity_not_explorable"
+    assert high["excluded"] == medium["excluded"]
+
+
+def test_recommend_require_validation_error(explore_catalog):
+    with pytest.raises(ChanchiError) as info:
+        scoring.recommend(
+            explore_catalog.conn,
+            task_type="ui-component",
+            complexity="medium",
+            available=[KIMI],
+            require=["vision", "audio"],
+        )
+    assert info.value.code == "invalid_value"
+    assert info.value.field == "require"
+    assert info.value.valid_values == ["vision"]
+
+    explain_data = scoring.explain()
+    assert explain_data["require"]["capabilities"] == ["vision"]
+    assert explain_data["require"]["values"] == ["yes", "no", "unknown"]
