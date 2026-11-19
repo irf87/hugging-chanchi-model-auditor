@@ -1158,18 +1158,29 @@ In test descriptions, `glm-5.3:low` is short for `opencode:opencode-go/glm-5.3:l
 
 *   **Type / Scope**: Python constants.
 *   **Proposed Changes**: Add `CAPABILITIES = ("vision",)` and `CAPABILITY_VALUES = ("yes", "no",
-    "unknown")`; report them in `describe()` under `capabilities`.
+    "unknown")`; report them in `describe()` under `capabilities` as `{"names":
+    list(CAPABILITIES), "values": list(CAPABILITY_VALUES)}`, after `exploration`.
 
 ##### 13. `src/chanchi/catalog.py` (Modify)
 
 *   **Type / Scope**: Catalog write and read side.
 *   **Proposed Changes**:
-    *   New `parse_capabilities(items: list[str]) -> dict[str, str]` that splits `name=value`,
-        validates both with `taxonomy.validate_choice`, and raises `ChanchiError("invalid_value",
-        "<message naming the item>", field="capability", valid_values=...)` on bad input or a
-        repeated name.
+    *   New `parse_capabilities(items: list[str]) -> dict[str, str]` that splits each item on
+        the first `=` and strips both sides. Errors, all `ChanchiError("invalid_value", <message
+        naming the item>, field="capability", ...)`:
+        *   no `=`, or an empty name or value: no `valid_values`, `hint="use NAME=VALUE, for
+            example vision=yes"`;
+        *   unknown name: `taxonomy.validate_choice("capability", name, taxonomy.CAPABILITIES)`;
+        *   unknown value: `taxonomy.validate_choice("capability", value,
+            taxonomy.CAPABILITY_VALUES)`;
+        *   a repeated name: no `valid_values`.
+
+        The name and value checks live in a private `_validate_capabilities(capabilities:
+        dict)` that `parse_capabilities`, `add_model` and `set_model` all call, so direct
+        callers are validated too.
     *   `add_model(...)` and `set_model(...)` gain `capabilities: dict[str, str] | None = None`.
-        Inside the existing transaction: `yes`/`no` upsert a row with `set_at = utc_now()`;
+        Inside the existing transaction: `yes`/`no` upsert a row with `set_at = now or
+        utc_now()` (the existing `now` parameter; `set_model` gains `now: str | None = None`);
         `unknown` deletes the row. `set_model` accepts capabilities alone as a valid update: it
         skips the `UPDATE models` statement when there are no column updates (otherwise the
         statement would be `UPDATE models SET  WHERE ...`), and the "nothing to update" hint
@@ -1191,13 +1202,20 @@ In test descriptions, `glm-5.3:low` is short for `opencode:opencode-go/glm-5.3:l
 
 *   **Type / Scope**: Read-side scoring.
 *   **Proposed Changes**: `recommend(..., require: list[str] | None = None)`. Validate the names
-    first, before resolving specs: strip each item, drop empty items and duplicates, and check
-    each against `taxonomy.CAPABILITIES` with `validate_choice` (`field="require"`). Then resolve
+    after the existing task type, complexity and empty-`available` checks and before resolving
+    specs: strip each item, drop empty items and duplicates (keeping the first), and check each
+    against `taxonomy.CAPABILITIES` with `validate_choice` (`field="require"`). Then resolve
     each spec as today and check its capabilities; failing specs go to `excluded` and are
     skipped. `prior_for` still receives all executor records. `excluded` is always present
-    (`[]` without `--require`). When no candidate remains, return `recommendation: null`,
+    (`[]` without `--require`), placed after `explore_reason`. `excluded` entries follow the
+    `--available` order (after the existing duplicate skip); `missing` entries follow the
+    deduplicated `--require` order. When no candidate remains, return `recommendation: null`,
     `reason: no_capable_candidates`, `candidates: []`, `explore: []`, `explore_reason` as set by
-    file 2 (step 1 wins at high complexity). `explain()` documents `--require`.
+    file 2 (step 1 wins at high complexity). `explain()` gains a top-level `require` entry
+    after `exploration`: `{"rule": "<one sentence: a candidate stays only if every required
+    capability is yes; others go to excluded with missing values no or unknown; the prior
+    still uses all executor records>", "capabilities": list(CAPABILITIES), "values":
+    list(CAPABILITY_VALUES)}`.
 
 ##### 16. `tests/test_db.py` (Modify)
 
