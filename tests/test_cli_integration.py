@@ -36,6 +36,44 @@ def test_end_to_end_through_a_subprocess(tmp_path):
     assert code == 0
     assert json.loads(out)["sessions"][0]["score"] == 100
 
+    code, out, _ = chanchi(repo, env, "show", "c1", "--format", "text")
+    assert code == 0
+    assert "exploration:" in out
+    assert "over_budget:" in out
+
+    code, out, _ = chanchi(
+        repo,
+        env,
+        "recommend",
+        "--task-type",
+        "ui-component",
+        "--complexity",
+        "medium",
+        "--available",
+        "claude:haiku:low,claude:opus:high",
+    )
+    assert code == 0
+    rec_json = json.loads(out)
+    assert [e["spec"] for e in rec_json["explore"]] == ["claude:haiku:low", "claude:opus:high"]
+    assert rec_json["explore_reason"] is None
+
+    code, out, _ = chanchi(
+        repo,
+        env,
+        "recommend",
+        "--task-type",
+        "ui-component",
+        "--complexity",
+        "medium",
+        "--available",
+        "claude:haiku:low,claude:opus:high",
+        "--format",
+        "text",
+    )
+    assert code == 0
+    assert "explore:" in out
+    assert "explore_reason:" in out
+
     code, out, err = chanchi(repo, env, "session", "start", "c1", "S2", "--executor", "claude:haiku",
                              "--task-type", "docs", "--complexity", "tiny", "--tasks", "1")
     assert code == 2 and out == ""

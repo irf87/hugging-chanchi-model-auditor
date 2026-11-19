@@ -73,3 +73,155 @@ def test_planner_stats_cover_both_changes(history):
     assert rows[0]["n"] == 2
     assert rows[0]["mean_score"] == pytest.approx(99.66, abs=0.01)
     assert rows[0]["confidence"] == "insufficient"
+
+
+def test_recommend_golden_g2_unchanged(history):
+    ui = scoring.recommend(
+        history.conn, task_type="ui-component", complexity="medium", available=[SONNET, FLASH, ARGON]
+    )
+    assert ui["recommendation"] == {
+        "confidence": "low",
+        "cost_tier": 1,
+        "level": "task_type+complexity",
+        "smoothed_score": 99.69,
+        "spec": "agy:gemini-3.8-flash-high:high",
+    }
+    assert ui["reason"] is None
+    assert ui["window"] == 5.0
+    assert ui["candidates"] == [
+        {
+            "agent": "claude",
+            "clean_rate": 1.0,
+            "confidence": "low",
+            "cost_tier": 2,
+            "effort": "medium",
+            "first_attempt_acceptance": 1.0,
+            "honesty_flags_per_session": 0.0,
+            "level": "task_type+complexity",
+            "mean_duration_s": 3600.0,
+            "mean_score": 100.0,
+            "model": "sonnet",
+            "n": 3,
+            "prior": 99.79,
+            "red_flag": False,
+            "retry_rate": 0.0,
+            "smoothed_score": 99.89,
+            "spec": "claude:sonnet:medium",
+            "top_codes": [],
+        },
+        {
+            "agent": "agy",
+            "clean_rate": 1.0,
+            "confidence": "insufficient",
+            "cost_tier": 2,
+            "effort": "high",
+            "first_attempt_acceptance": 1.0,
+            "honesty_flags_per_session": 0.0,
+            "level": "complexity",
+            "mean_duration_s": 3600.0,
+            "mean_score": 100.0,
+            "model": "gemini-4-argon-high",
+            "n": 1,
+            "prior": 99.81,
+            "red_flag": False,
+            "retry_rate": 0.0,
+            "smoothed_score": 99.86,
+            "spec": "agy:gemini-4-argon-high:high",
+            "top_codes": ["correct_stop"],
+        },
+        {
+            "agent": "agy",
+            "clean_rate": 1.0,
+            "confidence": "low",
+            "cost_tier": 1,
+            "effort": "high",
+            "first_attempt_acceptance": 1.0,
+            "honesty_flags_per_session": 0.0,
+            "level": "task_type+complexity",
+            "mean_duration_s": 3600.0,
+            "mean_score": 99.62,
+            "model": "gemini-3.8-flash-high",
+            "n": 4,
+            "prior": 99.79,
+            "red_flag": False,
+            "retry_rate": 0.0,
+            "smoothed_score": 99.69,
+            "spec": "agy:gemini-3.8-flash-high:high",
+            "top_codes": ["rule_violation"],
+        },
+    ]
+
+    tests_rec = scoring.recommend(
+        history.conn, task_type="tests", complexity="low", available=[SONNET, FLASH, ARGON]
+    )
+    assert tests_rec["recommendation"] == {
+        "confidence": "low",
+        "cost_tier": 1,
+        "level": "task_type+complexity",
+        "smoothed_score": 100.0,
+        "spec": "agy:gemini-3.8-flash-high:high",
+    }
+    assert tests_rec["reason"] is None
+    assert tests_rec["window"] == 5.0
+    assert tests_rec["candidates"] == [
+        {
+            "agent": "agy",
+            "clean_rate": 1.0,
+            "confidence": "low",
+            "cost_tier": 1,
+            "effort": "high",
+            "first_attempt_acceptance": 1.0,
+            "honesty_flags_per_session": 0.0,
+            "level": "task_type+complexity",
+            "mean_duration_s": 3600.0,
+            "mean_score": 100.0,
+            "model": "gemini-3.8-flash-high",
+            "n": 3,
+            "prior": 100.0,
+            "red_flag": False,
+            "retry_rate": 0.0,
+            "smoothed_score": 100.0,
+            "spec": "agy:gemini-3.8-flash-high:high",
+            "top_codes": [],
+        },
+        {
+            "agent": "claude",
+            "clean_rate": 1.0,
+            "confidence": "low",
+            "cost_tier": 2,
+            "effort": "medium",
+            "first_attempt_acceptance": 1.0,
+            "honesty_flags_per_session": 0.0,
+            "level": "global",
+            "mean_duration_s": 3600.0,
+            "mean_score": 100.0,
+            "model": "sonnet",
+            "n": 3,
+            "prior": 99.88,
+            "red_flag": False,
+            "retry_rate": 0.0,
+            "smoothed_score": 99.94,
+            "spec": "claude:sonnet:medium",
+            "top_codes": [],
+        },
+        {
+            "agent": "agy",
+            "clean_rate": 1.0,
+            "confidence": "insufficient",
+            "cost_tier": 2,
+            "effort": "high",
+            "first_attempt_acceptance": 1.0,
+            "honesty_flags_per_session": 0.0,
+            "level": "global",
+            "mean_duration_s": 3600.0,
+            "mean_score": 100.0,
+            "model": "gemini-4-argon-high",
+            "n": 2,
+            "prior": 99.88,
+            "red_flag": False,
+            "retry_rate": 0.0,
+            "smoothed_score": 99.93,
+            "spec": "agy:gemini-4-argon-high:high",
+            "top_codes": ["correct_stop"],
+        },
+    ]

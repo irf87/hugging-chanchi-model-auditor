@@ -42,6 +42,7 @@ class Recorder:
         verdict="accepted",
         status="COMPLETE",
         retry_reason=None,
+        tags=None,
         started="2026-10-01T10:00:00Z",
         ended="2026-10-01T11:00:00Z",
         incidents=(),
@@ -56,6 +57,7 @@ class Recorder:
             task_type=task_type,
             complexity=complexity,
             tasks_total=tasks,
+            tags=tags,
             retry_reason=retry_reason,
             now=started,
         )

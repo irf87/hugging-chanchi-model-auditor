@@ -402,6 +402,7 @@ chanchi recommend --task-type <code> --complexity <level> --available "<spec>,<s
 2. For each candidate, find data at the first level that has `n ≥ 3`: (task_type, complexity) → (task_type, any) → (any, complexity) → (any, any). The output states the level used.
 3. Rank by smoothed score. Among candidates with confidence `low` or `ok` and no honesty red flag, the **recommendation** is the cheapest (lowest `cost_tier`) whose smoothed score is within 5 points of the best.
 4. If no candidate is eligible, the output says so explicitly (`"recommendation": null`) with reason `insufficient_data` (no candidate reaches confidence `low`) or `all_candidates_red_flagged` (some do, but every one carries the honesty red flag), and still lists whatever data exists. A candidate with no data at the first level that has `n ≥ 3` reports the most specific level that has any data (or `null` with `n = 0`). The planner then chooses by judgement, and that choice becomes data.
+5. **Exploration (`explore` and `explore_reason`):** at `low` or `medium` complexity (`EXPLORE_COMPLEXITIES`), `recommend` returns an `explore` list of up to 3 (`EXPLORE_MAX`) models (one spec per `(agent, model)`, keeping the listed effort with the highest `n_task_type`, breaking ties by `--available` order) where among the listed efforts none has `n_task_type ≥ 3`, none is red-flagged on 3 or more sessions, and the model is not the `recommendation`. Kept specs are sorted with `deprioritized` (`"red_flag_low_data"` when any listed effort has a red flag on fewer than 3 sessions, `"weak_start"` when `n_task_type` is 1 or 2 and its mean is more than 5 points below `prior_for(records, task_type, None)`, or `null`) last, then `cost_tier` ascending, `n_task_type` descending, and `spec` ascending. `explore_reason` is `null` when `explore` has entries, `complexity_not_explorable` at `high` complexity, and `no_explorable_candidates` otherwise.
 
 The recommendation is an input, not an order: the selection skill requires the planner to write, in the session protocol, what `chanchi` recommended, what it chose, and why if it deviated.
 
@@ -472,8 +473,10 @@ Both skills are written in English, are agent-agnostic, and assume only a shell.
 2. Ensure each available model is in the catalog; if not, ask the human for its cost tier and run `models add`.
 3. For each planned session, pick `task_type` and `complexity` using the rubric criteria.
 4. Run `chanchi recommend` per session.
-5. In the session protocol table, record the recommendation, the choice, and the reason for any deviation.
+5. In the session protocol table, record the recommendation, the choice, and the reason for any deviation (and `· explore: <spec>` when exploring).
 6. Run `chanchi change open` with its own identity (effort `unknown` if it does not know it).
+
+Exploration budget: in a change planned with `n` executor sessions, at most `allowed = 0 if n < 2 else max(1, floor(n / 4))` may be explore sessions, never on a blocking session, and every explore session (including retries) carries `--tags explore`. `chanchi show <ref>` reports `sessions`, `exploratory`, `allowed`, and `over_budget` (`null` until the change is closed) in an `exploration` block.
 
 Also covers catalog maintenance (`models list/set`, `taxonomy add-type`) when the human asks for it.
 

@@ -49,6 +49,12 @@ chanchi taxonomy list
 
 Commands detect the project from git (deriving the slug from the main repository across git worktrees); `--project` still overrides.
 
+## Exploration
+
+At `low` and `medium` complexity, `chanchi recommend` also returns an `explore` list of up to 3 models where no listed effort has 3 or more audited sessions of the requested task type (excluding the `recommendation` model and models red-flagged on 3 or more sessions). This lets planners gather initial audits for untested models without changing the evidence-based `recommendation`.
+
+Planners keep exploration within a budget of `max(1, floor(n / 4))` sessions for a change of `n` executor sessions (`0` when `n` is 1), start each explore session and its retries with `--tags explore`, and verify the count and `over_budget` in the `exploration` block of `chanchi show <change>`.
+
 ## Databases and migrations
 
 | | Template | Operational |

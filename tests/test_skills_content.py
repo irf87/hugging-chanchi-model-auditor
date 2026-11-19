@@ -49,3 +49,19 @@ def test_rubric_covers_every_incident_code():
     rubric = (SKILLS / "chanchi-session-audit" / "references" / "rubric.md").read_text(encoding="utf-8")
     for code in taxonomy.INCIDENT_CODES:
         assert f"`{code}`" in rubric, code
+
+
+def test_selection_skill_documents_exploration_rules():
+    text = (SKILLS / "chanchi-model-selection" / "SKILL.md").read_text(encoding="utf-8")
+    for token in (
+        "explore",
+        "explore_reason",
+        "deprioritized",
+        "max(1, floor(n / 4))",
+        "--tags explore",
+        "session update --tags <existing tags>,explore",
+        "· explore: <spec>",
+        "every effort of a model",
+        "At `high` complexity, a `task_type` level is weak evidence too",
+    ):
+        assert token in text, token
