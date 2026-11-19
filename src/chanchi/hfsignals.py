@@ -27,13 +27,13 @@ HF_BENCHMARKS: dict[str, dict] = {
     },
     "SWE-bench/SWE-bench_Verified": {
         "signal": "swe",
-        "task_ids": (),
+        "task_ids": ("swe_bench_%_resolved",),
         "unit": "percent",
         "range": (0, 100),
     },
     "SWE-bench/SWE-bench_Multilingual": {
         "signal": "swe",
-        "task_ids": (),
+        "task_ids": ("swe_bench_multilingual_%_resolved",),
         "unit": "percent",
         "range": (0, 100),
     },

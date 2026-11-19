@@ -1,0 +1,2389 @@
+{
+  "generated_at": "2026-11-19T01:48:40Z",
+  "models": {
+    "opencode:opencode-go/deepseek-v4.1-flash": {
+      "eval_rows": [
+        {
+          "dataset_id": "MathArena/aime_2026",
+          "date": "2026-11-02T13:35:33.000Z",
+          "pull_request": 82,
+          "source_name": "DeepSeek-V4.1-Flash Technical Report (Appendix B.3, reasoning effort 100)",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/314113f8a7dadb388215396ba5fbee2c610a04d6/DeepSeek_V41_Tech_Report.pdf",
+          "task_id": "MathArena/aime_2026",
+          "value": 100,
+          "verified": false
+        },
+        {
+          "dataset_id": "google/physical-engineerings-last-exam",
+          "date": "2026-10-20",
+          "pull_request": 80,
+          "source_name": "PLE leaderboard",
+          "source_url": "https://ple-bench.com/leaderboard?set=dev",
+          "task_id": "overall-score",
+          "value": 17,
+          "verified": false
+        },
+        {
+          "dataset_id": "VCLab-PolyU/OmniCompass",
+          "date": "2026-10-26T14:32:29.000Z",
+          "pull_request": 77,
+          "source_name": "OmniCompass official results",
+          "source_url": "https://omnicompass.netlify.app/#leaderboard",
+          "task_id": "OmniCompass-VL",
+          "value": 26.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-09-11",
+          "pull_request": 45,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "mean",
+          "value": 87.11,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-09-11",
+          "pull_request": 45,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "short",
+          "value": 94.44,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-09-11",
+          "pull_request": 45,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "medium",
+          "value": 81.49,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-09-11",
+          "pull_request": 45,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "long",
+          "value": 22.23,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-09-10",
+          "pull_request": 44,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "mean",
+          "value": 56.57,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-09-10",
+          "pull_request": 44,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "text_content",
+          "value": 88.09,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-09-10",
+          "pull_request": 44,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "text_formatting",
+          "value": 66.05,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-09-10",
+          "pull_request": 44,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "layout",
+          "value": 28.61,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-09-10",
+          "pull_request": 44,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "chart",
+          "value": 20.46,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-09-10",
+          "pull_request": 44,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "table",
+          "value": 79.65,
+          "verified": false
+        },
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "diamond",
+          "value": 90.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "hle",
+          "value": 36.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "hle",
+          "value": 63.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "terminalbench_2_1",
+          "value": 90.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "terminalbench_3",
+          "value": 30,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "terminalbench_4",
+          "value": 31.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "deep_swe",
+          "value": 74.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-09-10",
+          "pull_request": 29,
+          "source_name": "DeepSeek-V4.1-Flash model card",
+          "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash",
+          "task_id": "ale-cli-pass-rate",
+          "value": 31.8,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/glm-5.2": {
+      "eval_rows": [
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-06-22T08:02:03.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "deep_swe",
+          "value": 46.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-06-22T08:02:03.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "diamond",
+          "value": 91.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-06-22T08:02:03.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "hle",
+          "value": 40.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-06-22T08:02:03.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "hle",
+          "value": 54.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-06-22T08:02:03.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "SWE_Bench_Pro",
+          "value": 62.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "crosbylegal/RedlineBench",
+          "date": "2026-06-19",
+          "pull_request": 19,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "redline_overall",
+          "value": 45.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "MathArena/aime_2026",
+          "date": "2026-11-02T13:58:16.000Z",
+          "pull_request": 69,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "MathArena/aime_2026",
+          "value": 99.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "MathArena/hmmt_feb_2026",
+          "date": "2026-11-02T13:58:16.000Z",
+          "pull_request": 69,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "MathArena/hmmt_feb_2026",
+          "value": 92.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "google/physical-engineerings-last-exam",
+          "date": "2026-10-20",
+          "pull_request": 67,
+          "source_name": "PLE leaderboard",
+          "source_url": "https://ple-bench.com/leaderboard?set=dev",
+          "task_id": "overall-score",
+          "value": 26,
+          "verified": false
+        },
+        {
+          "dataset_id": "joelniklaus/LEXam-hard",
+          "date": "2026-06-24",
+          "pull_request": 65,
+          "source_name": "SwissLegalEvals per-sample details (lighteval)",
+          "source_url": "https://huggingface.co/buckets/joelniklaus/SwissLegalEvals",
+          "task_id": "lexam_hard",
+          "value": 37.55,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-07-02",
+          "pull_request": 64,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "terminalbench_2_1",
+          "value": 81,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-07-02",
+          "pull_request": 64,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "terminalbench_2_1",
+          "value": 82.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-08-11",
+          "pull_request": 61,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "overall",
+          "value": 54.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-08-11",
+          "pull_request": 61,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_time",
+          "value": 442,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-08-11",
+          "pull_request": 61,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_cost",
+          "value": 17.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": 47,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb_solved",
+          "value": 1,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-09-18",
+          "pull_request": 47,
+          "source_name": "LHTB 2.0 results",
+          "source_url": "https://github.com/zli12321/LHTB/tree/lhtb-2.0#lhtb-20-results-october-2026",
+          "task_id": "lhtb2_solved",
+          "value": 8,
+          "verified": false
+        },
+        {
+          "dataset_id": "InternScience/ResearchClawBench",
+          "date": "2026-06-23",
+          "pull_request": 22,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.2",
+          "task_id": "overall",
+          "value": 20.709230769230768,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "zai-org/GLM-5.2",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/glm-5.3": {
+      "eval_rows": [
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-08-31",
+          "pull_request": null,
+          "source_name": "zai-org/GLM-5.3 model card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3",
+          "task_id": "ale-cli-pass-rate",
+          "value": 28.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-08-28T15:22:14.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3",
+          "task_id": "deep_swe",
+          "value": 66.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-08-29T09:51:13.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3",
+          "task_id": "hle",
+          "value": 62.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-08-31T13:33:35.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3",
+          "task_id": "terminalbench_2_1",
+          "value": 88.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-04T03:57:37.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3",
+          "task_id": "terminalbench_3",
+          "value": 28.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "hkust-nlp/Toolathlon",
+          "date": "2026-08-31",
+          "pull_request": null,
+          "source_name": "zai-org/GLM-5.3 model card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3",
+          "task_id": "toolathlon_verified",
+          "value": 73,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-11-03",
+          "pull_request": 35,
+          "source_name": "Terminal-Bench 4.1 official leaderboard",
+          "source_url": "https://www.tbench.ai/",
+          "task_id": "terminalbench_4_1",
+          "value": 41.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "collinear-ai/cwe-bench",
+          "date": "2026-10-30",
+          "pull_request": 33,
+          "source_name": "CWE-bench leaderboard (Collinear AI)",
+          "source_url": "https://huggingface.co/spaces/collinear-ai/cwe-bench-leaderboard",
+          "task_id": "resolve_rate",
+          "value": 44,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-10-30T08:38:30.000Z",
+          "pull_request": 32,
+          "source_name": "Artificial Analysis Terminal-Bench 4.0 leaderboard",
+          "source_url": "https://artificialanalysis.ai/evaluations/terminalbench-4-0",
+          "task_id": "terminalbench_4",
+          "value": 41.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-science",
+          "date": "2026-10-30T08:38:30.000Z",
+          "pull_request": 32,
+          "source_name": "Artificial Analysis Terminal-Bench-Science leaderboard",
+          "source_url": "https://artificialanalysis.ai/evaluations/terminal-bench-science",
+          "task_id": "terminalbenchscience_0_1",
+          "value": 9.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-09-19",
+          "pull_request": 29,
+          "source_name": "LHTB 2.0 results",
+          "source_url": "https://github.com/zli12321/LHTB/tree/lhtb-2.0#lhtb-20-results-october-2026",
+          "task_id": "lhtb2_solved",
+          "value": 12,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "zai-org/GLM-5.3",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/glm-5.3-flash": {
+      "eval_rows": [
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-08-26",
+          "pull_request": null,
+          "source_name": "GLM-5.3-Flash model card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+          "task_id": "terminalbench_2_1",
+          "value": 84.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-08-26",
+          "pull_request": null,
+          "source_name": "GLM-5.3-Flash model card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+          "task_id": "deep_swe",
+          "value": 63.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-08-26",
+          "pull_request": null,
+          "source_name": "GLM-5.3-Flash model card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+          "task_id": "hle",
+          "value": 55.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-08-26",
+          "pull_request": null,
+          "source_name": "GLM-5.3-Flash model card",
+          "source_url": "https://huggingface.co/zai-org/GLM-5.3-Flash",
+          "task_id": "ale-cli-pass-rate",
+          "value": 26.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-11-03",
+          "pull_request": 71,
+          "source_name": "Terminal-Bench 4.1 official leaderboard",
+          "source_url": "https://www.tbench.ai/",
+          "task_id": "terminalbench_4_1",
+          "value": 35.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "VCLab-PolyU/OmniCompass",
+          "date": "2026-10-26T14:32:23.000Z",
+          "pull_request": 65,
+          "source_name": "OmniCompass official results",
+          "source_url": "https://omnicompass.netlify.app/#leaderboard",
+          "task_id": "OmniCompass-VL",
+          "value": 30.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "PaddlePaddle/Real5-OmniDocBench",
+          "date": "2026-09-12T04:11:41.000Z",
+          "pull_request": 49,
+          "source_name": "Real5-OmniDocBench Leaderboard",
+          "source_url": "https://huggingface.co/datasets/PaddlePaddle/Real5-OmniDocBench",
+          "task_id": "overall",
+          "value": 90.76,
+          "verified": false
+        },
+        {
+          "dataset_id": "PaddlePaddle/Real5-OmniDocBench",
+          "date": "2026-09-12T04:11:41.000Z",
+          "pull_request": 49,
+          "source_name": "Real5-OmniDocBench Leaderboard",
+          "source_url": "https://huggingface.co/datasets/PaddlePaddle/Real5-OmniDocBench",
+          "task_id": "scanning",
+          "value": 91.43,
+          "verified": false
+        },
+        {
+          "dataset_id": "PaddlePaddle/Real5-OmniDocBench",
+          "date": "2026-09-12T04:11:41.000Z",
+          "pull_request": 49,
+          "source_name": "Real5-OmniDocBench Leaderboard",
+          "source_url": "https://huggingface.co/datasets/PaddlePaddle/Real5-OmniDocBench",
+          "task_id": "warping",
+          "value": 89.84,
+          "verified": false
+        },
+        {
+          "dataset_id": "PaddlePaddle/Real5-OmniDocBench",
+          "date": "2026-09-12T04:11:41.000Z",
+          "pull_request": 49,
+          "source_name": "Real5-OmniDocBench Leaderboard",
+          "source_url": "https://huggingface.co/datasets/PaddlePaddle/Real5-OmniDocBench",
+          "task_id": "screen_photography",
+          "value": 90.36,
+          "verified": false
+        },
+        {
+          "dataset_id": "PaddlePaddle/Real5-OmniDocBench",
+          "date": "2026-09-12T04:11:41.000Z",
+          "pull_request": 49,
+          "source_name": "Real5-OmniDocBench Leaderboard",
+          "source_url": "https://huggingface.co/datasets/PaddlePaddle/Real5-OmniDocBench",
+          "task_id": "illumination",
+          "value": 91.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "PaddlePaddle/Real5-OmniDocBench",
+          "date": "2026-09-12T04:11:41.000Z",
+          "pull_request": 49,
+          "source_name": "Real5-OmniDocBench Leaderboard",
+          "source_url": "https://huggingface.co/datasets/PaddlePaddle/Real5-OmniDocBench",
+          "task_id": "skew",
+          "value": 90.76,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "mean",
+          "value": 80.75,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "short",
+          "value": 96.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "medium",
+          "value": 51.56,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "long",
+          "value": 27.83,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "mean",
+          "value": 70.75,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "text_content",
+          "value": 88.34,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "text_formatting",
+          "value": 79.49,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "layout",
+          "value": 41.78,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "chart",
+          "value": 54.96,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ParseBench",
+          "date": "2026-08-26",
+          "pull_request": 29,
+          "source_name": "ParseBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ParseBench",
+          "task_id": "table",
+          "value": 89.18,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "zai-org/GLM-5.3-Flash",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/hy3": {
+      "eval_rows": [
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-07-20",
+          "pull_request": 25,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "terminalbench_2_1",
+          "value": 71.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Multilingual",
+          "date": "2026-08-10T19:16:47.000Z",
+          "pull_request": 24,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "swe_bench_multilingual_%_resolved",
+          "value": 75.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": 19,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb_solved",
+          "value": 1,
+          "verified": false
+        },
+        {
+          "dataset_id": "mercor/apex-agents",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "apex-agents",
+          "value": 25.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "deep_swe",
+          "value": 28,
+          "verified": false
+        },
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "diamond",
+          "value": 90.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "hle",
+          "value": 53.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "benchflow/skillsbench",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "skillsbench_v1_1",
+          "value": 55.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "SWE_Bench_Pro",
+          "value": 57.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Verified",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "swe_bench_%_resolved",
+          "value": 78,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-07-06T16:03:54.000Z",
+          "pull_request": 8,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy3",
+          "task_id": "overall",
+          "value": 53.6,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "tencent/Hy3",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/hy4": {
+      "eval_rows": [
+        {
+          "dataset_id": "collinear-ai/cwe-bench",
+          "date": "2026-10-30",
+          "pull_request": 15,
+          "source_name": "CWE-bench leaderboard (Collinear AI)",
+          "source_url": "https://huggingface.co/spaces/collinear-ai/cwe-bench-leaderboard",
+          "task_id": "resolve_rate",
+          "value": 52,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-09-19",
+          "pull_request": 14,
+          "source_name": "LHTB 2.0 results",
+          "source_url": "https://github.com/zli12321/LHTB/tree/lhtb-2.0#lhtb-20-results-october-2026",
+          "task_id": "lhtb2_solved",
+          "value": 15,
+          "verified": false
+        },
+        {
+          "dataset_id": "hkust-nlp/Toolathlon",
+          "date": "2026-08-28",
+          "pull_request": 13,
+          "source_name": "tencent/Hy4-preview model card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "toolathlon_verified",
+          "value": 74.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "mercor/apex-agents",
+          "date": "2026-08-31T12:58:31.000Z",
+          "pull_request": 12,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "apex-agents",
+          "value": 37.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-08-31T12:58:31.000Z",
+          "pull_request": 12,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "hle",
+          "value": 43.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-08-31T12:58:31.000Z",
+          "pull_request": 12,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "hle",
+          "value": 55.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-08-31T12:58:31.000Z",
+          "pull_request": 12,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "terminalbench_2_1",
+          "value": 85.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-08-28T07:15:05.000Z",
+          "pull_request": 3,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "deep_swe",
+          "value": 64.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-08-28T07:15:05.000Z",
+          "pull_request": 3,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "diamond",
+          "value": 92.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "benchflow/skillsbench",
+          "date": "2026-08-28T07:15:05.000Z",
+          "pull_request": 3,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "skillsbench_v1_1",
+          "value": 62.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Multilingual",
+          "date": "2026-08-28T07:15:05.000Z",
+          "pull_request": 3,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "swe_bench_multilingual_%_resolved",
+          "value": 82.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-08-28T07:15:05.000Z",
+          "pull_request": 3,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/tencent/Hy4-preview",
+          "task_id": "SWE_Bench_Pro",
+          "value": 65.7,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "tencent/Hy4-preview",
+      "last_error": null,
+      "match_quality": "family",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/kimi-k2.7-code": {
+      "eval_rows": [
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-11-02T13:58:29.000Z",
+          "pull_request": 18,
+          "source_name": "DeepSWE Leaderboard",
+          "source_url": "https://deepswe.datacurve.ai/",
+          "task_id": "deep_swe",
+          "value": 30.53,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-07-30",
+          "pull_request": 15,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "overall",
+          "value": 46.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-07-30",
+          "pull_request": 15,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_time",
+          "value": 674,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": 13,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb_solved",
+          "value": 3,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "moonshotai/Kimi-K2.7-Code",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/kimi-k3": {
+      "eval_rows": [
+        {
+          "dataset_id": "mercor/apex-agents",
+          "date": "2026-07-27T16:29:18.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/moonshotai/Kimi-K3",
+          "task_id": "apex-agents",
+          "value": 41,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-07-27T16:29:18.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/moonshotai/Kimi-K3",
+          "task_id": "deep_swe",
+          "value": 67.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-07-27T16:29:18.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/moonshotai/Kimi-K3",
+          "task_id": "diamond",
+          "value": 93.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-07-27T16:29:18.000Z",
+          "pull_request": null,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/moonshotai/Kimi-K3",
+          "task_id": "hle",
+          "value": 56,
+          "verified": false
+        },
+        {
+          "dataset_id": "hkust-nlp/Toolathlon",
+          "date": "2026-08-20",
+          "pull_request": null,
+          "source_name": "moonshotai/Kimi-K3 model card",
+          "source_url": "https://huggingface.co/moonshotai/Kimi-K3",
+          "task_id": "toolathlon_verified",
+          "value": 76.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "VCLab-PolyU/OmniCompass",
+          "date": "2026-10-26T14:32:02.000Z",
+          "pull_request": 196,
+          "source_name": "OmniCompass official results",
+          "source_url": "https://omnicompass.netlify.app/#leaderboard",
+          "task_id": "OmniCompass-VL",
+          "value": 39.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "overall-pass-rate",
+          "value": 26.973684210526315,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "overall-score",
+          "value": 50.72487812208666,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "ale-cli-pass-rate",
+          "value": 27.61904761904762,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "ale-cli-score",
+          "value": 52.78637305133695,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "near-term-pass-rate",
+          "value": 40.298507462686565,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "near-term-score",
+          "value": 71.59801555439591,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "full-spectrum-pass-rate",
+          "value": 23.636363636363637,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "full-spectrum-score",
+          "value": 44.940530822949675,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "last-exam-pass-rate",
+          "value": 7.894736842105263,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "last-exam-score",
+          "value": 20.49303255658983,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "overall-pass-rate",
+          "value": 28.289473684210524,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "overall-score",
+          "value": 51.583231877805204,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "ale-cli-pass-rate",
+          "value": 27.61904761904762,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "ale-cli-score",
+          "value": 51.95649529905552,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "near-term-pass-rate",
+          "value": 38.80597014925373,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "near-term-score",
+          "value": 69.68586979044264,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "full-spectrum-pass-rate",
+          "value": 29.09090909090909,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "full-spectrum-score",
+          "value": 49.87405398972178,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "last-exam-pass-rate",
+          "value": 10.526315789473683,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-01T20:41:25.000Z",
+          "pull_request": 193,
+          "source_name": "ALE official leaderboard",
+          "source_url": "https://agents-last-exam.org/leaderboard",
+          "task_id": "last-exam-score",
+          "value": 20.55276315873776,
+          "verified": false
+        },
+        {
+          "dataset_id": "joelniklaus/LEXam-hard",
+          "date": "2026-08-03",
+          "pull_request": 184,
+          "source_name": "SwissLegalEvals per-sample details (lighteval)",
+          "source_url": "https://huggingface.co/buckets/joelniklaus/SwissLegalEvals",
+          "task_id": "lexam_hard",
+          "value": 29.54,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-25",
+          "pull_request": 181,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "mean",
+          "value": 83.17,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-25",
+          "pull_request": 181,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "short",
+          "value": 94.64,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-25",
+          "pull_request": 181,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "medium",
+          "value": 69.64,
+          "verified": false
+        },
+        {
+          "dataset_id": "llamaindex/ExtractBench",
+          "date": "2026-08-25",
+          "pull_request": 181,
+          "source_name": "ExtractBench",
+          "source_url": "https://huggingface.co/datasets/llamaindex/ExtractBench",
+          "task_id": "long",
+          "value": 4.99,
+          "verified": false
+        },
+        {
+          "dataset_id": "crosbylegal/RedlineBench",
+          "date": "2026-08-20",
+          "pull_request": 176,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/moonshotai/Kimi-K3",
+          "task_id": "redline_overall",
+          "value": 49.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-22",
+          "pull_request": 174,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb_solved",
+          "value": 6,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-09-19",
+          "pull_request": 174,
+          "source_name": "LHTB 2.0 results",
+          "source_url": "https://github.com/zli12321/LHTB/tree/lhtb-2.0#lhtb-20-results-october-2026",
+          "task_id": "lhtb2_solved",
+          "value": 17,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "overall",
+          "value": 83.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "digital",
+          "value": 90.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "photographed",
+          "value": 81.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "latin",
+          "value": 86.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "de",
+          "value": 89.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "en",
+          "value": 87.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "es",
+          "value": 80.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "fr",
+          "value": 80,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "id",
+          "value": 86.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "it",
+          "value": 92.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "nl",
+          "value": 86,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "pt",
+          "value": 88.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "vi",
+          "value": 84.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "non_latin",
+          "value": 80.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "ar",
+          "value": 77.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "hi",
+          "value": 77.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "jp",
+          "value": 74.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": "MDPBench leaderboard",
+          "source_url": "https://huggingface.co/datasets/Delores-Lin/MDPBench",
+          "task_id": "ko",
+          "value": 89.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "Delores-Lin/MDPBench",
+          "date": "2026-08-15",
+          "pull_request": 170,
+          "source_name": null,
+          "source_url": "https://huggingfa",
+          "task_id": "ru",
+          "value": 82.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-08-11",
+          "pull_request": 169,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "overall",
+          "value": 54.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-08-11",
+          "pull_request": 169,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_time",
+          "value": 488,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-08-11",
+          "pull_request": 169,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_cost",
+          "value": 40.08,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "moonshotai/Kimi-K3",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/longcat-2.0": {
+      "eval_rows": [
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-11-02T13:46:04.000Z",
+          "pull_request": 7,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "task_id": "diamond",
+          "value": 88.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Multilingual",
+          "date": "2026-11-02T13:46:04.000Z",
+          "pull_request": 7,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "task_id": "swe_bench_multilingual_%_resolved",
+          "value": 77.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-11-02T13:46:04.000Z",
+          "pull_request": 7,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "task_id": "SWE_Bench_Pro",
+          "value": 59.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-07-08",
+          "pull_request": 5,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/meituan-longcat/LongCat-2.0",
+          "task_id": "terminalbench_2_1",
+          "value": 70.8,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "meituan-longcat/LongCat-2.0",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/mimo-v2.5": {
+      "eval_rows": [
+        {
+          "dataset_id": "VCLab-PolyU/OmniCompass",
+          "date": "2026-10-26T14:32:34.000Z",
+          "pull_request": 26,
+          "source_name": "OmniCompass official results",
+          "source_url": "https://omnicompass.netlify.app/#leaderboard",
+          "task_id": "OmniCompass-VL",
+          "value": 25.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "VCLab-PolyU/OmniCompass",
+          "date": "2026-10-26T14:32:34.000Z",
+          "pull_request": 26,
+          "source_name": "OmniCompass official results",
+          "source_url": "https://omnicompass.netlify.app/#leaderboard",
+          "task_id": "OmniCompass-AV",
+          "value": 24.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "InternScience/ResearchClawBench",
+          "date": "2026-05-15",
+          "pull_request": 17,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+          "task_id": "overall",
+          "value": 16.91,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-04-23",
+          "pull_request": 10,
+          "source_name": "Claw-Eval Leaderboard",
+          "source_url": "https://claw-eval.github.io",
+          "task_id": "general",
+          "value": 62.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-04-23",
+          "pull_request": 10,
+          "source_name": "Claw-Eval Leaderboard",
+          "source_url": "https://claw-eval.github.io",
+          "task_id": "multimodal",
+          "value": 23.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-04-23",
+          "pull_request": 10,
+          "source_name": "Claw-Eval Leaderboard",
+          "source_url": "https://claw-eval.github.io",
+          "task_id": "multi_turn",
+          "value": 63.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-04-27T19:37:59.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+          "task_id": "SWE_Bench_Pro",
+          "value": 56.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.0",
+          "date": "2026-04-27T19:37:59.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5",
+          "task_id": "terminalbench_2",
+          "value": 65.8,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "XiaomiMiMo/MiMo-V2.5",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/mimo-v2.5-pro": {
+      "eval_rows": [
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-22",
+          "pull_request": 19,
+          "source_name": "MiMo-V2.6 Technical Report (Table 3, MiMo-V2.5 Pro baseline column)",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL/blob/main/MiMo_V2_6_technical_report.pdf",
+          "task_id": "terminalbench_4",
+          "value": 1.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-05-22",
+          "pull_request": 13,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "overall",
+          "value": 43,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-05-22",
+          "pull_request": 13,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_time",
+          "value": 451,
+          "verified": false
+        },
+        {
+          "dataset_id": "internlm/WildClawBench",
+          "date": "2026-05-22",
+          "pull_request": 13,
+          "source_name": "WildClawBench",
+          "source_url": "https://internlm.github.io/WildClawBench",
+          "task_id": "avg_cost",
+          "value": 12.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-04-23",
+          "pull_request": 10,
+          "source_name": "Claw-Eval Leaderboard",
+          "source_url": "https://claw-eval.github.io",
+          "task_id": "general",
+          "value": 64,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-04-23",
+          "pull_request": 10,
+          "source_name": "Claw-Eval Leaderboard",
+          "source_url": "https://claw-eval.github.io",
+          "task_id": "multi_turn",
+          "value": 63.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "Idavidrein/gpqa",
+          "date": "2026-04-27T18:14:14.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "diamond",
+          "value": 66.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "openai/gsm8k",
+          "date": "2026-04-27T18:14:14.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "gsm8k",
+          "value": 99.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-04-27T19:31:04.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "hle",
+          "value": 48,
+          "verified": false
+        },
+        {
+          "dataset_id": "TIGER-Lab/MMLU-Pro",
+          "date": "2026-04-27T18:14:14.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "mmlu_pro",
+          "value": 68.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-04-27T18:14:14.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "SWE_Bench_Pro",
+          "value": 57.2,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Verified",
+          "date": "2026-04-27T18:14:14.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "swe_bench_%_resolved",
+          "value": 78.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.0",
+          "date": "2026-04-27T18:14:14.000Z",
+          "pull_request": 1,
+          "source_name": "Model Card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro",
+          "task_id": "terminalbench_2",
+          "value": 68.4,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "XiaomiMiMo/MiMo-V2.5-Pro",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/mimo-v2.6-flash": {
+      "eval_rows": [
+        {
+          "dataset_id": "hkust-nlp/Toolathlon",
+          "date": "2026-09-22",
+          "pull_request": 4,
+          "source_name": "MiMo-V2.6-Flash-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "task_id": "toolathlon_verified",
+          "value": 73.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-09-22",
+          "pull_request": 4,
+          "source_name": "MiMo-V2.6-Flash-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "task_id": "terminalbench_2_1",
+          "value": 87.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-09-22",
+          "pull_request": 4,
+          "source_name": "MiMo-V2.6-Flash-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "task_id": "deep_swe",
+          "value": 67.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-22",
+          "pull_request": 4,
+          "source_name": "MiMo-V2.6-Flash-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "task_id": "terminalbench_4",
+          "value": 28.8,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-09-22",
+          "pull_request": 4,
+          "source_name": "MiMo-V2.6-Flash-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-RL",
+          "task_id": "overall-pass-rate",
+          "value": 27.6,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "XiaomiMiMo/MiMo-V2.6-Flash-RL",
+      "last_error": null,
+      "match_quality": "family",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/mimo-v2.6-pro": {
+      "eval_rows": [
+        {
+          "dataset_id": "hkust-nlp/Toolathlon",
+          "date": "2026-09-22",
+          "pull_request": 5,
+          "source_name": "MiMo-V2.6-Pro-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "task_id": "toolathlon_verified",
+          "value": 76.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-2.1",
+          "date": "2026-09-22",
+          "pull_request": 5,
+          "source_name": "MiMo-V2.6-Pro-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "task_id": "terminalbench_2_1",
+          "value": 89.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-09-22",
+          "pull_request": 5,
+          "source_name": "MiMo-V2.6-Pro-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "task_id": "deep_swe",
+          "value": 71.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-22",
+          "pull_request": 5,
+          "source_name": "MiMo-V2.6-Pro-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "task_id": "terminalbench_4",
+          "value": 34.9,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-09-22",
+          "pull_request": 5,
+          "source_name": "MiMo-V2.6-Pro-RL model card",
+          "source_url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL",
+          "task_id": "overall-pass-rate",
+          "value": 31.6,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "XiaomiMiMo/MiMo-V2.6-Pro-RL",
+      "last_error": null,
+      "match_quality": "family",
+      "pipeline_tag": "text-generation"
+    },
+    "opencode:opencode-go/minimax-m3": {
+      "eval_rows": [
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": null,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb",
+          "value": 38.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Verified",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "swe_bench_%_resolved",
+          "value": 80.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "SWE_Bench_Pro",
+          "value": 59,
+          "verified": false
+        },
+        {
+          "dataset_id": "MMMU/MMMU_Pro",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "mmmu_pro_standard_10_options",
+          "value": 78.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "MME-Benchmarks/Video-MME-v2",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "video-mme-v2",
+          "value": 85.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "general",
+          "value": 74.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "mercor/apex-agents",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "apex-agents",
+          "value": 27.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "collinear-ai/yc-bench",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "medium",
+          "value": 2100000,
+          "verified": false
+        },
+        {
+          "dataset_id": "joelniklaus/LEXam-hard",
+          "date": "2026-06-20",
+          "pull_request": 29,
+          "source_name": "SwissLegalEvals per-sample details (lighteval)",
+          "source_url": "https://huggingface.co/buckets/joelniklaus/SwissLegalEvals",
+          "task_id": "lexam_hard",
+          "value": 37.07,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-09-19",
+          "pull_request": 27,
+          "source_name": "LHTB 2.0 results",
+          "source_url": "https://github.com/zli12321/LHTB/tree/lhtb-2.0#lhtb-20-results-october-2026",
+          "task_id": "lhtb2_solved",
+          "value": 5,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": 27,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb_solved",
+          "value": 3,
+          "verified": false
+        },
+        {
+          "dataset_id": "benchflow/skillsbench",
+          "date": "2026-06-11",
+          "pull_request": 21,
+          "source_name": "SkillsBench v1.1 official leaderboard",
+          "source_url": "https://huggingface.co/datasets/benchflow/skillsbench-leaderboard/raw/main/leaderboard/skillsbench/v1.1/official.json",
+          "task_id": "skillsbench_v1_1",
+          "value": 53,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "MiniMaxAI/MiniMax-M3",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/minimax-m3#thinking": {
+      "eval_rows": [
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": null,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb",
+          "value": 38.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "SWE-bench/SWE-bench_Verified",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "swe_bench_%_resolved",
+          "value": 80.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "ScaleAI/SWE-bench_Pro",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "SWE_Bench_Pro",
+          "value": 59,
+          "verified": false
+        },
+        {
+          "dataset_id": "MMMU/MMMU_Pro",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "mmmu_pro_standard_10_options",
+          "value": 78.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "MME-Benchmarks/Video-MME-v2",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "video-mme-v2",
+          "value": 85.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "claw-eval/Claw-Eval",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "general",
+          "value": 74.5,
+          "verified": false
+        },
+        {
+          "dataset_id": "mercor/apex-agents",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "apex-agents",
+          "value": 27.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "collinear-ai/yc-bench",
+          "date": "2026-06-23T11:50:00.000Z",
+          "pull_request": null,
+          "source_name": "MiniMax-M3 model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3",
+          "task_id": "medium",
+          "value": 2100000,
+          "verified": false
+        },
+        {
+          "dataset_id": "joelniklaus/LEXam-hard",
+          "date": "2026-06-20",
+          "pull_request": 29,
+          "source_name": "SwissLegalEvals per-sample details (lighteval)",
+          "source_url": "https://huggingface.co/buckets/joelniklaus/SwissLegalEvals",
+          "task_id": "lexam_hard",
+          "value": 37.07,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-09-19",
+          "pull_request": 27,
+          "source_name": "LHTB 2.0 results",
+          "source_url": "https://github.com/zli12321/LHTB/tree/lhtb-2.0#lhtb-20-results-october-2026",
+          "task_id": "lhtb2_solved",
+          "value": 5,
+          "verified": false
+        },
+        {
+          "dataset_id": "IntelligenceLab/Long-Horizon-Terminal-Bench",
+          "date": "2026-07-16",
+          "pull_request": 27,
+          "source_name": "LHTB leaderboard",
+          "source_url": "https://zli12321.github.io/LHTB/leaderboard.html",
+          "task_id": "lhtb_solved",
+          "value": 3,
+          "verified": false
+        },
+        {
+          "dataset_id": "benchflow/skillsbench",
+          "date": "2026-06-11",
+          "pull_request": 21,
+          "source_name": "SkillsBench v1.1 official leaderboard",
+          "source_url": "https://huggingface.co/datasets/benchflow/skillsbench-leaderboard/raw/main/leaderboard/skillsbench/v1.1/official.json",
+          "task_id": "skillsbench_v1_1",
+          "value": 53,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "MiniMaxAI/MiniMax-M3",
+      "last_error": null,
+      "match_quality": "family",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/minimax-m3.1-flash": {
+      "eval_rows": [
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-10-17",
+          "pull_request": null,
+          "source_name": "MiniMax-M3.1-Flash model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash",
+          "task_id": "terminalbench_4",
+          "value": 38.1,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-10-17",
+          "pull_request": null,
+          "source_name": "MiniMax-M3.1-Flash model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash",
+          "task_id": "deep_swe",
+          "value": 73.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "cais/hle",
+          "date": "2026-10-17",
+          "pull_request": null,
+          "source_name": "MiniMax-M3.1-Flash model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash",
+          "task_id": "hle",
+          "value": 43.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-10-17",
+          "pull_request": null,
+          "source_name": "MiniMax-M3.1-Flash model card",
+          "source_url": "https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash",
+          "task_id": "overall-pass-rate",
+          "value": 29.6,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench-science",
+          "date": "2026-10-30T08:44:16.000Z",
+          "pull_request": null,
+          "source_name": "Artificial Analysis Terminal-Bench-Science leaderboard",
+          "source_url": "https://artificialanalysis.ai/evaluations/terminal-bench-science",
+          "task_id": "terminalbenchscience_0_1",
+          "value": 3.3,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "MiniMaxAI/MiniMax-M3.1-Flash",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": "image-text-to-text"
+    },
+    "opencode:opencode-go/step-5-preview": {
+      "eval_rows": [
+        {
+          "dataset_id": "harborframework/terminal-bench-science",
+          "date": "2026-10-30T08:38:22.000Z",
+          "pull_request": 10,
+          "source_name": "Artificial Analysis Terminal-Bench-Science leaderboard",
+          "source_url": "https://artificialanalysis.ai/evaluations/terminal-bench-science",
+          "task_id": "terminalbenchscience_0_1",
+          "value": 2.4,
+          "verified": false
+        },
+        {
+          "dataset_id": "datacurve/deep-swe",
+          "date": "2026-09-20",
+          "pull_request": 6,
+          "source_name": "Step 5 Preview model card",
+          "source_url": "https://huggingface.co/stepfun-ai/Step-5-Preview",
+          "task_id": "deep_swe",
+          "value": 67.7,
+          "verified": false
+        },
+        {
+          "dataset_id": "harborframework/terminal-bench",
+          "date": "2026-09-20",
+          "pull_request": 6,
+          "source_name": "Step 5 Preview model card",
+          "source_url": "https://huggingface.co/stepfun-ai/Step-5-Preview",
+          "task_id": "terminalbench_4",
+          "value": 33.3,
+          "verified": false
+        },
+        {
+          "dataset_id": "agents-last-exam/agents-last-exam",
+          "date": "2026-09-20",
+          "pull_request": 6,
+          "source_name": "Step 5 Preview model card",
+          "source_url": "https://huggingface.co/stepfun-ai/Step-5-Preview",
+          "task_id": "ale-cli-pass-rate",
+          "value": 29.5,
+          "verified": false
+        }
+      ],
+      "fetched_at": "2026-11-19T01:48:40Z",
+      "hf_repo": "stepfun-ai/Step-5-Preview",
+      "last_error": null,
+      "match_quality": "exact",
+      "pipeline_tag": null
+    }
+  },
+  "schema_version": 1
+}
