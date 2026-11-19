@@ -184,6 +184,8 @@ Extended with `chanchi taxonomy add-type <code> --description "..."`. Codes are 
 | severity | `low`, `medium`, `high`, `blocking` |
 | detected by | `executor_stop`, `planner_audit`, `human`, `post_merge` |
 | role | `planner`, `executor`, `human`, `none` |
+| capability | `vision` |
+| capability value | `yes`, `no`, `unknown` (missing row means `unknown`; never stored) |
 
 ### 4.4 Incident codes
 
@@ -242,6 +244,14 @@ CREATE TABLE models (
   notes       TEXT,
   created_at  TEXT NOT NULL,
   UNIQUE (agent, model)
+);
+
+CREATE TABLE model_capabilities (
+  model_id    INTEGER NOT NULL REFERENCES models(id),
+  capability  TEXT NOT NULL,
+  value       TEXT NOT NULL,      -- 'yes' | 'no', validated in taxonomy.py, no CHECK
+  set_at      TEXT NOT NULL,
+  PRIMARY KEY (model_id, capability)
 );
 
 CREATE TABLE projects (
@@ -395,13 +405,15 @@ Planner aggregation uses the same smoothing over change scores, grouped by `(age
 ### 6.6 Recommendation
 
 ```
-chanchi recommend --task-type <code> --complexity <level> --available "<spec>,<spec>,..."
+chanchi recommend --task-type <code> --complexity <level> --available "<spec>,<spec>,..." [--require <cap>,<cap>,...]
 ```
 
 1. Candidates are exactly the `--available` specs (the human/planner states what is available; never assumed). Unknown specs are an error.
-2. For each candidate, find data at the first level that has `n ≥ 3`: (task_type, complexity) → (task_type, any) → (any, complexity) → (any, any). The output states the level used.
-3. Rank by smoothed score. Among candidates with confidence `low` or `ok` and no honesty red flag, the **recommendation** is the cheapest (lowest `cost_tier`) whose smoothed score is within 5 points of the best.
-4. If no candidate is eligible, the output says so explicitly (`"recommendation": null`) with reason `insufficient_data` (no candidate reaches confidence `low`) or `all_candidates_red_flagged` (some do, but every one carries the honesty red flag), and still lists whatever data exists. A candidate with no data at the first level that has `n ≥ 3` reports the most specific level that has any data (or `null` with `n = 0`). The planner then chooses by judgement, and that choice becomes data.
+2. When `--require` is given, only candidates whose catalog capability value is `yes` for every listed capability remain; the rest move to `excluded` with `missing` listing each unfulfilled capability (`no` or `unknown`). `prior_for` still uses all executor records. When no candidate remains, `recommendation` is `null` with `reason: no_capable_candidates`, `candidates: []`, `explore: []`, and `explore_reason: no_explorable_candidates` (or `complexity_not_explorable` at `high` complexity). Without `--require`, `excluded` is `[]`.
+3. For each remaining candidate, find data at the first level that has `n ≥ 3`: (task_type, complexity) → (task_type, any) → (any, complexity) → (any, any). The output states the level used.
+4. Rank by smoothed score. Among candidates with confidence `low` or `ok` and no honesty red flag, the **recommendation** is the cheapest (lowest `cost_tier`) whose smoothed score is within 5 points of the best.
+5. If no candidate is eligible, the output says so explicitly (`"recommendation": null`) with reason `insufficient_data` (no candidate reaches confidence `low`) or `all_candidates_red_flagged` (some do, but every one carries the honesty red flag), and still lists whatever data exists. A candidate with no data at the first level that has `n ≥ 3` reports the most specific level that has any data (or `null` with `n = 0`). The planner then chooses by judgement, and that choice becomes data.
+6. **Exploration (`explore` and `explore_reason`):** at `low` or `medium` complexity (`EXPLORE_COMPLEXITIES`), `recommend` returns an `explore` list of up to 3 (`EXPLORE_MAX`) models (one spec per `(agent, model)`, keeping the listed effort with the highest `n_task_type`, breaking ties by `--available` order) where among the listed efforts none has `n_task_type ≥ 3`, none is red-flagged on 3 or more sessions, and the model is not the `recommendation`. Kept specs are sorted with `deprioritized` (`"red_flag_low_data"` when any listed effort has a red flag on fewer than 3 sessions, `"weak_start"` when `n_task_type` is 1 or 2 and its mean is more than 5 points below `prior_for(records, task_type, None)`, or `null`) last, then `cost_tier` ascending, `n_task_type` descending, and `spec` ascending. `explore_reason` is `null` when `explore` has entries, `complexity_not_explorable` at `high` complexity, and `no_explorable_candidates` otherwise.
 
 The recommendation is an input, not an order: the selection skill requires the planner to write, in the session protocol, what `chanchi` recommended, what it chose, and why if it deviated.
 
@@ -413,9 +425,9 @@ Every command accepts `--format json|text` (default `json`) and `--project <slug
 
 ```text
 # Catalog & setup
-chanchi models add --agent <a> --model <m> --cost <1-3> [--efforts low,medium,high] [--notes ...]
+chanchi models add --agent <a> --model <m> --cost <1-3> [--efforts low,medium,high] [--notes ...] [--capability NAME=VALUE ...]
 chanchi models list [--all]
-chanchi models set <agent:model> [--cost N] [--active 0|1] [--efforts ...] [--notes ...]
+chanchi models set <agent:model> [--cost N] [--active 0|1] [--efforts ...] [--notes ...] [--capability NAME=VALUE ...]
 chanchi taxonomy list                          # every enum, code, role, weight
 chanchi taxonomy add-type <code> --description "..."
 chanchi skills link [path] [--global]
@@ -435,7 +447,7 @@ chanchi incident add <ref> [--session <session>] [--attempt N] --code <code> --s
 chanchi incident void <id> --reason "..."
 
 # Querying
-chanchi recommend --task-type <code> --complexity <level> --available "<spec>,..."
+chanchi recommend --task-type <code> --complexity <level> --available "<spec>,..." [--require <cap>,...]
 chanchi stats [--role executor|planner|human] [--by model|task-type|project|dimension] [--since YYYY-MM-DD]
 chanchi show <ref>                             # change timeline: sessions, incidents, scores
 chanchi scoring explain                        # current weights and formulas
@@ -472,8 +484,10 @@ Both skills are written in English, are agent-agnostic, and assume only a shell.
 2. Ensure each available model is in the catalog; if not, ask the human for its cost tier and run `models add`.
 3. For each planned session, pick `task_type` and `complexity` using the rubric criteria.
 4. Run `chanchi recommend` per session.
-5. In the session protocol table, record the recommendation, the choice, and the reason for any deviation.
+5. In the session protocol table, record the recommendation, the choice, and the reason for any deviation (and `· explore: <spec>` when exploring).
 6. Run `chanchi change open` with its own identity (effort `unknown` if it does not know it).
+
+Exploration budget: in a change planned with `n` executor sessions, at most `allowed = 0 if n < 2 else max(1, floor(n / 4))` may be explore sessions, never on a blocking session, and every explore session (including retries) carries `--tags explore`. `chanchi show <ref>` reports `sessions`, `exploratory`, `allowed`, and `over_budget` (`null` until the change is closed) in an `exploration` block.
 
 Also covers catalog maintenance (`models list/set`, `taxonomy add-type`) when the human asks for it.
 
@@ -501,7 +515,7 @@ Also covers catalog maintenance (`models list/set`, `taxonomy add-type`) when th
 - **Integration:** the CLI run as a subprocess against a temp database (`CHANCHI_DB` in `tmp_path`) through the full flow: catalog → change open → sessions → report → incidents → audit → close → stats → recommend → show. Error envelope and exit codes are asserted.
 - **Scenario:** a fixture embedded in the test suite (it never reads the DATEMApp repository) replaying DATEMApp's `clinical-summary-doctor-addressee-and-polish` change (S1–S10 on `agy` with `gemini-4-argon-high` and `gemini-3.8-flash-*`) plus synthetic incidents; `recommend` must produce the expected ranking.
 - **Skills link:** in a temp directory — absolute vs relative targets, idempotency, conflict reporting, `unlink` touching only its own symlinks, optional `.agent`/`.opencode` targets.
-- **Template integrity:** the committed `template.db` has `user_version` equal to the latest migration number; its schema (`sqlite_master` minus internal tables) equals the schema produced by applying every migration to an empty database; its seed rows match; and it contains zero rows in `projects`, `changes`, `sessions` and `incidents`. This test is what forces every migration to update the template.
+- **Template integrity:** the committed `template.db` has `user_version` equal to the latest migration number; its schema (`sqlite_master` minus internal tables) equals the schema produced by applying every migration to an empty database; its seed rows match; and it contains zero rows in `projects`, `changes`, `sessions`, `incidents` and `model_capabilities`. This test is what forces every migration to update the template.
 - **Bootstrap:** a missing operational database is created from the template; an outdated one is backed up and migrated; a too-new one is refused.
 - **Skills:** every `skills/*/SKILL.md` has valid frontmatter with `name` matching its directory and a non-empty `description`.
 

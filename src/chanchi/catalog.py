@@ -10,7 +10,71 @@ from chanchi.errors import ChanchiError
 from chanchi.timeutil import utc_now
 
 
-def _model_dict(row: sqlite3.Row) -> dict:
+def capabilities_for(conn: sqlite3.Connection, model_id: int) -> dict[str, str]:
+    rows = conn.execute(
+        "SELECT capability, value FROM model_capabilities WHERE model_id = ? ORDER BY capability",
+        (model_id,),
+    ).fetchall()
+    return {row["capability"]: row["value"] for row in rows}
+
+
+def _validate_capabilities(capabilities: dict[str, str]) -> None:
+    for name, value in capabilities.items():
+        taxonomy.validate_choice("capability", name, taxonomy.CAPABILITIES)
+        taxonomy.validate_choice("capability", value, taxonomy.CAPABILITY_VALUES)
+
+
+def parse_capabilities(items: list[str]) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            raise ChanchiError(
+                "invalid_value",
+                f"capability {item!r} must be NAME=VALUE",
+                field="capability",
+                hint="use NAME=VALUE, for example vision=yes",
+            )
+        raw_name, raw_value = item.split("=", 1)
+        name, value = raw_name.strip(), raw_value.strip()
+        if not name or not value:
+            raise ChanchiError(
+                "invalid_value",
+                f"capability {item!r} must be NAME=VALUE",
+                field="capability",
+                hint="use NAME=VALUE, for example vision=yes",
+            )
+        _validate_capabilities({name: value})
+        if name in parsed:
+            raise ChanchiError(
+                "invalid_value",
+                f"capability {name!r} was passed more than once (in {item!r})",
+                field="capability",
+            )
+        parsed[name] = value
+    return parsed
+
+
+def _apply_capabilities(
+    conn: sqlite3.Connection, model_id: int, capabilities: dict[str, str], timestamp: str
+) -> None:
+    for name, value in capabilities.items():
+        if value == "unknown":
+            conn.execute(
+                "DELETE FROM model_capabilities WHERE model_id = ? AND capability = ?",
+                (model_id, name),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO model_capabilities (model_id, capability, value, set_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(model_id, capability) DO UPDATE SET "
+                "value = excluded.value, set_at = excluded.set_at",
+                (model_id, name, value, timestamp),
+            )
+
+
+def _model_dict(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
+    caps = capabilities_for(conn, row["id"])
     return {
         "id": row["id"],
         "agent": row["agent"],
@@ -21,6 +85,7 @@ def _model_dict(row: sqlite3.Row) -> dict:
         "active": bool(row["active"]),
         "notes": row["notes"],
         "created_at": row["created_at"],
+        "capabilities": ",".join(f"{name}={caps[name]}" for name in sorted(caps)),
     }
 
 
@@ -52,6 +117,7 @@ def add_model(
     cost_tier: int,
     efforts: list[str] | None = None,
     notes: str | None = None,
+    capabilities: dict[str, str] | None = None,
     now: str | None = None,
 ) -> dict:
     taxonomy.validate_choice("agent", agent, taxonomy.AGENTS)
@@ -67,6 +133,9 @@ def add_model(
         )
     taxonomy.validate_choice("cost", cost_tier, taxonomy.COST_TIERS)
     efforts_csv = _efforts_csv(efforts)
+    if capabilities is not None:
+        _validate_capabilities(capabilities)
+    timestamp = now or utc_now()
     with transaction(conn):
         if _model_row(conn, agent, model) is not None:
             raise ChanchiError(
@@ -78,14 +147,18 @@ def add_model(
         cursor = conn.execute(
             "INSERT INTO models (agent, model, cost_tier, efforts, active, notes, created_at) "
             "VALUES (?, ?, ?, ?, 1, ?, ?)",
-            (agent, model, cost_tier, efforts_csv, notes, now or utc_now()),
+            (agent, model, cost_tier, efforts_csv, notes, timestamp),
         )
-    return _model_dict(conn.execute("SELECT * FROM models WHERE id = ?", (cursor.lastrowid,)).fetchone())
+        if capabilities:
+            _apply_capabilities(conn, cursor.lastrowid, capabilities, timestamp)
+    return _model_dict(
+        conn, conn.execute("SELECT * FROM models WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    )
 
 
 def list_models(conn: sqlite3.Connection, *, include_inactive: bool = False) -> list[dict]:
     query = "SELECT * FROM models" + ("" if include_inactive else " WHERE active = 1")
-    return [_model_dict(r) for r in conn.execute(query + " ORDER BY agent, model")]
+    return [_model_dict(conn, r) for r in conn.execute(query + " ORDER BY agent, model")]
 
 
 def set_model(
@@ -96,6 +169,8 @@ def set_model(
     active: bool | None = None,
     efforts: list[str] | None = None,
     notes: str | None = None,
+    capabilities: dict[str, str] | None = None,
+    now: str | None = None,
 ) -> dict:
     parsed = modelspec.parse(spec, field="spec")
     if parsed.agent in taxonomy.PLANNER_ONLY_AGENTS:
@@ -115,11 +190,13 @@ def set_model(
         updates["efforts"] = _efforts_csv(efforts)
     if notes is not None:
         updates["notes"] = notes
-    if not updates:
+    if capabilities is not None:
+        _validate_capabilities(capabilities)
+    if not updates and not capabilities:
         raise ChanchiError(
             "invalid_value",
             "nothing to update",
-            hint="pass at least one of --cost, --active, --efforts, --notes",
+            hint="pass at least one of --cost, --active, --efforts, --notes, --capability",
         )
     with transaction(conn):
         row = _model_row(conn, parsed.agent, parsed.model)
@@ -127,9 +204,12 @@ def set_model(
             raise ChanchiError(
                 "unknown_model", f"{parsed.agent}:{parsed.model} is not in the catalog", field="spec"
             )
-        assignments = ", ".join(f"{column} = ?" for column in updates)
-        conn.execute(f"UPDATE models SET {assignments} WHERE id = ?", (*updates.values(), row["id"]))
-    return _model_dict(conn.execute("SELECT * FROM models WHERE id = ?", (row["id"],)).fetchone())
+        if updates:
+            assignments = ", ".join(f"{column} = ?" for column in updates)
+            conn.execute(f"UPDATE models SET {assignments} WHERE id = ?", (*updates.values(), row["id"]))
+        if capabilities:
+            _apply_capabilities(conn, row["id"], capabilities, now or utc_now())
+    return _model_dict(conn, conn.execute("SELECT * FROM models WHERE id = ?", (row["id"],)).fetchone())
 
 
 def resolve_model(

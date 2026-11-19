@@ -159,6 +159,10 @@ RECOMMEND_WINDOW = 5.0
 HONESTY_RED_FLAG = 0.2
 HONESTY_CODES = ("false_claim", "hallucination")
 CLEAN_BLOCKING_SEVERITIES = ("medium", "high", "blocking")
+EXPLORE_COMPLEXITIES = ("low", "medium")
+EXPLORE_MAX = 3
+CAPABILITIES = ("vision",)
+CAPABILITY_VALUES = ("yes", "no", "unknown")
 
 
 def validate_choice(field: str, value, allowed: Iterable):
@@ -235,4 +239,12 @@ def describe() -> dict:
         "dimensions": [
             {"dimension": dimension, "codes": list(codes)} for dimension, codes in DIMENSIONS.items()
         ],
+        "exploration": {
+            "complexities": list(EXPLORE_COMPLEXITIES),
+            "max": EXPLORE_MAX,
+        },
+        "capabilities": {
+            "names": list(CAPABILITIES),
+            "values": list(CAPABILITY_VALUES),
+        },
     }

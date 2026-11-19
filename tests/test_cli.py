@@ -149,7 +149,7 @@ def test_text_format(ready):
     assert code == 0
     lines = out.splitlines()
     assert lines[0].startswith("models:")
-    assert "spec" in lines[1] and "cost_tier" in lines[1]
+    assert "spec" in lines[1] and "cost_tier" in lines[1] and "capabilities" in lines[1]
     code, _, err = run(ready, "models", "add", "--agent", "claude", "--model", "x", "--cost", "9", "--format", "text")
     assert code == 2
     assert err.startswith("error:")
@@ -207,3 +207,59 @@ def test_oversized_integer_is_rejected(ready):
 def test_abbreviated_options_are_rejected(ready):
     error = fail(ready, "models", "list", "--form", "text")
     assert error["code"] == "invalid_value"
+
+
+def test_capabilities_cli_and_require_text_format(ready):
+    added = ok(
+        ready,
+        "models",
+        "add",
+        "--agent",
+        "claude",
+        "--model",
+        "sonnet",
+        "--cost",
+        "2",
+        "--capability",
+        "vision=yes",
+    )["model"]
+    assert added["capabilities"] == "vision=yes"
+
+    updated = ok(ready, "models", "set", "claude:opus", "--capability", "vision=no")["model"]
+    assert updated["capabilities"] == "vision=no"
+
+    repeated = fail(
+        ready,
+        "models",
+        "set",
+        "claude:opus",
+        "--capability",
+        "vision=yes",
+        "--capability",
+        "vision=no",
+    )
+    assert repeated["code"] == "invalid_value"
+    assert repeated["field"] == "capability"
+
+    tax = ok(ready, "taxonomy", "list")["taxonomy"]
+    assert tax["capabilities"] == {"names": ["vision"], "values": ["yes", "no", "unknown"]}
+
+    code, out, err = run(
+        ready,
+        "recommend",
+        "--task-type",
+        "ui-component",
+        "--complexity",
+        "medium",
+        "--available",
+        "claude:sonnet,claude:opus,agy:gemini-3.8-flash-high:high",
+        "--require",
+        "vision",
+        "--format",
+        "text",
+    )
+    assert code == 0, err
+    assert "excluded:" in out
+    assert "claude:opus" in out
+    assert "agy:gemini-3.8-flash-high:high" in out
+    assert "unknown" in out

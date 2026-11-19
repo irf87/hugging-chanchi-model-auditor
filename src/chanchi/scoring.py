@@ -415,8 +415,82 @@ def _level_subset(records, task_type, complexity, use_type, use_complexity):
     ]
 
 
+def _explore_sort_key(entry: dict) -> tuple:
+    """Sort explore candidates: non-deprioritized first, lowest cost, most task-type data, spec."""
+    return (
+        entry["deprioritized"] is not None,
+        entry["cost_tier"],
+        -entry["n_task_type"],
+        entry["spec"],
+    )
+
+
+def _build_explore(
+    candidates_in_order: list[dict],
+    spec_meta: dict[str, dict],
+    *,
+    records: list[dict],
+    task_type: str,
+    complexity: str,
+    recommended_model: tuple[str, str] | None,
+) -> tuple[list[dict], str | None]:
+    """Select up to EXPLORE_MAX explorable models (one spec each) for low/medium complexity."""
+    if complexity not in tx.EXPLORE_COMPLEXITIES:
+        return [], "complexity_not_explorable"
+
+    by_model: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for entry in candidates_in_order:
+        by_model[(entry["agent"], entry["model"])].append(entry)
+
+    task_prior = prior_for(records, task_type, None)
+    kept_entries: list[dict] = []
+    for model_key, specs in by_model.items():
+        if model_key == recommended_model:
+            continue
+        if any(spec_meta[c["spec"]]["n_task_type"] >= tx.CONFIDENCE_LOW_MIN for c in specs):
+            continue
+        if any(c["red_flag"] and c["n"] >= tx.CONFIDENCE_LOW_MIN for c in specs):
+            continue
+
+        # Keep the effort with highest n_task_type, breaking ties by --available order.
+        kept = max(
+            specs,
+            key=lambda c: (spec_meta[c["spec"]]["n_task_type"], -spec_meta[c["spec"]]["order"]),
+        )
+        meta = spec_meta[kept["spec"]]
+
+        if any(c["red_flag"] and c["n"] < tx.CONFIDENCE_LOW_MIN for c in specs):
+            deprioritized: str | None = "red_flag_low_data"
+        elif (
+            1 <= meta["n_task_type"] < tx.CONFIDENCE_LOW_MIN
+            and meta["task_type_mean"] < task_prior - tx.RECOMMEND_WINDOW
+        ):
+            deprioritized = "weak_start"
+        else:
+            deprioritized = None
+
+        kept_entries.append(
+            {
+                "spec": kept["spec"],
+                "cost_tier": kept["cost_tier"],
+                "n_task_type": meta["n_task_type"],
+                "deprioritized": deprioritized,
+            }
+        )
+
+    kept_entries.sort(key=_explore_sort_key)
+    explore = kept_entries[: tx.EXPLORE_MAX]
+    reason = None if explore else "no_explorable_candidates"
+    return explore, reason
+
+
 def recommend(
-    conn: sqlite3.Connection, *, task_type: str, complexity: str, available: list[str]
+    conn: sqlite3.Connection,
+    *,
+    task_type: str,
+    complexity: str,
+    available: list[str],
+    require: list[str] | None = None,
 ) -> dict:
     catalog.require_task_type(conn, task_type)
     tx.validate_choice("complexity", complexity, tx.COMPLEXITIES)
@@ -427,15 +501,39 @@ def recommend(
             field="available",
             hint="take the list from the human's prompt; never assume availability",
         )
+    required: list[str] = []
+    for item in require or ():
+        cap = item.strip()
+        if not cap or cap in required:
+            continue
+        tx.validate_choice("require", cap, tx.CAPABILITIES)
+        required.append(cap)
     records = executor_records(conn)
     candidates = []
+    excluded = []
+    spec_meta: dict[str, dict] = {}
     seen = set()
+    caps_by_model: dict[int, dict[str, str]] = {}
     for spec in available:
         row, effort = catalog.resolve_model(conn, spec, role="executor")
         key = (row["agent"], row["model"], effort)
         if key in seen:
             continue
         seen.add(key)
+        formatted_spec = format_spec(*key)
+        if required:
+            caps = caps_by_model.get(row["id"])
+            if caps is None:
+                caps = catalog.capabilities_for(conn, row["id"])
+                caps_by_model[row["id"]] = caps
+            missing = [
+                {"capability": cap, "value": caps.get(cap, "unknown")}
+                for cap in required
+                if caps.get(cap) != "yes"
+            ]
+            if missing:
+                excluded.append({"spec": formatted_spec, "missing": missing})
+                continue
         own = [r for r in records if (r["agent"], r["model"], r["effort"]) == key]
         chosen = None
         for name, use_type, use_complexity in LEVELS:
@@ -458,7 +556,7 @@ def recommend(
                 records, task_type if use_type else None, complexity if use_complexity else None
             )
         entry = {
-            "spec": format_spec(*key),
+            "spec": formatted_spec,
             "agent": key[0],
             "model": key[1],
             "effort": key[2],
@@ -466,20 +564,39 @@ def recommend(
             "level": level,
         }
         entry.update(summarize(subset, prior))
+        task_type_records = [r for r in own if r["task_type"] == task_type]
+        spec_meta[entry["spec"]] = {
+            "n_task_type": len(task_type_records),
+            "task_type_mean": _mean([r["score"] for r in task_type_records]),
+            "order": len(candidates),
+        }
         candidates.append(entry)
     eligible = [c for c in candidates if c["confidence"] in ("low", "ok") and not c["red_flag"]]
     recommendation = None
+    recommended_model = None
     reason = None
-    if eligible:
+    if not candidates:
+        reason = "no_capable_candidates"
+    elif eligible:
         best = max(c["smoothed_score"] for c in eligible)
         window = [c for c in eligible if c["smoothed_score"] >= best - tx.RECOMMEND_WINDOW]
         pick = min(window, key=lambda c: (c["cost_tier"], -c["smoothed_score"], c["spec"]))
         recommendation = {k: pick[k] for k in ("spec", "cost_tier", "smoothed_score", "confidence", "level")}
+        recommended_model = (pick["agent"], pick["model"])
     elif any(c["confidence"] in ("low", "ok") for c in candidates):
         reason = "all_candidates_red_flagged"
     else:
         reason = "insufficient_data"
+    candidates_in_order = list(candidates)
     candidates.sort(key=lambda c: (-c["smoothed_score"], c["spec"]))
+    explore, explore_reason = _build_explore(
+        candidates_in_order,
+        spec_meta,
+        records=records,
+        task_type=task_type,
+        complexity=complexity,
+        recommended_model=recommended_model,
+    )
     return {
         "task_type": task_type,
         "complexity": complexity,
@@ -487,6 +604,9 @@ def recommend(
         "reason": reason,
         "window": tx.RECOMMEND_WINDOW,
         "candidates": candidates,
+        "explore": explore,
+        "explore_reason": explore_reason,
+        "excluded": excluded,
     }
 
 
@@ -513,12 +633,28 @@ def show_change(conn: sqlite3.Connection, *, project_id: int, ref: str) -> dict:
         for s in sessions:
             latest[s["session"]] = s["tasks_total"]
         planner_score = round(planner_change_score(sum(latest.values()), active), 2)
+    distinct_sessions = {s["session"] for s in sessions}
+    exploratory_sessions = {
+        s["session"]
+        for s in sessions
+        if any(tag.strip() == "explore" for tag in s["tags"])
+    }
+    n_sessions = len(distinct_sessions)
+    n_exploratory = len(exploratory_sessions)
+    allowed = 0 if n_sessions < 2 else max(1, n_sessions // 4)
+    over_budget = None if change["closed_at"] is None else (n_exploratory > allowed)
     return {
         "change": record.change_dict(conn, change["id"]),
         "sessions": sessions,
         "incidents": incidents,
         "planner_score": planner_score,
         "incident_counts_by_role": dict(Counter(i["role"] for i in active)),
+        "exploration": {
+            "sessions": n_sessions,
+            "exploratory": n_exploratory,
+            "allowed": allowed,
+            "over_budget": over_budget,
+        },
     }
 
 
@@ -556,6 +692,31 @@ def explain() -> dict:
             "levels": [name for name, _, _ in LEVELS],
             "window": tx.RECOMMEND_WINDOW,
             "honesty_red_flag_above": tx.HONESTY_RED_FLAG,
+        },
+        "exploration": {
+            "rule": (
+                "At low or medium complexity, suggest up to max models where no listed effort has "
+                "min_task_type_sessions or more task-type audits, no listed effort is red-flagged "
+                "on 3 or more sessions, and the model is not the recommendation."
+            ),
+            "complexities": list(tx.EXPLORE_COMPLEXITIES),
+            "max": tx.EXPLORE_MAX,
+            "min_task_type_sessions": tx.CONFIDENCE_LOW_MIN,
+            "sort_order": [
+                "deprioritized last (red_flag_low_data or weak_start)",
+                "cost_tier ascending",
+                "n_task_type descending",
+                "spec ascending",
+            ],
+        },
+        "require": {
+            "rule": (
+                "A candidate stays only if every required capability is yes; "
+                "others go to excluded with missing values no or unknown; "
+                "the prior still uses all executor records."
+            ),
+            "capabilities": list(tx.CAPABILITIES),
+            "values": list(tx.CAPABILITY_VALUES),
         },
         "retry_reasons_excluded_from_executor_metrics": list(tx.NON_EXECUTOR_RETRY_REASONS),
     }

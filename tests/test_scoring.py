@@ -1,7 +1,7 @@
 import pytest
 from helpers import inc
 
-from chanchi import record, scoring
+from chanchi import catalog, record, scoring
 from chanchi.errors import ChanchiError
 
 FLASH = "agy:gemini-3.8-flash-high:high"
@@ -455,3 +455,424 @@ def test_explain_reflects_taxonomy():
     assert explained["severity_multipliers"] == taxonomy.SEVERITY_MULT
     assert explained["smoothing"]["k"] == 3
     assert explained["recommendation"]["window"] == 5.0
+    assert explained["exploration"]["complexities"] == ["low", "medium"]
+    assert explained["exploration"]["max"] == 3
+    assert explained["exploration"]["min_task_type_sessions"] == 3
+
+
+# --- exploration -----------------------------------------------------------
+
+GLM_LOW = "opencode:opencode-go/glm-5.3:low"
+GLM_MEDIUM = "opencode:opencode-go/glm-5.3:medium"
+GLM_HIGH = "opencode:opencode-go/glm-5.3:high"
+KIMI = "opencode:opencode-go/kimi-k3"
+MINIMAX = "opencode:opencode-go/minimax-m3"
+
+
+@pytest.fixture
+def explore_catalog(recorder):
+    conn = recorder.conn
+    catalog.add_model(
+        conn, agent="opencode", model="opencode-go/glm-5.3", cost_tier=1, efforts=["low", "medium", "high"]
+    )
+    catalog.add_model(conn, agent="opencode", model="opencode-go/kimi-k3", cost_tier=1)
+    catalog.add_model(conn, agent="opencode", model="opencode-go/minimax-m3", cost_tier=2)
+    return recorder
+
+
+def test_explore_complexity_gate(explore_catalog):
+    for complexity in ("low", "medium"):
+        result = scoring.recommend(
+            explore_catalog.conn, task_type="ui-component", complexity=complexity, available=[GLM_LOW]
+        )
+        assert result["explore"] == [
+            {"spec": GLM_LOW, "cost_tier": 1, "n_task_type": 0, "deprioritized": None}
+        ]
+        assert result["explore_reason"] is None
+
+    high = scoring.recommend(
+        explore_catalog.conn, task_type="ui-component", complexity="high", available=[GLM_LOW]
+    )
+    assert high["explore"] == []
+    assert high["explore_reason"] == "complexity_not_explorable"
+
+
+def test_explore_counts_requested_task_type_only(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(5):
+        explore_catalog.session(
+            "c1", f"S{idx + 1}", GLM_LOW, task_type="bugfix", verdict="accepted_with_fixes"
+        )
+    for idx in range(3):
+        explore_catalog.session("c1", f"F{idx + 1}", FLASH, task_type="ui-component")
+
+    ui = scoring.recommend(
+        explore_catalog.conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[FLASH, GLM_LOW, KIMI],
+    )
+    assert ui["recommendation"]["spec"] == FLASH
+    assert [e["spec"] for e in ui["explore"]] == [GLM_LOW, KIMI]
+    assert ui["explore"][0]["n_task_type"] == 0
+
+    bugfix = scoring.recommend(
+        explore_catalog.conn,
+        task_type="bugfix",
+        complexity="medium",
+        available=[FLASH, GLM_LOW, KIMI],
+    )
+    assert bugfix["recommendation"]["spec"] == FLASH
+    assert [e["spec"] for e in bugfix["explore"]] == [KIMI]
+
+
+def test_explore_excludes_recommendation_model(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", GLM_MEDIUM, task_type="bugfix")
+
+    result = scoring.recommend(
+        explore_catalog.conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[GLM_MEDIUM, GLM_LOW, KIMI],
+    )
+    assert result["recommendation"]["spec"] == GLM_MEDIUM
+    assert [e["spec"] for e in result["explore"]] == [KIMI]
+
+
+def test_explore_excludes_model_red_flagged_on_three_or_more_sessions(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session(
+            "c1", f"S{idx + 1}", GLM_HIGH, task_type="bugfix", incidents=[inc("false_claim")]
+        )
+
+    result = scoring.recommend(
+        explore_catalog.conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[GLM_LOW, GLM_HIGH, KIMI],
+    )
+    assert [e["spec"] for e in result["explore"]] == [KIMI]
+
+
+def test_explore_low_data_red_flag_deprioritizes_model(explore_catalog):
+    explore_catalog.change("c1")
+    explore_catalog.session("c1", "S1", GLM_LOW, task_type="ui-component", incidents=[inc("false_claim")])
+    explore_catalog.session("c1", "S2", GLM_HIGH, task_type="ui-component")
+    explore_catalog.session("c1", "S3", GLM_HIGH, task_type="ui-component")
+
+    for order in ([GLM_LOW, GLM_HIGH, MINIMAX], [GLM_HIGH, GLM_LOW, MINIMAX]):
+        result = scoring.recommend(
+            explore_catalog.conn, task_type="ui-component", complexity="medium", available=order
+        )
+        assert [e["spec"] for e in result["explore"]] == [MINIMAX, GLM_HIGH]
+        assert result["explore"][1]["deprioritized"] == "red_flag_low_data"
+
+    # Both weak_start and low-data red flag -> red_flag_low_data wins.
+    explore_catalog.change("c2")
+    for idx in range(3):
+        explore_catalog.session("c2", f"A{idx + 1}", KIMI, task_type="docs")
+    explore_catalog.session(
+        "c2", "B1", MINIMAX, task_type="docs", verdict="rejected", incidents=[inc("false_claim")]
+    )
+    both = scoring.recommend(
+        explore_catalog.conn, task_type="docs", complexity="medium", available=[MINIMAX]
+    )
+    assert both["explore"][0]["deprioritized"] == "red_flag_low_data"
+
+
+def test_explore_weak_start_and_boundary(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", KIMI, task_type="ui-component")
+    explore_catalog.session("c1", "G1", GLM_LOW, task_type="ui-component", verdict="rejected")
+
+    result = scoring.recommend(
+        explore_catalog.conn, task_type="ui-component", complexity="medium", available=[GLM_LOW, MINIMAX]
+    )
+    assert [e["spec"] for e in result["explore"]] == [MINIMAX, GLM_LOW]
+    assert result["explore"][1]["deprioritized"] == "weak_start"
+
+    # Boundary: mean exactly 5 points below prior is not weak_start.
+    # 2 sessions at 100 + 1 session at 92.5 (100 - 1.5*5 blocking rule_violation) -> prior 97.5, diff = 5.0.
+    explore_catalog.change("c2")
+    explore_catalog.session("c2", "K1", KIMI, task_type="refactor")
+    explore_catalog.session("c2", "K2", KIMI, task_type="refactor")
+    explore_catalog.session(
+        "c2", "G1", GLM_LOW, task_type="refactor", incidents=[inc("rule_violation", severity="blocking")]
+    )
+    boundary = scoring.recommend(
+        explore_catalog.conn, task_type="refactor", complexity="medium", available=[GLM_LOW, MINIMAX]
+    )
+    by_spec = {e["spec"]: e for e in boundary["explore"]}
+    assert by_spec[GLM_LOW]["deprioritized"] is None
+
+
+def test_explore_deprioritized_sort_among_themselves(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"R{idx + 1}", FLASH, task_type="ui-component")
+    explore_catalog.session("c1", "M1", MINIMAX, task_type="ui-component", verdict="rejected")
+    explore_catalog.session("c1", "K1", KIMI, task_type="ui-component", verdict="rejected")
+    explore_catalog.session("c1", "G1", GLM_LOW, task_type="ui-component", verdict="rejected")
+    explore_catalog.session("c1", "G2", GLM_LOW, task_type="ui-component", verdict="rejected")
+
+    result = scoring.recommend(
+        explore_catalog.conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[MINIMAX, KIMI, GLM_LOW],
+    )
+    # All three are weak_start; tier 1 (GLM n=2, KIMI n=1) before tier 2 (MINIMAX n=1).
+    assert [e["spec"] for e in result["explore"]] == [GLM_LOW, KIMI, MINIMAX]
+    assert all(e["deprioritized"] == "weak_start" for e in result["explore"])
+
+
+def test_explore_sort_order_cost_then_n_then_spec(explore_catalog):
+    explore_catalog.change("c1")
+    explore_catalog.session("c1", "S1", GLM_LOW, task_type="bugfix")
+    explore_catalog.session("c1", "S2", GLM_LOW, task_type="bugfix")
+
+    result = scoring.recommend(
+        explore_catalog.conn,
+        task_type="bugfix",
+        complexity="medium",
+        available=[MINIMAX, KIMI, GLM_LOW],
+    )
+    assert [e["spec"] for e in result["explore"]] == [GLM_LOW, KIMI, MINIMAX]
+
+
+def test_explore_keeps_one_spec_per_model(explore_catalog):
+    first = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[GLM_LOW, GLM_HIGH]
+    )
+    assert [e["spec"] for e in first["explore"]] == [GLM_LOW]
+
+    explore_catalog.change("c1")
+    explore_catalog.session("c1", "S1", GLM_HIGH, task_type="bugfix")
+    second = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[GLM_LOW, GLM_HIGH]
+    )
+    assert [e["spec"] for e in second["explore"]] == [GLM_HIGH]
+
+
+def test_explore_split_efforts_and_listed_only(explore_catalog):
+    explore_catalog.change("c1")
+    explore_catalog.session("c1", "S1", GLM_LOW, task_type="bugfix")
+    explore_catalog.session("c1", "S2", GLM_LOW, task_type="bugfix")
+    explore_catalog.session("c1", "S3", GLM_HIGH, task_type="bugfix")
+
+    split = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[GLM_LOW, GLM_HIGH]
+    )
+    assert [e["spec"] for e in split["explore"]] == [GLM_LOW]
+
+    explore_catalog.session("c1", "S4", GLM_LOW, task_type="bugfix")
+    # 3 bugfix audits at :low, but only :high is listed -> :high is explorable.
+    unlisted = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[GLM_HIGH]
+    )
+    assert [e["spec"] for e in unlisted["explore"]] == [GLM_HIGH]
+
+    # When :low is listed too, the model is no longer explorable for bugfix.
+    listed = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[GLM_LOW, GLM_HIGH]
+    )
+    assert listed["explore"] == []
+    assert listed["explore_reason"] == "no_explorable_candidates"
+
+
+def test_explore_three_audits_at_high_blocks_model(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", GLM_HIGH, task_type="bugfix")
+
+    result = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[GLM_LOW, GLM_HIGH]
+    )
+    assert result["explore"] == []
+    assert result["explore_reason"] == "no_explorable_candidates"
+
+
+def test_explore_caps_at_three_and_exact_keys(explore_catalog):
+    result = scoring.recommend(
+        explore_catalog.conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[GLM_LOW, KIMI, MINIMAX, FLASH, SONNET],
+    )
+    assert len(result["explore"]) == 3
+    for entry in result["explore"]:
+        assert set(entry) == {"spec", "cost_tier", "n_task_type", "deprioritized"}
+
+
+def test_explore_no_explorable_candidates_reason(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", KIMI, task_type="bugfix")
+
+    result = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="medium", available=[KIMI]
+    )
+    assert result["explore"] == []
+    assert result["explore_reason"] == "no_explorable_candidates"
+
+
+def test_recommend_high_complexity_leak_pin(explore_catalog):
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", GLM_LOW, task_type="bugfix", complexity="low")
+
+    result = scoring.recommend(
+        explore_catalog.conn, task_type="bugfix", complexity="high", available=[GLM_LOW]
+    )
+    assert result["recommendation"]["spec"] == GLM_LOW
+    assert result["recommendation"]["level"] == "task_type"
+
+
+def test_show_change_exploration_budget(recorder):
+    # 4 sessions with 2 tagged explore -> allowed 1, over_budget True once closed.
+    recorder.change("c4")
+    pid = recorder.pid
+    recorder.session("c4", "S1", FLASH, tags="explore")
+    recorder.session("c4", "S2", FLASH, tags="ui,explore")
+    recorder.session("c4", "S3", FLASH, tags="exploreish")
+    recorder.session("c4", "S4", FLASH)
+    open_shown = scoring.show_change(recorder.conn, project_id=pid, ref="c4")
+    assert open_shown["exploration"] == {
+        "sessions": 4,
+        "exploratory": 2,
+        "allowed": 1,
+        "over_budget": None,
+    }
+    record.close_change(recorder.conn, project_id=pid, ref="c4")
+    closed_4 = scoring.show_change(recorder.conn, project_id=pid, ref="c4")
+    assert closed_4["exploration"] == {
+        "sessions": 4,
+        "exploratory": 2,
+        "allowed": 1,
+        "over_budget": True,
+    }
+
+    # 2 sessions with 1 tagged -> allowed 1, over_budget False; retry without tag still counts once.
+    recorder.change("c2")
+    recorder.session("c2", "S1", FLASH, tags="explore", verdict="rejected")
+    recorder.session("c2", "S1", FLASH, retry_reason="executor_failure")
+    recorder.session("c2", "S2", FLASH)
+    record.close_change(recorder.conn, project_id=pid, ref="c2")
+    closed_2 = scoring.show_change(recorder.conn, project_id=pid, ref="c2")
+    assert closed_2["exploration"] == {
+        "sessions": 2,
+        "exploratory": 1,
+        "allowed": 1,
+        "over_budget": False,
+    }
+
+    # 1 session with 1 tagged -> allowed 0, over_budget True.
+    recorder.change("c1")
+    recorder.session("c1", "S1", FLASH, tags="explore")
+    record.close_change(recorder.conn, project_id=pid, ref="c1")
+    closed_1 = scoring.show_change(recorder.conn, project_id=pid, ref="c1")
+    assert closed_1["exploration"] == {
+        "sessions": 1,
+        "exploratory": 1,
+        "allowed": 0,
+        "over_budget": True,
+    }
+
+
+def test_recommend_require_filters_and_preserves_scores(explore_catalog):
+    conn = explore_catalog.conn
+    catalog.set_model(conn, spec="claude:sonnet", capabilities={"vision": "yes"})
+    catalog.set_model(conn, spec="opencode:opencode-go/glm-5.3", capabilities={"vision": "yes"})
+    catalog.set_model(conn, spec="opencode:opencode-go/kimi-k3", capabilities={"vision": "no"})
+    # opencode:opencode-go/minimax-m3 stays unknown
+
+    explore_catalog.change("c1")
+    for idx in range(3):
+        explore_catalog.session("c1", f"S{idx + 1}", SONNET, task_type="ui-component", verdict="accepted")
+    for idx in range(3):
+        explore_catalog.session("c1", f"K{idx + 1}", KIMI, task_type="ui-component", verdict="rejected")
+
+    unfiltered = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[SONNET, GLM_LOW, KIMI, MINIMAX],
+    )
+    assert unfiltered["excluded"] == []
+
+    filtered = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[SONNET, GLM_LOW, KIMI, MINIMAX, KIMI],
+        require=["", " vision ", "vision", "  "],
+    )
+    assert [c["spec"] for c in filtered["candidates"]] == [SONNET, GLM_LOW]
+    assert filtered["recommendation"]["spec"] == SONNET
+    assert [e["spec"] for e in filtered["explore"]] == [GLM_LOW]
+    assert filtered["excluded"] == [
+        {"spec": KIMI, "missing": [{"capability": "vision", "value": "no"}]},
+        {"spec": MINIMAX, "missing": [{"capability": "vision", "value": "unknown"}]},
+    ]
+    # Scores of remaining candidates equal the scores without --require (prior still uses all records).
+    unfiltered_by_spec = {c["spec"]: c for c in unfiltered["candidates"]}
+    for cand in filtered["candidates"]:
+        assert cand == unfiltered_by_spec[cand["spec"]]
+
+
+def test_recommend_require_all_excluded(explore_catalog):
+    conn = explore_catalog.conn
+    catalog.set_model(conn, spec="opencode:opencode-go/kimi-k3", capabilities={"vision": "no"})
+
+    medium = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="medium",
+        available=[KIMI, MINIMAX],
+        require=["vision"],
+    )
+    assert medium["recommendation"] is None
+    assert medium["reason"] == "no_capable_candidates"
+    assert medium["candidates"] == []
+    assert medium["explore"] == []
+    assert medium["explore_reason"] == "no_explorable_candidates"
+    assert medium["excluded"] == [
+        {"spec": KIMI, "missing": [{"capability": "vision", "value": "no"}]},
+        {"spec": MINIMAX, "missing": [{"capability": "vision", "value": "unknown"}]},
+    ]
+
+    high = scoring.recommend(
+        conn,
+        task_type="ui-component",
+        complexity="high",
+        available=[KIMI, MINIMAX],
+        require=["vision"],
+    )
+    assert high["recommendation"] is None
+    assert high["reason"] == "no_capable_candidates"
+    assert high["candidates"] == []
+    assert high["explore"] == []
+    assert high["explore_reason"] == "complexity_not_explorable"
+    assert high["excluded"] == medium["excluded"]
+
+
+def test_recommend_require_validation_error(explore_catalog):
+    with pytest.raises(ChanchiError) as info:
+        scoring.recommend(
+            explore_catalog.conn,
+            task_type="ui-component",
+            complexity="medium",
+            available=[KIMI],
+            require=["vision", "audio"],
+        )
+    assert info.value.code == "invalid_value"
+    assert info.value.field == "require"
+    assert info.value.valid_values == ["vision"]
+
+    explain_data = scoring.explain()
+    assert explain_data["require"]["capabilities"] == ["vision"]
+    assert explain_data["require"]["values"] == ["yes", "no", "unknown"]
