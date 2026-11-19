@@ -1,7 +1,7 @@
 # Exploration Policy, Catalog Capabilities and Hugging Face Ordering for `chanchi recommend`
 
 *   **Author:** Iván R
-*   **Status:** Proposed
+*   **Status:** Implemented (merged on 2026-11-19: Phases 1-2 in `a524f3e`, Phase 3 in `fd167b0`)
 *   **Date:** 2026-11-17
 
 --------------------------------------------------------------------------------
