@@ -120,8 +120,8 @@ def cmd_skills_unlink(args):
 
 
 def cmd_change_open(args):
-    slug, path = projects.identify(args.project)
     with _conn() as conn:
+        slug, path = projects.identify(args.project, conn=conn)
         return {
             "change": record.open_change(
                 conn, project_slug=slug, project_path=path, ref=args.ref, kind=args.kind,

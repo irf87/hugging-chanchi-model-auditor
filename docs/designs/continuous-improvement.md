@@ -584,8 +584,9 @@ Functions, all in `projects.py` (the only module allowed to import `subprocess`,
 - `identify(slug=None, cwd=None, *, conn=None) -> tuple[str, str | None]`: step 2, then step 3
   when `conn` is given, then step 4. A registered match returns that project's slug and path.
   With an explicit slug and `conn`, the path is that project's `projects.path` when `locate()`
-  finds that same project for the working directory, and `None` otherwise (today the path is kept
-  only when the folder slug equals the explicit slug, `projects.py:58-62`).
+  finds that same project for the working directory, and `None` when it finds another one. When
+  `locate()` finds nothing, today's rule applies: the path is kept only when the folder slug
+  equals the explicit slug (`projects.py:58-62`), so unregistered projects work as before.
 - `resolve_project(conn, slug=None, cwd=None)`: unchanged contract; it now calls
   `identify(slug, cwd, conn=conn)`. Its hint for an unknown slug mentions
   `chanchi project register`.
