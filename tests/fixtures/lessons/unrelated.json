@@ -1,0 +1,13 @@
+{
+  "what_happened": "A nightly catalog refresh stopped halfway because one vendor entry carried a null price field and the importer had no fallback.",
+  "evidence": "The planner saw the refresh log end after the fourth vendor package with an unhandled null.",
+  "cause": "The importer assumed every price was a number.",
+  "prevention": "Validate numeric fields before the refresh writes any row.",
+  "proposal": "Leave out vendor entries with missing prices and report each package that was left out at the end of the refresh; the planner reads that report.",
+  "general_rule": "refresh jobs must validate numeric fields before writing rows",
+  "target": "module importer",
+  "generality": "particular",
+  "severity": "medium",
+  "target_kind": "module",
+  "particular_justification": "Only the catalog importer writes these rows."
+}

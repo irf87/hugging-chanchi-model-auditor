@@ -1,0 +1,12 @@
+{
+  "what_happened": "The planner audited session S3 of change add-export. The executor claimed the tests passed, but they never ran in the right package, and the planner had not checked the output. The change touched the export writer, the csv header order and two fixtures in the reporting module, and nobody reran the suite after the last edit.",
+  "evidence": "Incident 118: the report named no package and no command.",
+  "cause": "The executor treated a green summary as proof, and the planner accepted the claim without asking what ran.",
+  "prevention": "Ask for the command and the package before accepting a test claim.",
+  "proposal": "Have the planner refuse test claims that do not name what ran and what was skipped, and rerun them in the right package. The planner also keeps the exact command beside the claim, so the next audit can read it without asking.",
+  "general_rule": "test output counts as evidence only if it names what ran and what was skipped",
+  "target": "role executor",
+  "generality": "agnostic",
+  "severity": "high",
+  "target_kind": "role"
+}

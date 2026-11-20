@@ -40,6 +40,7 @@ commands print JSON; errors carry `field`, `valid_values` and `hint`.
    - `accepted` — nothing had to be corrected.
    - `accepted_with_fixes` — accepted after small corrections within the turn.
    - `rejected` — the turn's work is discarded or redone as a new attempt.
+   - If the audit found a failure of the process (not only of the model), after recording incidents, follow `chanchi-lessons` to record a lesson that links the session and incidents. A failure that is only one model's weakness stays an incident.
 6. **At archive time**: `chanchi change close <change-ref>`, then `chanchi show <change-ref>` and give
    the human the summary (session scores, planner score, incidents by role).
 

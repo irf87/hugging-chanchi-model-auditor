@@ -21,7 +21,7 @@ class Recorder:
         self.conn = conn
 
     def change(self, ref, planner="claude:opus:xhigh", kind="openspec"):
-        slug, path = projects.identify()
+        slug, path = projects.identify(conn=self.conn)
         return record.open_change(
             self.conn, project_slug=slug, project_path=path, ref=ref, kind=kind, planner=planner
         )

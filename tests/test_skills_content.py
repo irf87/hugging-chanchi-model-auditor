@@ -23,8 +23,17 @@ def frontmatter(path: Path) -> dict:
     return fields
 
 
-def test_both_skills_exist():
-    assert [p.parent.name for p in SKILL_FILES] == ["chanchi-model-selection", "chanchi-session-audit"]
+def test_all_skills_exist():
+    assert [p.parent.name for p in SKILL_FILES] == [
+        "chanchi-lessons",
+        "chanchi-model-selection",
+        "chanchi-session-audit",
+    ]
+
+
+def test_lessons_skill_is_at_most_150_lines():
+    lines = (SKILLS / "chanchi-lessons" / "SKILL.md").read_text(encoding="utf-8").splitlines()
+    assert len(lines) <= 150, len(lines)
 
 
 @pytest.mark.parametrize("path", SKILL_FILES, ids=lambda p: p.parent.name)

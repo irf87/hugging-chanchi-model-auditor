@@ -38,6 +38,53 @@ def git_repo(tmp_path, monkeypatch):
     return repo
 
 
+def _commit(repo):
+    import subprocess
+
+    (repo / "file.txt").write_text("initial")
+    subprocess.run(["git", "add", "file.txt"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "init"],
+        cwd=repo,
+        check=True,
+    )
+
+
+@pytest.fixture
+def registered_repo(tmp_path, monkeypatch, conn):
+    """A git repository named demo-app with one commit, registered, used as the current directory."""
+    import subprocess
+
+    from chanchi import projects
+
+    repo = tmp_path / "demo-app"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _commit(repo)
+    monkeypatch.chdir(repo)
+    projects.register(conn, repo)
+    return repo
+
+
+@pytest.fixture
+def nested_repo(tmp_path, monkeypatch, conn):
+    """A registered repository holding an independent, unregistered repository in inner/."""
+    import subprocess
+
+    from chanchi import projects
+
+    repo = tmp_path / "outer-app"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "inner").mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo / "inner", check=True)
+    _commit(repo / "inner")
+    _commit(repo)
+    monkeypatch.chdir(repo)
+    projects.register(conn, repo)
+    return repo
+
+
 @pytest.fixture
 def seeded(conn):
     """The operational connection with a small model catalog."""

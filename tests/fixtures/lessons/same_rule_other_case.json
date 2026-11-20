@@ -1,0 +1,12 @@
+{
+  "what_happened": "A reviewer read a summary from a build job that reported success for the whole monorepo, while the frontend workspace had no step at all and was never built. The dashboard showed a card count from the cached endpoint while the live endpoint returned fewer rows, and the reviewer closed the ticket before anyone compared them.",
+  "evidence": "Pipeline log with one green line and no per-workspace results.",
+  "cause": "The summary line was accepted as coverage without reading the list underneath it.",
+  "prevention": "Require the list of workspaces in every summary line before the summary counts.",
+  "proposal": "Ask for the list of workspaces and cases in each summary line and reject summaries that leave a workspace out. The reviewer also compares the cached count with the live endpoint before closing the ticket.",
+  "general_rule": "test output counts as evidence only if it names what ran and what was skipped",
+  "target": "role executor",
+  "generality": "agnostic",
+  "severity": "high",
+  "target_kind": "role"
+}
