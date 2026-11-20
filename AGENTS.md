@@ -15,7 +15,8 @@ restates or overrides these rules (`tests/test_agent_rules.py` guards this).
 |---|---|---|
 | agy CLI / Antigravity app | Natively (also reads `GEMINI.md` if present and merges both) | agy 1.5.13 canary test; app 2.33.0 session self-report, 2026-11-20 |
 | Claude Code | Does not read `AGENTS.md`; `CLAUDE.md` imports it with `@AGENTS.md` | claude canary test, 2026-11-20 |
-| opencode, Codex | Natively | documented |
+| opencode | Natively; never reads `CLAUDE.md`, even when `AGENTS.md` is missing | opencode 2.2.6 canary test, 2026-11-20 |
+| Codex | Natively | documented |
 
 Do not add a `GEMINI.md`: Antigravity already loads `AGENTS.md`, so it would only
 add a second, drifting source. Skills are exposed per harness by
