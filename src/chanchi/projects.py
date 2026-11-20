@@ -222,6 +222,15 @@ def writer_roles(conn: sqlite3.Connection, project_id: int | None) -> tuple[str,
     return tuple(r["role"] for r in rows) or DEFAULT_WRITER_ROLES
 
 
+def writers_info(conn: sqlite3.Connection, project_id: int | None) -> dict:
+    """The scope's effective writer roles and whether they are the default (none stored)."""
+    stored = conn.execute(
+        "SELECT COUNT(*) FROM writer_roles WHERE COALESCE(project_id, 0) = COALESCE(?, 0)",
+        (project_id,),
+    ).fetchone()[0]
+    return {"roles": list(writer_roles(conn, project_id)), "default": stored == 0}
+
+
 def set_writer_roles(
     conn: sqlite3.Connection, project_id: int | None, roles: Sequence[str]
 ) -> tuple[str, ...]:

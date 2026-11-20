@@ -9,12 +9,22 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-from chanchi import __version__, catalog, db, projects, record, scoring, skills_link, taxonomy
+from chanchi import (
+    __version__,
+    catalog,
+    db,
+    lessons,
+    projects,
+    record,
+    scoring,
+    skills_link,
+    taxonomy,
+)
 from chanchi.errors import EXIT_OK, ChanchiError
 from chanchi.render import render_text
 from chanchi.timeutil import since_to_iso
 
-FORMATS = ("json", "text")
+FORMATS = ("json", "text", "md")
 
 
 class _Parser(argparse.ArgumentParser):
@@ -222,13 +232,198 @@ def cmd_scoring_explain(args):
     return scoring.explain()
 
 
+# --- project and lesson handlers -------------------------------------------
+
+
+def _bad(field: str, message: str, **kwargs) -> ChanchiError:
+    return ChanchiError("invalid_value", message, field=field, **kwargs)
+
+
+def _actor(conn, args) -> lessons.Actor:
+    return lessons.make_actor(conn, args.as_role, args.author, args.conversation)
+
+
+def _read_json(source: str) -> object:
+    """The body of `--json -` (stdin) or `--json <file>`; anything unreadable or unparsable is invalid_value."""
+    try:
+        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise _bad("json", f"cannot read --json {source!r}: {exc.strerror or exc}", hint="use --json - or a readable file") from None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise _bad("json", f"--json is not valid JSON: {exc}", hint="send one JSON object") from None
+
+
+def _read_scope(conn, args) -> projects.Scope | None:
+    """Scope of a read command: --all, --global, --project, the resolved project, else every lesson (None)."""
+    if args.all:
+        if args.project is not None:
+            raise _bad("project", "--all cannot be combined with --project")
+        return None
+    if args.global_ or args.project is not None:
+        return projects.resolve_scope(conn, project=args.project, global_=args.global_)
+    try:
+        return projects.resolve_scope(conn)
+    except ChanchiError as exc:
+        if exc.code != "project_not_registered":
+            raise
+        return None
+
+
+def _project_arg(args) -> str | None:
+    """The slug of `project show` and `project writers`: a positional slug wins; both given must agree."""
+    slug = args.slug
+    if slug is not None and args.project is not None and args.project != slug:
+        raise _bad("project", f"the slug {slug!r} and --project {args.project!r} differ", hint="give only one")
+    return slug if slug is not None else args.project
+
+
+def cmd_project_register(args):
+    with _conn() as conn:
+        return projects.register(conn, name=args.name)
+
+
+def cmd_project_relink(args):
+    with _conn() as conn:
+        return projects.relink(conn, args.slug)
+
+
+def cmd_project_list(args):
+    with _conn() as conn:
+        return {"projects": projects.list_projects(conn)}
+
+
+def cmd_project_show(args):
+    with _conn() as conn:
+        slug = _project_arg(args)
+        if slug is None:
+            slug = projects.resolve_scope(conn).slug
+        return projects.show(conn, slug)
+
+
+def cmd_project_writers(args):
+    with _conn() as conn:
+        slug = _project_arg(args)
+        if args.global_ and slug is not None:
+            raise _bad("global", "--global cannot be combined with a project slug")
+        scope = projects.resolve_scope(conn, project=slug, global_=args.global_)
+        if args.set is None:
+            return {"scope": scope.slug or "global", **projects.writers_info(conn, scope.project_id)}
+        for flag, value in (("as", args.as_role), ("author", args.author), ("conversation", args.conversation)):
+            if value is None:
+                raise _bad(flag, f"--{flag} is required with --set")
+        return lessons.set_writers(conn, scope, _actor(conn, args), _split(args.set) or [])
+
+
+def cmd_lesson_add(args):
+    body = _read_json(args.json)
+    with _conn() as conn:
+        scope = projects.resolve_scope(conn, project=args.project, global_=args.global_)
+        return lessons.add(conn, scope, _actor(conn, args), body, force_new=args.force_new)
+
+
+def cmd_lesson_repeat(args):
+    with _conn() as conn:
+        return lessons.repeat(conn, _actor(conn, args), args.id, args.evidence, incident=args.incident)
+
+
+def cmd_lesson_modify(args):
+    body = _read_json(args.json)
+    with _conn() as conn:
+        return lessons.modify(conn, _actor(conn, args), args.id, body)
+
+
+def cmd_lesson_review(args):
+    with _conn() as conn:
+        return lessons.review(
+            conn, _actor(conn, args), args.id, args.decision, args.reason,
+            reason_code=args.reason_code, of=args.of,
+        )
+
+
+def cmd_lesson_reopen(args):
+    with _conn() as conn:
+        return lessons.reopen(conn, _actor(conn, args), args.id, args.reason)
+
+
+def _site_scope(conn, args) -> projects.Scope | None:
+    """`--site project` resolves the project from --project or the working directory; `global` needs none."""
+    if args.site != "project":
+        return None
+    return projects.resolve_scope(conn, project=args.project)
+
+
+def cmd_lesson_apply(args):
+    with _conn() as conn:
+        return lessons.apply(
+            conn, _actor(conn, args), args.id, args.site, args.where, project_scope=_site_scope(conn, args)
+        )
+
+
+def cmd_lesson_retire(args):
+    with _conn() as conn:
+        return lessons.retire(
+            conn, _actor(conn, args), args.id, args.site, args.reason, project_scope=_site_scope(conn, args)
+        )
+
+
+def cmd_lesson_similar(args):
+    with _conn() as conn:
+        return lessons.similar(conn, args.text, limit=args.limit)
+
+
+def cmd_lesson_list(args):
+    with _conn() as conn:
+        return lessons.list_lessons(
+            conn, _read_scope(conn, args), status=args.status, generality=args.generality,
+            target_kind=args.target_kind, limit=args.limit,
+        )
+
+
+def cmd_lesson_show(args):
+    with _conn() as conn:
+        return lessons.show(conn, args.id)
+
+
+def cmd_lesson_summary(args):
+    with _conn() as conn:
+        return lessons.summary(conn, _read_scope(conn, args))
+
+
+def cmd_lesson_export(args):
+    since = since_to_iso(args.since) if args.since else None
+    extra = {"status": _split(args.status)} if args.status is not None else {}
+    with _conn() as conn:
+        payload = lessons.export(
+            conn, _read_scope(conn, args), generality=args.generality, target_kind=args.target_kind,
+            since=since, limit=args.limit, **extra,
+        )
+    if args.format == "md":
+        payload["markdown"] = lessons.export_markdown(payload["lessons"])
+    return payload
+
+
 # --- parser ----------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     common.add_argument("--format", choices=FORMATS, default="json", help="output format (default: json)")
-    common.add_argument("--project", default=None, help="project slug (default: git toplevel name)")
+    common.add_argument(
+        "--project", default=None,
+        help="project slug (default: the registered project for this directory, else the git toplevel name)",
+    )
+    # commands that never take --project (they act on the lesson's origin, or on no project)
+    fmt_only = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    fmt_only.add_argument("--format", choices=FORMATS, default="json", help="output format (default: json)")
+
+    identity = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    identity.add_argument("--as", dest="as_role", required=True, help="the role you declare, e.g. planner")
+    identity.add_argument("--author", dest="author", required=True, help="agent:model[:effort] of whoever runs this")
+    identity.add_argument(
+        "--conversation", dest="conversation", required=True, help="conversation id, or a label you reuse"
+    )
 
     parser = _Parser(prog="chanchi", description="Turn planner/executor agent audits into model ratings.")
     parser.add_argument("--version", action="version", version=f"chanchi {__version__}")
@@ -239,8 +434,10 @@ def build_parser() -> argparse.ArgumentParser:
             dest="command", required=True, metavar="<subcommand>"
         )
 
-    def leaf(subparsers, name: str, handler, help_text: str):
-        p = subparsers.add_parser(name, parents=[common], help=help_text, description=help_text)
+    def leaf(subparsers, name: str, handler, help_text: str, parents=(), project: bool = True):
+        p = subparsers.add_parser(
+            name, parents=[common if project else fmt_only, *parents], help=help_text, description=help_text
+        )
         p.set_defaults(handler=handler)
         return p
 
@@ -360,6 +557,77 @@ def build_parser() -> argparse.ArgumentParser:
     p = leaf(top, "show", cmd_show, "timeline of one change: sessions, incidents, scores")
     p.add_argument("ref")
 
+    g = group("project", "register projects and manage who may write lessons")
+    p = leaf(g, "register", cmd_project_register, "register the project that contains this directory", project=False)
+    p.add_argument("--name", help="slug (default: the main worktree folder name)")
+    p = leaf(g, "relink", cmd_project_relink, "add this directory as a location of a registered project", project=False)
+    p.add_argument("slug")
+    leaf(g, "list", cmd_project_list, "list registered projects", project=False)
+    p = leaf(g, "show", cmd_project_show, "show one project: locations, writer roles, lesson counts")
+    p.add_argument("slug", nargs="?", help="default: the registered project for this directory")
+    p = leaf(g, "writers", cmd_project_writers, "show or set the roles that may write lessons")
+    p.add_argument("slug", nargs="?", help="default: the registered project for this directory")
+    p.add_argument("--global", dest="global_", action="store_true", help="the global writer roles")
+    p.add_argument("--set", metavar="ROLE,...", help="replace the writer roles (needs --as, --author, --conversation)")
+    p.add_argument("--as", dest="as_role", help="the role you declare (required with --set)")
+    p.add_argument("--author", dest="author", help="agent:model[:effort] (required with --set)")
+    p.add_argument("--conversation", dest="conversation", help="conversation id or label (required with --set)")
+
+    def read_scope(p):
+        mode = p.add_mutually_exclusive_group()
+        mode.add_argument("--all", action="store_true", help="every lesson, whatever its origin")
+        mode.add_argument("--global", dest="global_", action="store_true", help="only global lessons")
+
+    g = group("lesson", "record, review and apply lessons")
+    p = leaf(g, "add", cmd_lesson_add, "record a lesson from a JSON body", parents=[identity])
+    p.add_argument("--json", required=True, metavar="-|FILE", help="the lesson body: '-' reads stdin, else a file")
+    p.add_argument("--force-new", action="store_true", help="record even when it looks like an existing lesson")
+    p.add_argument("--global", dest="global_", action="store_true", help="record a global lesson")
+    p = leaf(g, "repeat", cmd_lesson_repeat, "count one more occurrence of a lesson", parents=[identity], project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--evidence", required=True)
+    p.add_argument("--incident", type=_int("incident"), help="an incident of the lesson's change")
+    p = leaf(g, "modify", cmd_lesson_modify, "replace the body of a pending or postponed lesson", parents=[identity], project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--json", required=True, metavar="-|FILE", help="the full lesson body: '-' reads stdin, else a file")
+    p = leaf(g, "review", cmd_lesson_review, "approve, reject, postpone or mark a lesson duplicate", parents=[identity], project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--decision", required=True, choices=taxonomy.LESSON_DECISIONS)
+    p.add_argument("--reason", required=True)
+    p.add_argument("--reason-code", help="with reject only: " + " | ".join(taxonomy.LESSON_REASON_CODES))
+    p.add_argument("--of", type=_int("of"), help="the lesson this one duplicates (required with duplicate)")
+    p = leaf(g, "reopen", cmd_lesson_reopen, "send a reviewed lesson back to pending", parents=[identity], project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--reason", required=True)
+    p = leaf(g, "apply", cmd_lesson_apply, "mark an approved lesson as applied at a site", parents=[identity])
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--site", required=True, help="global | project")
+    p.add_argument("--where", required=True, help='"<path> [lesson #<id>] @ <commit>"')
+    p = leaf(g, "retire", cmd_lesson_retire, "retire an applied lesson at a site", parents=[identity])
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--site", required=True, help="global | project")
+    p.add_argument("--reason", required=True)
+    p = leaf(g, "similar", cmd_lesson_similar, "find existing lessons that look like a text", project=False)
+    p.add_argument("text")
+    p.add_argument("--limit", type=_int("limit"), default=5)
+    p = leaf(g, "list", cmd_lesson_list, "list lessons")
+    p.add_argument("--status")
+    p.add_argument("--generality")
+    p.add_argument("--target-kind")
+    p.add_argument("--limit", type=_int("limit"), default=50)
+    read_scope(p)
+    p = leaf(g, "show", cmd_lesson_show, "one lesson with its sites, incidents and events", project=False)
+    p.add_argument("id", type=_int("id"))
+    p = leaf(g, "summary", cmd_lesson_summary, "counts by status, generality and applied place")
+    read_scope(p)
+    p = leaf(g, "export", cmd_lesson_export, "lessons for a review conversation, most urgent first")
+    p.add_argument("--status", help="comma list (default: pending,postponed)")
+    p.add_argument("--generality")
+    p.add_argument("--target-kind")
+    p.add_argument("--since", help="YYYY-MM-DD")
+    p.add_argument("--limit", type=_int("limit"), default=20)
+    read_scope(p)
+
     g = group("scoring", "scoring formulas")
     leaf(g, "explain", cmd_scoring_explain, "show current weights and formulas")
     return parser
@@ -379,7 +647,9 @@ def _sniff_format(argv: list[str]) -> str:
 
 
 def _emit(payload: dict, fmt: str, stream) -> None:
-    if fmt == "text":
+    if fmt == "md" and isinstance(payload.get("markdown"), str):
+        stream.write(payload["markdown"])
+    elif fmt in ("text", "md"):
         stream.write(render_text(payload))
     else:
         stream.write(json.dumps(payload, indent=2, ensure_ascii=False, default=str) + "\n")

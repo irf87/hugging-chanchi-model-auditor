@@ -791,8 +791,9 @@ is always the slug, `global`, or `all`.
 incident with `voided_at` set (voided) cannot be linked by `add`, `modify` or `repeat`
 (`invalid_value`, `field` = `incidents`).
 
-**Read commands.** They need no writer role and no registered project. They take `--project`,
-`--global` or `--all` to choose the lessons by origin. With no flag, they use the resolved project
+**Read commands.** They need no writer role and no registered project. `list`, `summary` and
+`export` take `--project`, `--global` or `--all` to choose the lessons by origin; `similar` and
+`show` take no scope flag, because they look at every lesson. With no flag, they use the resolved project
 when one resolves, and every lesson otherwise. The response names the scope it used (`"scope"`).
 
 - `list [--status ...] [--generality ...] [--target-kind ...] [--limit 50]`: one row per lesson
@@ -1457,7 +1458,7 @@ the next one starts.
     each command that accepts `--global` adds it itself with `dest="global_"`, as
     `cli.py:286` does for `skills link`.
   - Where `--global` is accepted (Technical Plan §3, "Scope flags"): `lesson add`, `project
-    writers`, and the read commands `similar`, `list`, `summary`, `export`. `lesson repeat`,
+    writers`, and the read commands `list`, `summary`, `export`. `lesson repeat`,
     `modify`, `review` and `reopen` take neither `--global` nor `--project`: they act on the
     lesson's origin. `lesson apply` and `retire` take `--site global|project`, and `--project`
     only to name the project when `--site project` is run outside it.
@@ -1469,8 +1470,8 @@ the next one starts.
     over `--project`; if both are given and differ, it fails with `invalid_value`. `--global` with
     a slug fails with `invalid_value`.
   - New group `lesson`: `add`, `repeat`, `modify`, `review`, `reopen`, `apply`, `retire` (with
-    `identity`), and `similar`, `list`, `show`, `summary`, `export` (with `--all` and `--global`,
-    mutually exclusive). `add` and `modify` take `--json -` (stdin) or `--json <file>`; `add` takes
+    `identity`), `list`, `summary`, `export` (with `--all` and `--global`, mutually exclusive),
+    and `similar`, `show` (no scope flag: they look at every lesson). `add` and `modify` take `--json -` (stdin) or `--json <file>`; `add` takes
     `--force-new`. `review --decision` uses `choices=LESSON_DECISIONS`; every other enum flag is
     validated in `lessons.py` with `taxonomy.validate_choice`, so the error envelope matches.
   - Handlers only parse arguments and call `projects` or `lessons`, as the existing handlers call
