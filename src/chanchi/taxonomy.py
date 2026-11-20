@@ -164,6 +164,19 @@ EXPLORE_MAX = 3
 CAPABILITIES = ("vision",)
 CAPABILITY_VALUES = ("yes", "no", "unknown")
 
+# Lessons (continuous improvement, stage 1). Enum sets live here, not in SQL CHECK constraints,
+# so they can change without rebuilding a table (see the design, Technical Plan section 1).
+LESSON_TARGET_KINDS = ("role", "skill", "wrapper", "rules-file", "hook", "permission", "workflow", "tool")
+# Review order.
+LESSON_GENERALITIES = ("agnostic", "project", "particular")
+LESSON_SEVERITIES = ("critical", "high", "medium", "low")
+LESSON_STATUSES = ("pending", "approved", "rejected", "postponed", "duplicate")
+LESSON_DECISIONS = ("approve", "reject", "postpone", "duplicate")
+LESSON_REASON_CODES = ("model_weakness", "covered", "too_costly", "symptom_only")
+LESSON_SITE_STATES = ("applied", "declined", "not_applicable", "retired")
+LOCATOR_KINDS = ("path",)
+DEFAULT_WRITER_ROLES = ("planner",)
+
 
 def validate_choice(field: str, value, allowed: Iterable):
     """Return value if it is allowed; otherwise raise an invalid_value error listing the options."""
@@ -246,5 +259,16 @@ def describe() -> dict:
         "capabilities": {
             "names": list(CAPABILITIES),
             "values": list(CAPABILITY_VALUES),
+        },
+        "lessons": {
+            "target_kinds": list(LESSON_TARGET_KINDS),
+            "generalities": list(LESSON_GENERALITIES),
+            "severities": list(LESSON_SEVERITIES),
+            "statuses": list(LESSON_STATUSES),
+            "decisions": list(LESSON_DECISIONS),
+            "reason_codes": list(LESSON_REASON_CODES),
+            "site_states": list(LESSON_SITE_STATES),
+            "locator_kinds": list(LOCATOR_KINDS),
+            "default_writer_roles": list(DEFAULT_WRITER_ROLES),
         },
     }

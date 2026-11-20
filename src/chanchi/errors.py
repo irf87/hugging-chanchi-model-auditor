@@ -20,6 +20,12 @@ ERROR_CODES = frozenset(
         "link_conflict",
         "schema_too_new",
         "database_busy",
+        "project_not_registered",
+        "not_a_writer",
+        "self_review",
+        "duplicate_lesson",
+        "invalid_transition",
+        "lesson_not_found",
         "internal",
     }
 )
@@ -36,6 +42,7 @@ class ChanchiError(Exception):
         field: str | None = None,
         valid_values: Iterable | None = None,
         hint: str | None = None,
+        details: dict | None = None,
     ) -> None:
         if code not in ERROR_CODES:
             raise ValueError(f"unknown error code: {code}")
@@ -45,6 +52,7 @@ class ChanchiError(Exception):
         self.field = field
         self.valid_values = list(valid_values) if valid_values is not None else None
         self.hint = hint
+        self.details = details
 
     @property
     def exit_code(self) -> int:
@@ -58,4 +66,6 @@ class ChanchiError(Exception):
             error["valid_values"] = self.valid_values
         if self.hint is not None:
             error["hint"] = self.hint
+        if self.details is not None:
+            error["details"] = self.details
         return {"ok": False, "error": error}

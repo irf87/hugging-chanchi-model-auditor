@@ -1,7 +1,7 @@
 import pytest
 
 from chanchi import taxonomy as tx
-from chanchi.errors import EXIT_INTERNAL, EXIT_VALIDATION, ChanchiError
+from chanchi.errors import ERROR_CODES, EXIT_INTERNAL, EXIT_VALIDATION, ChanchiError
 from chanchi.timeutil import parse, since_to_iso, utc_now
 
 
@@ -169,3 +169,150 @@ def test_timeutil_roundtrip_and_since():
 
 def test_since_to_iso_normalises_unpadded_dates():
     assert since_to_iso("2026-9-1") == "2026-09-01T00:00:00Z"
+
+
+# --- lessons ----------------------------------------------------------------
+
+
+def test_describe_lists_lesson_sets():
+    lessons = tx.describe()["lessons"]
+    assert lessons == {
+        "target_kinds": [
+            "role", "skill", "wrapper", "rules-file", "hook", "permission", "workflow", "tool",
+        ],
+        "generalities": ["agnostic", "project", "particular"],
+        "severities": ["critical", "high", "medium", "low"],
+        "statuses": ["pending", "approved", "rejected", "postponed", "duplicate"],
+        "decisions": ["approve", "reject", "postpone", "duplicate"],
+        "reason_codes": ["model_weakness", "covered", "too_costly", "symptom_only"],
+        "site_states": ["applied", "declined", "not_applicable", "retired"],
+        "locator_kinds": ["path"],
+        "default_writer_roles": ["planner"],
+    }
+
+
+def test_lesson_sets_are_tuples_of_unique_strings():
+    sets = (
+        tx.LESSON_TARGET_KINDS,
+        tx.LESSON_GENERALITIES,
+        tx.LESSON_SEVERITIES,
+        tx.LESSON_STATUSES,
+        tx.LESSON_DECISIONS,
+        tx.LESSON_REASON_CODES,
+        tx.LESSON_SITE_STATES,
+        tx.LOCATOR_KINDS,
+        tx.DEFAULT_WRITER_ROLES,
+    )
+    for values in sets:
+        assert all(isinstance(v, str) for v in values)
+        assert len(values) == len(set(values))
+
+
+def test_lesson_severity_uses_critical_not_blocking():
+    # Lesson severity and incident severity are different scales (design, Vocabulary and states).
+    assert "critical" in tx.LESSON_SEVERITIES
+    assert "blocking" not in tx.LESSON_SEVERITIES
+    assert "blocking" in tx.SEVERITIES
+
+
+def test_existing_sets_are_unchanged_by_lessons():
+    described = tx.describe()
+    assert described["agents"] == ["claude", "agy", "opencode"]
+    assert described["severities"][-1] == {"value": "blocking", "multiplier": 5}
+
+
+# --- error envelope details and lesson codes --------------------------------
+
+
+def test_details_appear_in_envelope_only_when_set():
+    with_details = ChanchiError("duplicate_lesson", "x", details={"id": 4})
+    assert with_details.to_dict() == {
+        "ok": False,
+        "error": {"code": "duplicate_lesson", "message": "x", "details": {"id": 4}},
+    }
+    assert "details" not in ChanchiError("duplicate", "x").to_dict()["error"]
+
+
+@pytest.mark.parametrize(
+    ("code", "kwargs", "expected"),
+    [
+        (
+            "project_not_registered",
+            {
+                "field": "project",
+                "hint": "chanchi project register",
+            },
+            {"field": "project", "hint": "chanchi project register"},
+        ),
+        (
+            "not_a_writer",
+            {
+                "field": "as",
+                "valid_values": ("planner",),
+                "hint": "chanchi project writers <scope> --set ...",
+            },
+            {"field": "as", "valid_values": ["planner"], "hint": "chanchi project writers <scope> --set ..."},
+        ),
+        (
+            "self_review",
+            {
+                "field": "conversation",
+                "hint": "review it from another conversation",
+            },
+            {"field": "conversation", "hint": "review it from another conversation"},
+        ),
+        (
+            "duplicate_lesson",
+            {
+                "field": "general_rule",
+                "details": {"id": 4, "status": "approved", "general_rule": "r", "shared": True, "test": "t"},
+                "hint": "chanchi lesson repeat 4 --evidence ...",
+            },
+            {
+                "field": "general_rule",
+                "details": {"id": 4, "status": "approved", "general_rule": "r", "shared": True, "test": "t"},
+                "hint": "chanchi lesson repeat 4 --evidence ...",
+            },
+        ),
+        (
+            "invalid_transition",
+            {
+                "field": "status",
+                "valid_values": ("pending", "postponed"),
+                "hint": "chanchi lesson reopen 4",
+            },
+            {
+                "field": "status",
+                "valid_values": ["pending", "postponed"],
+                "hint": "chanchi lesson reopen 4",
+            },
+        ),
+        (
+            "lesson_not_found",
+            {
+                "field": "id",
+                "hint": "chanchi lesson list",
+            },
+            {"field": "id", "hint": "chanchi lesson list"},
+        ),
+    ],
+)
+def test_lesson_error_codes_build_the_table_envelope(code, kwargs, expected):
+    message = f"{code} message"
+    err = ChanchiError(code, message, **kwargs)
+    assert err.exit_code == EXIT_VALIDATION
+    assert err.to_dict() == {"ok": False, "error": {"code": code, "message": message, **expected}}
+
+
+def test_new_error_codes_are_registered():
+    for code in (
+        "project_not_registered",
+        "not_a_writer",
+        "self_review",
+        "duplicate_lesson",
+        "invalid_transition",
+        "lesson_not_found",
+    ):
+        assert code in ERROR_CODES
+        ChanchiError(code, "x")
+

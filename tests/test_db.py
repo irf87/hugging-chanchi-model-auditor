@@ -6,7 +6,20 @@ import pytest
 from chanchi import db, taxonomy
 from chanchi.errors import ChanchiError
 
-OPERATIONAL_TABLES = ("projects", "changes", "sessions", "incidents", "model_capabilities")
+OPERATIONAL_TABLES = (
+    "projects",
+    "changes",
+    "sessions",
+    "incidents",
+    "model_capabilities",
+    "project_locators",
+    "writer_roles",
+    "lessons",
+    "lesson_sites",
+    "lesson_replaces",
+    "lesson_incidents",
+    "lesson_events",
+)
 
 
 def _schema(conn):
@@ -237,11 +250,11 @@ def test_migration_v1_to_v2_preserves_data(tmp_path):
 
         synthetic_migrations = [
             *db.migrations(),
-            (4, "004_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
+            (5, "005_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
         ]
         new_applied = db.apply_migrations(conn, migrations_list=synthetic_migrations)
-        assert new_applied == [2, 3, 4]
-        assert db.user_version(conn) == 4
+        assert new_applied == [2, 3, 4, 5]
+        assert db.user_version(conn) == 5
 
         assert conn.execute("SELECT slug FROM projects WHERE id = 1").fetchone()[0] == "demo"
         assert conn.execute("SELECT ref FROM changes WHERE id = 1").fetchone()[0] == "c1"
@@ -269,8 +282,8 @@ def test_migration_v2_keeps_user_task_types(tmp_path):
         )
 
         new_applied = db.apply_migrations(conn)
-        assert new_applied == [2, 3]
-        assert db.user_version(conn) == 3
+        assert new_applied == [2, 3, 4]
+        assert db.user_version(conn) == 4
 
         rows = {
             row["code"]: row["description"]
@@ -281,5 +294,27 @@ def test_migration_v2_keeps_user_task_types(tmp_path):
         )
         assert rows["unit-tests"] == "My own unit tests"
         assert rows["custom-type"] == "A user-defined type"
+    finally:
+        conn.close()
+
+
+def test_migration_v3_to_v4_keeps_projects_and_adds_registered_at(tmp_path):
+    db_file = tmp_path / "v3_to_v4.db"
+    conn = db.connect(db_file, wal=False)
+    try:
+        applied = db.apply_migrations(conn, db.migrations()[:3])
+        assert applied == [1, 2, 3]
+        assert db.user_version(conn) == 3
+
+        conn.execute("INSERT INTO projects (slug, path, created_at) VALUES ('demo', '/demo', '2026-10-18T00:00:00Z')")
+        before = tuple(conn.execute("SELECT id, slug FROM projects").fetchone())
+
+        new_applied = db.apply_migrations(conn)
+        assert new_applied == [4]
+        assert db.user_version(conn) == 4
+
+        row = conn.execute("SELECT id, slug, registered_at FROM projects").fetchone()
+        assert (row["id"], row["slug"]) == before
+        assert row["registered_at"] is None
     finally:
         conn.close()
