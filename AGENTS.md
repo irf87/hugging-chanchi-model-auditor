@@ -2,8 +2,25 @@
 
 Harness-agnostic instructions for any AI coding agent working on this repository
 (Claude Code, agy/Antigravity, opencode, Codex, Cursor, …). This file is the single
-source of truth. Harness-specific files (`CLAUDE.md`, `GEMINI.md`) only point here
-and add what is unique to that harness; they never restate or override these rules.
+source of truth for project rules.
+
+## Harness Entry Points
+
+Every harness must receive this file automatically at session start, never by
+trusting the model to "read AGENTS.md". Add a harness-specific file only when the
+harness cannot load `AGENTS.md` by itself, and keep it a thin wrapper that never
+restates or overrides these rules (`tests/test_agent_rules.py` guards this).
+
+| Harness | How it loads `AGENTS.md` | Verified |
+|---|---|---|
+| agy CLI / Antigravity app | Natively (also reads `GEMINI.md` if present and merges both) | agy 1.5.13 canary test; app 2.33.0 session self-report, 2026-11-20 |
+| Claude Code | Does not read `AGENTS.md`; `CLAUDE.md` imports it with `@AGENTS.md` | claude canary test, 2026-11-20 |
+| opencode, Codex | Natively | documented |
+
+Do not add a `GEMINI.md`: Antigravity already loads `AGENTS.md`, so it would only
+add a second, drifting source. Skills are exposed per harness by
+`chanchi skills link`: `.agents/skills/` (opencode, agy) and `.claude/skills/`
+(Claude Code).
 
 ## Purpose
 
