@@ -1317,13 +1317,14 @@ the next one starts.
 #### 9. `src/chanchi/data/stopwords_en.txt` (Create)
 
 - **Type / Scope**: data file, one lowercase word per line, `#` comments allowed.
-- **Proposed Changes**: exactly these words, the function words of 4 or more letters that occur in
-  lesson text, plus four words frequent in lesson text: `about`, `after`, `again`, `because`,
+- **Proposed Changes**: exactly these words: the function words of 4 or more letters that occur in
+  lesson text (`about`, `after`, `again`, `because`,
   `before`, `being`, `between`, `could`, `does`, `doing`, `during`, `each`, `from`, `have`,
   `having`, `into`, `more`, `most`, `other`, `over`, `same`, `should`, `some`, `such`, `than`,
   `that`, `their`, `them`, `then`, `there`, `these`, `they`, `this`, `those`, `through`, `under`,
   `until`, `very`, `were`, `what`, `when`, `where`, `which`, `while`, `will`, `with`, `would`,
-  `your`, and the domain words `agent`, `lesson`, `rule`, `session`. Shorter words are not listed
+  `your`), plus four domain words frequent in lesson text (`agent`, `lesson`, `rule`,
+  `session`). Shorter words are not listed
   because the tokenizer drops them. It ships inside the package (`pyproject.toml:16-17` packages
   `src/chanchi`).
 
