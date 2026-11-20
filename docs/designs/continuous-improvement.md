@@ -3,8 +3,10 @@
 - **Author:** Iván R
 - **Status:** Proposed
 - **Date:** 2026-11-19
-- **Revision:** 2 (after the Goldfish review in
-  [reviews/continuous-improvement/](reviews/continuous-improvement/consolidated_review_report.md))
+- **Revision:** 3 (after the Goldfish review in
+  [reviews/continuous-improvement/](reviews/continuous-improvement/consolidated_review_report.md)
+  and its readiness re-audit,
+  [implementation_readiness_report_round2.md](reviews/continuous-improvement/implementation_readiness_report_round2.md))
 - **Brief:** [continuous-improvement.brief.md](continuous-improvement.brief.md)
   (Revision 2). This document is complete without it.
 
@@ -335,7 +337,7 @@ measure different things, and `lesson add` rejects `blocking` with a hint.
 | From | Command | To | Precondition |
 |---|---|---|---|
 | (new) | `lesson add` | `pending` | no blocking duplicate, or `--force-new` |
-| `pending`, `postponed` | `lesson review --decision approve` | `approved` | review conversation differs from `author_conversation` |
+| `pending`, `postponed` | `lesson review --decision approve` | `approved` | review conversation differs from `author_conversation`; `--reason` required |
 | `pending`, `postponed` | `lesson review --decision reject` | `rejected` | same; `--reason` required |
 | `pending` | `lesson review --decision postpone` | `postponed` | same; `--reason` required |
 | `pending`, `postponed` | `lesson review --decision duplicate --of N` | `duplicate` | N exists, is not this lesson, and is not `duplicate`; occurrences move to N |
@@ -581,6 +583,9 @@ Functions, all in `projects.py` (the only module allowed to import `subprocess`,
   registered project; the longest match is chosen in Python. No git call.
 - `identify(slug=None, cwd=None, *, conn=None) -> tuple[str, str | None]`: step 2, then step 3
   when `conn` is given, then step 4. A registered match returns that project's slug and path.
+  With an explicit slug and `conn`, the path is that project's `projects.path` when `locate()`
+  finds that same project for the working directory, and `None` otherwise (today the path is kept
+  only when the folder slug equals the explicit slug, `projects.py:58-62`).
 - `resolve_project(conn, slug=None, cwd=None)`: unchanged contract; it now calls
   `identify(slug, cwd, conn=conn)`. Its hint for an unknown slug mentions
   `chanchi project register`.
@@ -607,8 +612,9 @@ Functions, all in `projects.py` (the only module allowed to import `subprocess`,
 - `writer_roles(conn, project_id | None) -> tuple[str, ...]`: the scope's rows, or
   `DEFAULT_WRITER_ROLES` when it has none.
 - `set_writer_roles(conn, project_id | None, roles)`: replaces the scope's rows in one
-  transaction. Changing them is a guarded write: the caller must declare a current writer role of
-  that scope or be `human`.
+  transaction, with no actor check of its own. Changing them is a guarded write done through
+  `lessons.set_writers`, which checks that the caller declares a current writer role of that
+  scope or is `human` (`projects.py` cannot import `lessons`).
 
 `cli.cmd_change_open` opens the connection first and calls `identify(args.project, conn=conn)`,
 so a change opened inside a registered project gets the registered slug, and `ensure()` finds its
@@ -625,10 +631,16 @@ so a stage-3 hook can read them from the command line:
   On `add` it fills the `author_*` columns; on every other write it fills the event's
   `actor_agent`. `modelspec.parse` validates the agent against `taxonomy.ALL_AGENTS` and
   recognizes the last segment as an effort only when it is in `taxonomy.EFFORTS`; otherwise that
-  segment stays in the model name. `make_actor` therefore refuses a model name that still contains
-  `:` (for example `claude:opus:hgh`) with `invalid_value`, `valid_values` = `EFFORTS`. The model
-  name is otherwise free text. `author_model_id` comes from `catalog._model_row(conn, agent,
-  model)`; a miss leaves it NULL and is not an error. Nothing is ever inserted into `models`. A
+  segment stays in the model name. Model names may contain `:` (opencode models such as
+  `openrouter/qwen/qwen3-coder:free`, seeded at `tests/conftest.py:53`), so a colon alone is not
+  an error. `make_actor` first looks up `(agent, model)` with `catalog._model_row(conn, agent,
+  model)`; an exact match is accepted and sets `author_model_id`. Only when there is no match, the
+  model name contains `:`, and its last `:` segment is within edit distance 2 of a value of
+  `taxonomy.EFFORTS` (for example `claude:opus:hgh`), it is refused as a mistyped effort with
+  `invalid_value`, `field` = `author`, `valid_values` = `EFFORTS`. Its hint says that a real model
+  name with that suffix (for example `:pro`, distance 2 from `low`) is accepted once it is in the
+  catalog with `chanchi models add`. The model name is otherwise free text, and a miss leaves
+  `author_model_id` NULL and is not an error. Nothing is ever inserted into `models`. A
   missing effort is stored as NULL. `--author human` parses to `human:human`, which migration 001
   seeds in the catalog.
 - `--conversation <id | label>`: the conversation id, or a label chosen once and reused (CUJ 1).
@@ -658,7 +670,25 @@ otherwise lose the right to review its own agnostic lessons.
 | the same with `--site global` | global |
 | `project writers --set` | the scope being changed |
 
-**The `add` JSON body.** Unknown keys fail with `invalid_value` listing the valid keys.
+**Scope flags.** `--global` and `--project` choose a scope only where one is needed:
+
+- `lesson add`: `--global` records a global-origin lesson; otherwise the origin is the resolved
+  project (`resolve_scope`).
+- `lesson repeat`, `modify`, `review`, `reopen`: no scope flag. The scope is the lesson's origin,
+  read from the row, so these work from any directory, registered or not.
+- `lesson apply`, `retire` (and `decline`, `reopen-site` in stage 2): `--site global` needs no
+  project. `--site project` resolves the project from `--project` or the working directory with
+  `resolve_scope`.
+- `project writers`: `--global`, a slug, or the resolved project.
+- Read commands: `--project`, `--global` or `--all`, as described below.
+
+**The `add` JSON body.** The body must be a JSON object. Unknown keys fail with `invalid_value`
+listing the valid keys. The type of every key is checked first, before any other rule: a value of
+the wrong JSON type (for example a number for `cause`, or a string for `incidents`) fails with
+`invalid_value`, `field` = the key. Only then is text validated with `record._required_text`,
+which expects a string. Tags are normalized with
+`record._csv(",".join(v) if isinstance(v, list) else v) or ""`, because `_csv` takes a string and
+returns `None` for an empty list.
 
 | Key | Type | Rule |
 |---|---|---|
@@ -686,16 +716,24 @@ retired site.
   event note. `--incident N` must belong to the lesson's change; a lesson with no change cannot
   link one. Refused on `duplicate`, with the hint naming `duplicate_of`. On `rejected` it returns
   the warning `rejected_recurs` with the stored `reason_code` and `decision_reason`.
-- `modify <id> --json -`: replaces every content field with the same rules as `add`, and runs the
-  duplicate check again without comparing the lesson with itself. Only `pending` or `postponed`,
-  and only when `--conversation` equals `author_conversation`.
+- `modify <id> --json -`: takes a full body with the same rules as `add` and replaces the text
+  fields, the enums (`generality`, `severity`, `target_kind`, `particular_justification`) and
+  `tags`. It replaces the `incidents` and `replaces` links (delete the lesson's rows, then insert
+  the new ones). It keeps `change`, `session` and `git_head`; a body whose `change` or `session`
+  differs from the stored one fails with `invalid_value`. It runs the duplicate check again
+  without comparing the lesson with itself. Only `pending` or `postponed`, and only when
+  `--conversation` equals `author_conversation`.
 - `review <id> --decision ... --reason ... [--reason-code ...] [--of N]`: per the decision table.
-  Refused with `self_review` when `--conversation` equals `author_conversation`.
-  `--reason-code model_weakness` requires a linked session. `duplicate --of N` adds this lesson's
-  occurrences to N and records the moved count in the event note. Lessons that were already
-  `duplicate_of` this one are re-pointed to N in the same transaction.
-- `reopen <id> --reason`: per the decision table. From `duplicate`, it subtracts the moved count
-  from the lesson its `duplicate_of` now names, but never below 1. It clears `reviewed_at`,
+  `--reason` is required for every decision. `--reason-code` is optional with `reject` and
+  refused with any other decision. `--of N` is required with
+  `duplicate` and refused otherwise. Refused with `self_review` when `--conversation` equals
+  `author_conversation`. `--reason-code model_weakness` requires a linked session.
+  `duplicate --of N` adds this lesson's occurrences to N and writes the event note
+  `moved=<n> to=#<N>`; no column stores the count. Lessons that were already `duplicate_of` this
+  one are re-pointed to N in the same transaction; their own notes are not changed.
+- `reopen <id> --reason`: per the decision table. From `duplicate`, it reads `<n>` from the
+  latest `reviewed` event of this lesson whose note starts with `moved=`, and subtracts it from
+  the lesson its `duplicate_of` now names, but never below 1. It clears `reviewed_at`,
   `reviewed_by_role`, `review_conversation`, `decision_reason`, `reason_code` and `duplicate_of`.
 - `apply <id> --site global|project --where "<path> [lesson #<id>] @ <commit>"`: per the site
   table. The commit part is optional. `where_` must contain `[lesson #<id>]`. A `project` or
@@ -722,6 +760,35 @@ site state for site-level actions (NULL when there was no row).
 
 A `force_new` event's note records the matched lesson id, its coverage and the shared token count,
 so overrides can be used later to retune the thresholds.
+
+**Results.** Every command prints one JSON object. A **lesson dict** is every column of the
+`lessons` row, with `tags` as a list of strings and an added `origin` (the slug, or `global`). A
+**site dict** is `{site, project (slug or null), state, where_, reason, decided_conversation,
+decided_at}`. `"scope"`
+is always the slug, `global`, or `all`.
+
+| Command | Result |
+|---|---|
+| `lesson add`, `modify` | `{"lesson": <lesson>, "warnings": [{id, kind, general_rule, shared}]}` |
+| `lesson repeat` | `{"lesson": <lesson>, "warnings": [...]}`; on `rejected` one warning `{"kind": "rejected_recurs", "id", "reason_code", "decision_reason"}` |
+| `lesson review` | `{"lesson": <lesson>, "repointed": [<ids>]}` (`repointed` is empty except for `duplicate`) |
+| `lesson reopen` | `{"lesson": <lesson>}` |
+| `lesson apply`, `retire` | `{"lesson": <lesson>, "site": <site>}`; in stage 2 `apply` adds `"retired": [{"id", "site"}]` |
+| `lesson list` | `{"scope", "lessons": [<row of the list command>]}` |
+| `lesson show` | `{"lesson", "sites", "replaces": [<ids>], "incidents": [<record.incident_dict>], "events": [<event row>]}` |
+| `lesson similar` | `{"scope": "all", "matches": [{id, status, generality, origin, general_rule, coverage, shared}]}` |
+| `lesson summary` | `{"scope", "by_status": {}, "by_generality": {}, "applied_sites": {"global": n, "<slug>": n}, "force_new_rate": <float or null>}`; stage 2 adds `"inbox"` |
+| `lesson export` | `{"scope", "lessons": [<lesson>], "markdown": <string, only with --format md>}` |
+| `project register` | `{"project": <project>, "already_registered": bool, "adopted": bool}` |
+| `project relink` | `{"project": <project>, "locator": <path>, "added": bool}` |
+| `project list` | `{"projects": [<project>]}` |
+| `project show` | `<project>`: `{id, slug, path, registered_at, locators: [<path>], writers: {roles, default}, lessons: {<status>: n}}` |
+| `project writers` | `{"scope", "roles": [...], "default": bool}` |
+
+`force_new_rate` is null when there are no `created` or `force_new` events. `incidents` use
+`record.incident_dict`, so they carry the session ref and the model as `chanchi show` does. An
+incident with `voided_at` set (voided) cannot be linked by `add`, `modify` or `repeat`
+(`invalid_value`, `field` = `incidents`).
 
 **Read commands.** They need no writer role and no registered project. They take `--project`,
 `--global` or `--all` to choose the lessons by origin. With no flag, they use the resolved project
@@ -751,8 +818,13 @@ when one resolves, and every lesson otherwise. The response names the scope it u
 - `tokens(text) -> set[str]`: lowercase; split on any character that is not a letter or a digit;
   keep tokens with 4 or more characters that are not in `data/stopwords_en.txt`.
 - `coverage(a, b) = |a ∩ b| / min(|a|, |b|)` (0 when either is empty).
-- `similar(text, candidates, limit=5)`: candidates sharing at least 2 tokens, ordered by coverage,
-  then shared count, then id.
+- A **candidate** is a plain dict `{"id": int, "full": str, "rule": str}`, where `full` is
+  `what_happened + " " + general_rule + " " + proposal` and `rule` is `general_rule`. The new
+  lesson is passed in the same shape (with `id` = `None`).
+- `similar(text, candidates, limit=5)`: compares `tokens(text)` with each candidate's `full`
+  tokens and with its `rule` tokens, and keeps the higher of the two coverages (with that test's
+  shared count). Candidates sharing at least 2 tokens are returned as
+  `{"id", "coverage", "shared"}`, ordered by coverage, then shared count, then id.
 - `matches(new, candidate)`: true when either test passes:
   - full text (`what_happened` + `general_rule` + `proposal`): at least 4 shared tokens and
     coverage of at least 0.30;
@@ -833,6 +905,9 @@ works outside any project.
      `permission`, because those targets are JSON files that cannot hold a comment.
 3. Every distinct path from step 1, plus each `--scan <path>`, is scanned for `[lesson #(\d+)]`.
    An id with no lesson, or with no site row in scope, is reported as `unknown_tag`.
+   `--scan <path>` is resolved against the working directory when relative. A file is read
+   whole; a directory is walked recursively, skipping `.git` and files over 1 MB. Bytes that are
+   not UTF-8 are read with `errors="replace"`, so a binary file never fails the command.
 4. Output: `{"scope": ..., "findings": [{"kind", "lesson", "site", "path", "line"}], "files":
    [{"path", "lines", "tags"}]}`. `line` is set for tag findings.
 
@@ -1137,8 +1212,8 @@ the next one starts.
 - **Type / Scope**: unit tests.
 - **Proposed Changes**:
   - The synthetic migration at line 240 becomes `(5, "005_add_probe.sql", ...)`, and the version
-    expected at line 244 becomes 5. A real 004 would otherwise be applied first and the probe
-    skipped.
+    expected at line 244 becomes 5, and the list at line 243 becomes `[2, 3, 4, 5]`. A real 004
+    would otherwise be applied first and the probe skipped.
   - The assertions at lines 271-273 become `new_applied == [2, 3, 4]` and `user_version == 4`.
   - `OPERATIONAL_TABLES` (line 9) adds `project_locators`, `writer_roles`, `lessons`,
     `lesson_sites`, `lesson_replaces`, `lesson_incidents` and `lesson_events`, so the template is
@@ -1152,8 +1227,10 @@ the next one starts.
 - **Proposed Changes**: add `LESSON_TARGET_KINDS`, `LESSON_GENERALITIES`, `LESSON_SEVERITIES`,
   `LESSON_STATUSES`, `LESSON_DECISIONS`, `LESSON_REASON_CODES`, `LESSON_SITE_STATES`,
   `LOCATOR_KINDS`, `DEFAULT_WRITER_ROLES`, with the values in the Technical Plan §1 table. Extend
-  `describe()` so `chanchi taxonomy list` returns them under a `lessons` key. No change to existing
-  sets.
+  `describe()` so `chanchi taxonomy list` returns them under a `lessons` key, an object with the
+  sub-keys `target_kinds`, `generalities`, `severities`, `statuses`, `decisions`, `reason_codes`,
+  `site_states`, `locator_kinds` and `default_writer_roles`, each a list of strings. No change to
+  existing sets.
 
 #### 5. `src/chanchi/errors.py` (Modify)
 
@@ -1173,6 +1250,14 @@ the next one starts.
   | `invalid_transition` | "lesson #<id> is <state>; <command> needs <allowed states>" | `status` | the allowed states | | the command that reaches an allowed state, e.g. `chanchi lesson reopen <id>` or `chanchi lesson reopen-site <id>` |
   | `lesson_not_found` | "no lesson #<id>" | `id` | | | `chanchi lesson list` |
 
+  - **One rule for every other refusal.** A refusal that is not in this table uses the existing
+    `invalid_value`, with `field` set to the JSON key (e.g. `particular_justification`,
+    `incidents`) or the flag name without dashes (e.g. `where`, `site`, `reason_code`), and
+    `valid_values` when the field is an enum. A missing lesson, including the `N` of `--of N`,
+    is `lesson_not_found`. An unknown `change` or `session` in the body reuses the existing
+    `unknown_change` and `unknown_session` raised by `record.get_change` and `record.get_session`.
+    A state refusal on a site row is `invalid_transition` with `field` = `state`.
+
 #### 6. `tests/test_taxonomy.py` (Modify)
 
 - **Type / Scope**: unit tests.
@@ -1187,16 +1272,25 @@ the next one starts.
   `register`, `relink`, `list_projects`, `show`, `writer_roles`, `set_writer_roles` as specified
   in Technical Plan §2. Rewrite `detect()` on `_git` with the same behavior. `identify()` gains the
   keyword `conn`; `resolve_project()` passes it, and its hint mentions `chanchi project register`.
-  `ensure()` is unchanged.
+  `ensure()` is unchanged. `set_writer_roles` is a plain data function with no actor check; the
+  guard lives in `lessons.set_writers` (item 12), because `projects.py` cannot import `lessons`.
+- **Also in step 3** (`src/chanchi/cli.py`, Modify): `cmd_change_open` opens the connection
+  before calling `projects.identify(args.project, conn=conn)`. This is the only `cli.py` change
+  in step 3; the step-3 tests need it.
 
-#### 8. `tests/test_projects.py` and `tests/conftest.py` (Modify)
+#### 8. `tests/test_projects.py`, `tests/conftest.py` and `tests/helpers.py` (Modify)
 
 - **Type / Scope**: unit tests and shared fixtures.
 - **Proposed Changes**:
+  - `helpers.py`: `Recorder.change` (line 24) calls `projects.identify(conn=self.conn)` instead of
+    `projects.identify()`, so recorded changes resolve as `cmd_change_open` does. `Recorder.pid`
+    (line 31) already goes through `resolve_project(self.conn)` and needs no change.
   - `conftest.py` gains two fixtures. `registered_repo` is a git repository with one commit,
     registered with `projects.register`. `nested_repo` is a registered repository that contains
-    an independent, unregistered repository in `inner/`. The existing `git_repo` has no commit, so
-    `git_head` is `None` there; it is unchanged.
+    an independent, unregistered repository in `inner/`. Both `monkeypatch.chdir` into the
+    repository and make one commit with `git -c user.name=Test -c user.email=test@example.com
+    commit -q -m init` after adding a file, as `tests/test_projects.py:19-26` does. The existing `git_repo` has no
+    commit, so `git_head` is `None` there; it is unchanged.
   - Tests:
     - `main_worktree` from a linked worktree returns the main path.
     - `register` creates a row, adopts an unregistered row with the same slug, and is a no-op on a
@@ -1248,14 +1342,19 @@ the next one starts.
   - Fixtures, each one lesson body in JSON: `base.json` (the CUJ 1 lesson);
     `same_rule_other_case.json` (the same general rule, a different `what_happened`);
     `same_case_other_words.json` (the same full text with the rule reworded); `unrelated.json`
-    (shares 2 or 3 words with `base.json`).
+    (shares exactly 2 tokens with `base.json`, none of them in `base.json`'s `general_rule`, so
+    neither test can match; a test asserts this count).
   - Tests:
     - Tokenization: case, punctuation, 3-letter words dropped, stopwords dropped.
     - Coverage is 0 when either set is empty.
     - `same_rule_other_case` blocks by the rule test; `same_case_other_words` blocks by the full-text
       test; `unrelated` passes.
-    - Each threshold at its boundary: 4 shared tokens at coverage 0.30 blocks, 3 shared tokens or
-      0.29 does not; 3 shared tokens at 0.50 on the rule blocks, 2 or 0.49 does not.
+    - Each threshold at its boundary, with token sets built in the test (coverage divides by the
+      smaller set, so only some ratios are reachable):
+      - full text: 6 shared of a smaller set of 20 (0.30) blocks; 4 shared of 14 (0.286) does
+        not; 3 shared of 3 (1.0) does not, because it is under 4 shared tokens;
+      - general rule: 3 shared of 6 (0.50) blocks; 3 shared of 7 (0.43) does not; 2 shared of
+        2 (1.0) does not.
     - `blocking_match` returns the highest coverage, then the lowest id.
     - `similar` returns at most 5, ordered by coverage, then shared count, then id.
 
@@ -1265,10 +1364,30 @@ the next one starts.
 - **Proposed Changes**:
   - `Actor` dataclass (`role`, `agent`, `model_raw`, `model_id`, `effort`, `conversation`) and
     `make_actor(conn, as_role, author_spec, conversation)`, using `modelspec.parse` and
-    `catalog._model_row`, and refusing a model name that contains `:` (Technical Plan §3).
+    `catalog._model_row`. An exact catalog match is accepted; a colon is refused only for a miss
+    whose last segment is within edit distance 2 of an effort (Technical Plan §3). The edit
+    distance is a small local helper (Levenshtein on strings of at most 10 characters).
   - `check_writer(conn, scope_project_id, actor)` per Technical Plan §3.
-  - `add`, `repeat`, `modify`, `review`, `reopen`, `apply`, `retire`, `similar`, `list_lessons`,
-    `show`, `summary`, `export`, `export_markdown`. Each write runs in one `db.transaction` and
+  - `set_writers(conn, scope, actor, roles) -> dict`: calls `check_writer(conn, scope.project_id,
+    actor)`, then `projects.set_writer_roles`. Roles are stripped; a blank role or an empty list
+    fails with `invalid_value` (`field` = `set`); duplicates are dropped, order kept. It writes no
+    `lesson_events` row (the event table is for lessons). Returns `{"scope": <slug or "global">,
+    "roles": [...], "default": false}`.
+  - Signatures (each returns the result dict of the Technical Plan §3 "Results" table; `scope` is
+    a `projects.Scope`, or `None` for every lesson):
+    - `add(conn, scope, actor, body, *, force_new=False, cwd=None)`
+    - `repeat(conn, actor, lesson_id, evidence, *, incident=None)`
+    - `modify(conn, actor, lesson_id, body)`
+    - `review(conn, actor, lesson_id, decision, reason, *, reason_code=None, of=None)`
+    - `reopen(conn, actor, lesson_id, reason)`
+    - `apply(conn, actor, lesson_id, site, where, *, project_scope=None)` and
+      `retire(conn, actor, lesson_id, site, reason, *, project_scope=None)`; `project_scope` is
+      required when `site == "project"`
+    - `similar(conn, text, *, limit=5)`, `list_lessons(conn, scope, *, status=None,
+      generality=None, target_kind=None, limit=50)`, `show(conn, lesson_id)`,
+      `summary(conn, scope)`, `export(conn, scope, *, status=("pending", "postponed"),
+      generality=None, target_kind=None, since=None, limit=20)`, `export_markdown(rows) -> str`
+  - Each write runs in one `db.transaction` and
     writes the event of the Technical Plan §3 events table. Preconditions follow the two state
     tables in "Vocabulary and states" and the rules in §3. The duplicate classes follow §4.
   - Required text is validated with `record._required_text` and tags are normalized with
@@ -1284,12 +1403,22 @@ the next one starts.
   - `severity: blocking` is refused with the hint. An unknown JSON key is refused.
   - `session` without `change` is refused; an incident from another change is refused.
   - A `--global` lesson that is not `agnostic`, or that carries `change`, is refused.
-  - `tags` given as a list and as a string store the same text; no tags store `''`.
+  - `tags` given as a list and as a string store the same text; no tags, `[]` and `""` store
+    `''`. A non-string text field (`"cause": 3`), a string `incidents` and a non-object body are
+    refused with `invalid_value` naming the key, before any other rule runs.
+  - An unknown `change` fails with `unknown_change`; `--of 999` fails with `lesson_not_found`; a
+    voided incident is refused.
   - `author_model_id` is set on an exact catalog match and NULL otherwise, and no row is added to
-    `models`. `--author human` gets the seeded `human:human` row. `claude:opus:hgh` is refused.
+    `models`. `--author human` gets the seeded `human:human` row. `claude:opus:hgh` is refused
+    (`field` = `author`). `opencode:openrouter/qwen/qwen3-coder:free` is accepted with
+    `author_model_id` set, and `opencode:vendor/model:beta` (not in the catalog, last segment far
+    from every effort) is accepted with `author_model_id` NULL.
   - A non-writer role is refused; `human` passes; a custom writer role set with
     `set_writer_roles` passes; a global lesson uses the global writer roles; an agnostic lesson is
     reviewed under its origin project's roles.
+  - `set_writers`: a non-writer role is refused with `not_a_writer`; a current writer role or
+    `human` replaces the roles; a blank role or an empty list is refused; `planner,planner`
+    stores one row; changing the global list does not change a project's list.
   - Review from the recording conversation is refused; from another conversation it passes.
   - `postpone` from `postponed` is refused; `approved` cannot be reopened.
   - `duplicate --of N` moves occurrences to N; `--of` its own id, or a duplicate N, is refused;
@@ -1321,19 +1450,32 @@ the next one starts.
   - `FORMATS` becomes `("json", "text", "md")`. `_emit` writes `payload["markdown"]` for `md` when
     present and the text rendering otherwise. `_sniff_format` needs no change.
   - `leaf()` gains an optional `parents` argument, appended after `common`.
-  - A parent parser `identity` holds `--as`, `--author` and `--conversation` (all required) and
-    `--global`. Write commands use it.
+  - A parent parser `identity` holds only `--as` (`dest="as_role"`), `--author` (`dest="author"`)
+    and `--conversation` (`dest="conversation"`), all `required=True`. It holds no `--global`;
+    each command that accepts `--global` adds it itself with `dest="global_"`, as
+    `cli.py:286` does for `skills link`.
+  - Where `--global` is accepted (Technical Plan §3, "Scope flags"): `lesson add`, `project
+    writers`, and the read commands `similar`, `list`, `summary`, `export`. `lesson repeat`,
+    `modify`, `review` and `reopen` take neither `--global` nor `--project`: they act on the
+    lesson's origin. `lesson apply` and `retire` take `--site global|project`, and `--project`
+    only to name the project when `--site project` is run outside it.
   - New group `project`: `register [--name]`, `relink <slug>`, `list`, `show [<slug>]`,
-    `writers [<slug> | --global] [--set roles]`. With `--set`, `writers` uses the `identity`
-    parent. A positional slug wins over `--project`; if both are given and differ, it fails with
-    `invalid_value`.
+    `writers [<slug>] [--global] [--set <role,...>] [--as ...] [--author ...] [--conversation
+    ...]`. `writers` does not use the `identity` parent: it declares the three flags itself as
+    optional, and the handler requires all three when `--set` is given (missing one fails with
+    `invalid_value`, `field` = the missing flag without dashes, e.g. `as`). A positional slug wins
+    over `--project`; if both are given and differ, it fails with `invalid_value`. `--global` with
+    a slug fails with `invalid_value`.
   - New group `lesson`: `add`, `repeat`, `modify`, `review`, `reopen`, `apply`, `retire` (with
-    `identity`), and `similar`, `list`, `show`, `summary`, `export` (with `--all` and `--global`).
-    `add` and `modify` take `--json -` (stdin) or `--json <file>`; `add` takes `--force-new`.
+    `identity`), and `similar`, `list`, `show`, `summary`, `export` (with `--all` and `--global`,
+    mutually exclusive). `add` and `modify` take `--json -` (stdin) or `--json <file>`; `add` takes
+    `--force-new`. `review --decision` uses `choices=LESSON_DECISIONS`; every other enum flag is
+    validated in `lessons.py` with `taxonomy.validate_choice`, so the error envelope matches.
   - Handlers only parse arguments and call `projects` or `lessons`, as the existing handlers call
-    `record`. The `export` handler adds `markdown` to the payload when `args.format == "md"`.
-  - `cmd_change_open` opens the connection before calling `projects.identify(args.project,
-    conn=conn)`.
+    `record`. `project writers --set` calls `lessons.set_writers`, never
+    `projects.set_writer_roles` directly. Comma lists use `cli._split`, integers `cli._int`, and
+    `--since` `timeutil.since_to_iso`. The `export` handler adds `markdown` to the payload when
+    `args.format == "md"`. (`cmd_change_open` was already changed in step 3.)
   - The `--project` help text changes from "default: git toplevel name" to "default: the
     registered project for this directory, else the git toplevel name".
 
@@ -1352,8 +1494,10 @@ the next one starts.
 #### 16. `src/chanchi/skills_link.py` (Modify)
 
 - **Type / Scope**: Python module.
-- **Proposed Changes**: `SUGGESTED_CONFIG_LINE` (lines 11-14) gains: "at the end of each
-  conversation, writer roles use the `chanchi-lessons` skill." `available_skills()` (line 28)
+- **Proposed Changes**: `SUGGESTED_CONFIG_LINE` (lines 11-14) becomes exactly: "When assigning
+  sessions use the `chanchi-model-selection` skill; when orchestrating and auditing sessions use
+  the `chanchi-session-audit` skill; at the end of each conversation, writer roles use the
+  `chanchi-lessons` skill." `available_skills()` (line 28)
   already picks up any `chanchi-*` folder with a `SKILL.md`, so linking needs no change.
 
 #### 17. `skills/chanchi-lessons/SKILL.md` (Create)
@@ -1387,8 +1531,9 @@ the next one starts.
 #### 20. `tests/test_skills_content.py` and `tests/test_cli.py` (Modify)
 
 - **Type / Scope**: skill tests.
-- **Proposed Changes**: the expected list in `test_both_skills_exist` (line 27) gains
-  `chanchi-lessons`; the frontmatter and quoted-command checks (lines 30-45) already run on every
+- **Proposed Changes**: `test_both_skills_exist` (line 27) is renamed `test_all_skills_exist`
+  and its expected list becomes `["chanchi-lessons", "chanchi-model-selection",
+  "chanchi-session-audit"]` (`SKILL_FILES` is sorted, so `chanchi-lessons` comes first); the frontmatter and quoted-command checks (lines 30-45) already run on every
   skill; a new test checks that `skills/chanchi-lessons/SKILL.md` has at most 150 lines. The CLI
   test at `tests/test_cli.py:163-168`, which links the real skills folder, also checks that
   `chanchi-lessons` is linked and that `SUGGESTED_CONFIG_LINE` names it.
@@ -1399,6 +1544,14 @@ the next one starts.
 - **Proposed Changes**: the Status line becomes "Stage 1 implemented" when stage 1 merges.
 
 ### Stage 2: Target Files to Create/Modify
+
+Stage 2 is done in three steps, each ending with `uv run pytest` passing.
+
+| Step | Files | Checkpoint |
+|---|---|---|
+| 1. Lessons | 22, 26 | `tests/test_lessons.py` passes, including the inbox, decline, replaces and verify tests |
+| 2. CLI | 23, 27 | `tests/test_cli.py` and `tests/test_cli_integration.py` pass |
+| 3. Skill, docs and status | 24, 25, 28 | the full suite passes; the stage-2 Verification Plan is run |
 
 #### 22. `src/chanchi/lessons.py` (Modify)
 
@@ -1441,30 +1594,47 @@ the next one starts.
     retired site.
   - Verify, on fixture files in a temporary directory: `missing_tag`, `stale_tag`, `unknown_tag`,
     `missing_file`, `unchecked` for a `hook` target, absolute, `~` and relative paths, `--global`
-    outside a project, and the line and tag counts per file.
+    outside a project, and the line and tag counts per file. `--scan` on a directory, a relative
+    `--scan` path and a non-UTF-8 file follow the rules of Technical Plan §5.
+  - `summary` reports the inbox size when a project resolves, and omits it otherwise.
 
-#### 27. `tests/test_cli_integration.py` (Modify)
+#### 27. `tests/test_cli.py` and `tests/test_cli_integration.py` (Modify)
 
 - **Type / Scope**: CLI tests.
-- **Proposed Changes**: end-to-end runs of CUJs 5 and 6 across two temporary registered projects.
+- **Proposed Changes**: `lesson inbox`, `decline`, `reopen-site` and `verify` parse, including
+  `decline` without `--reason` or `--not-applicable` (refused) and `verify --scan` given twice;
+  end-to-end runs of CUJs 5 and 6 across two temporary registered projects.
+
+#### 28. `docs/designs/continuous-improvement.md` (Modify)
+
+- **Type / Scope**: design document.
+- **Proposed Changes**: the Status line becomes "Stages 1 and 2 implemented" when stage 2 merges.
 
 ### Verification Plan
+
+Stage 1 runs every check below at the end of step 7. Stage 2 runs the build, the tests and the
+stage-2 manual journey at the end of its step 3.
 
 - **Build**: `uv tool install --editable .` exits 0, and `chanchi --version` prints the version.
 - **Unit and integration tests**: `uv run pytest` passes, including the template drift check in
   `tests/test_db.py` and `tests/test_no_network.py`.
-- **Duplicate-check speed**: once, during step 4, time `lesson add` against 1,000 generated
-  lessons in a scratch `CHANCHI_DB`; it must take under 100 ms for the duplicate check. Record the
-  number in the stage's pull-request description.
-- **Migration on real data**: copy the operational database (`$XDG_DATA_HOME/chanchi/chanchi.db`,
-  `~/.local/share/chanchi/chanchi.db` by default, or `CHANCHI_DB`) to a temporary path `$T`. Before migrating, save the output of
-  `CHANCHI_DB=$T chanchi show <an existing change> --project <its slug>` from an older chanchi
-  build. Then run `CHANCHI_DB=$T chanchi models list` with the new build, which opens and migrates
-  the database. Check that `$T.bak-v3` exists, that `CHANCHI_DB=$T chanchi db status` reports
-  operational version 4, and that
-  the same `show` command returns identical JSON.
-- **Manual journey**: in a scratch `CHANCHI_DB`, register two temporary projects (one with a nested
-  repository), then run CUJs 1 to 7 by hand, and paste the JSON outputs into the stage's
-  pull-request description.
-- **Skill check**: `chanchi skills link` into a scratch directory creates `chanchi-lessons` in both
-  `.agents/skills` and `.claude/skills`.
+- **Duplicate-check speed** (stage 1, step 4, before any command exists): a throwaway script in
+  the scratch directory builds 1,000 candidate dicts from the fixture texts with varied words,
+  and times `dedup.blocking_match(new, candidates)` with `time.perf_counter()`. It must take under
+  100 ms. Record the number in the stage's pull-request description. The script is not committed.
+- **Migration on real data** (stage 1): copy the operational database
+  (`$XDG_DATA_HOME/chanchi/chanchi.db`, `~/.local/share/chanchi/chanchi.db` by default, or
+  `CHANCHI_DB`) to a temporary path `$T`. Build the older chanchi from `main` before the stage-1
+  merge in a separate worktree: `git worktree add $W main`, then run
+  `CHANCHI_DB=$T uv run --project $W chanchi show <an existing change> --project <its slug>` and
+  save the output. Then run `CHANCHI_DB=$T chanchi models list` with the new build, which opens
+  and migrates the database. Check that `$T.bak-v3` exists, that `CHANCHI_DB=$T chanchi db status`
+  reports operational version 4, and that the same `show` command with the new build returns
+  identical JSON. Remove the worktree with `git worktree remove $W`.
+- **Manual journey, stage 1**: in a scratch `CHANCHI_DB`, register two temporary projects (one
+  with a nested repository), then run CUJs 1, 2, 3, 4 and 7 by hand, and paste the JSON outputs
+  into the stage-1 pull-request description.
+- **Manual journey, stage 2**: in a scratch `CHANCHI_DB` with two registered temporary projects,
+  run CUJs 5 and 6 by hand, and paste the JSON outputs into the stage-2 pull-request description.
+- **Skill check** (stage 1): `chanchi skills link` into a scratch directory creates
+  `chanchi-lessons` in both `.agents/skills` and `.claude/skills`.
