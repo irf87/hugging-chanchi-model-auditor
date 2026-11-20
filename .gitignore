@@ -44,3 +44,6 @@ Thumbs.db
 .vscode/
 *.swp
 *~
+
+# --- Local reference projects (symlinks, never committed) ---
+external-references/
