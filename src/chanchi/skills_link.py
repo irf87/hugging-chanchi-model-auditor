@@ -10,7 +10,8 @@ from chanchi.errors import ChanchiError
 SKILL_PREFIX = "chanchi-"
 SUGGESTED_CONFIG_LINE = (
     "When assigning sessions use the `chanchi-model-selection` skill; when orchestrating and "
-    "auditing sessions use the `chanchi-session-audit` skill."
+    "auditing sessions use the `chanchi-session-audit` skill; at the end of each conversation, "
+    "writer roles use the `chanchi-lessons` skill."
 )
 
 

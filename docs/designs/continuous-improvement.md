@@ -1,7 +1,7 @@
 # Continuous Improvement (Lessons) in chanchi
 
 - **Author:** Iván R
-- **Status:** Proposed
+- **Status:** Stage 1 implemented
 - **Date:** 2026-11-19
 - **Revision:** 3 (after the Goldfish review in
   [reviews/continuous-improvement/](reviews/continuous-improvement/consolidated_review_report.md)

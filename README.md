@@ -35,6 +35,8 @@ This creates `.agents/skills/chanchi-*` (read by opencode and agy) and `.claude/
 
 - `chanchi-model-selection` — used while planning: asks `chanchi recommend` for each session.
 - `chanchi-session-audit` — used while orchestrating: records sessions, incidents and verdicts.
+- `chanchi-lessons` — used by writer roles at the end of a conversation, and in maintenance
+  conversations that review lessons.
 
 ## Everyday commands
 
@@ -49,6 +51,56 @@ chanchi taxonomy list
 ```
 
 Commands detect the project from git (deriving the slug from the main repository across git worktrees); `--project` still overrides.
+
+## Lessons
+
+A lesson records a failure of the setup that guides agents (roles, skills, rules files, workflows)
+and one general rule that would have prevented it. A different conversation reviews it, decides,
+applies it by hand to a file, and records where it landed. Lessons improve global and project
+setup. They do not change code, and they do not change model scores: a failure caused by one
+model's weakness is an incident.
+
+Register each project once. Registration is stored only in chanchi's database; no file is added to
+the project:
+
+```bash
+cd /path/to/project
+chanchi project register                 # slug = main worktree folder name
+chanchi project register --name myslug   # or choose the slug
+chanchi project relink myslug            # run from another clone or a moved folder
+```
+
+Commands run anywhere inside the project, including nested git repositories, resolve to it.
+`--name` sets the registered slug; audits recorded under the folder name keep that name.
+
+Only writer roles record and review lessons. The default writer role is `planner`:
+
+```bash
+chanchi project writers                  # show the roles that may write lessons
+chanchi project writers --set planner,auditor
+chanchi project writers --global --set planner
+```
+
+Record a lesson from a JSON body on stdin, review it from another conversation, then apply it:
+
+```bash
+chanchi lesson similar "<general rule>"  # find existing lessons first
+chanchi lesson add --as planner --author claude:opus:high --conversation <id> --json - < lesson.json
+chanchi lesson export                    # pending lessons, most urgent first
+chanchi lesson review 12 --as planner --author claude:sonnet:medium --conversation <other-id> \
+  --decision approve --reason "the cause is clear and the rule holds outside this case"
+chanchi lesson apply 12 --as planner --author claude:sonnet:medium --conversation <other-id> \
+  --site project --where "AGENTS.md [lesson #12] @ <commit>"
+chanchi lesson summary
+```
+
+The full procedure, field guide and example body are in the `chanchi-lessons` skill. Two lines
+tell agents where to go: the writer-role block goes into the planner's role file, and the reporter
+line goes into every other role. `chanchi skills link` prints the project-rules line.
+
+Threat model in this version: `--as`, `--author` and `--conversation` are what the caller declares.
+The checks stop an agent that declares its real role, not an agent that lies about it. Hooks that
+check the harness are planned for a later release.
 
 ## Exploration
 
@@ -108,6 +160,10 @@ Every migration affects both. To add one:
    backup (the three most recent are kept).
 
 `tests/test_db.py` fails if the template drifts from the migrations.
+
+Version 4 adds the lesson and project-registration tables. Rollback is forward-only: an older
+chanchi on a version-4 database fails with `schema_too_new`. To roll back, restore
+`chanchi.db.bak-v3`; the lessons and registrations recorded since are lost.
 
 ## Development
 
