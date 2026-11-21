@@ -11,6 +11,7 @@ from pathlib import Path
 
 from chanchi import (
     __version__,
+    agents_sync,
     catalog,
     db,
     lessons,
@@ -127,6 +128,14 @@ def cmd_skills_link(args):
 
 def cmd_skills_unlink(args):
     return skills_link.unlink(_skills_base(args), global_=args.global_)
+
+
+def cmd_agents_sync(args):
+    root = Path(args.path) if args.path else projects.git_toplevel()
+    if root is None:
+        raise ChanchiError("invalid_value", "not inside a git repository", field="path",
+                           hint="pass the repository path: chanchi agents sync <path>")
+    return agents_sync.sync(root, check=args.check)
 
 
 def cmd_change_open(args):
@@ -486,6 +495,11 @@ def build_parser() -> argparse.ArgumentParser:
                 "--no-compat", dest="no_compat", action="store_true",
                 help="with --global, remove the chanchi-<n> compatibility links instead of creating them",
             )
+
+    g = group("agents", "compile agents/<name>/AGENT.md into per-harness wrappers")
+    p = leaf(g, "sync", cmd_agents_sync, "write the generated agent wrappers", project=False)
+    p.add_argument("path", nargs="?", help="repository root (default: git top level)")
+    p.add_argument("--check", action="store_true", help="write nothing; fail if any wrapper is stale")
 
     g = group("change", "OpenSpec or adhoc changes")
     p = leaf(g, "open", cmd_change_open, "open a change (creates the project on first use)")

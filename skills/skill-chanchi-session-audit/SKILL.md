@@ -19,6 +19,8 @@ commands print JSON; errors carry `field`, `valid_values` and `hint`.
    Use the executor, task type and complexity written in the session protocol. `--tasks` is the
    number of tasks the session owns. Re-running a session creates a new attempt and requires
    `--retry-reason executor_failure|plan_fix|human_change|env`. Before starting the new attempt, record the previous attempt's report and verdict (usually `rejected`) so it is counted.
+   When the session runs as one of chanchi's agents, add its name to `--tags`
+   (for example `--tags agent-chanchi-executor`).
 2. **When the report or handoff arrives**:
    `chanchi session report <change-ref> S1 --status STOPPED`
    (`COMPLETE`, `STOPPED` or `BLOCKED`, exactly as the executor reported). Report again with the new
@@ -37,6 +39,9 @@ commands print JSON; errors carry `field`, `valid_values` and `hint`.
      `--role planner` when the plan invented it).
 5. **Record the verdict**:
    `chanchi session audit <change-ref> S1 --verdict accepted`
+   Add `--notes` tokens when they apply, separated by spaces: `gate:first-green` (the gate passed
+   on its first run after the audit, with no fix by the human) and `verify:feature-map` (the
+   executor verified through the feature map with no instruction beyond the brief).
    - `accepted` — nothing had to be corrected.
    - `accepted_with_fixes` — accepted after small corrections within the turn.
    - `rejected` — the turn's work is discarded or redone as a new attempt.
