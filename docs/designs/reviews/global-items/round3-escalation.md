@@ -35,9 +35,9 @@ The human decides.
 
 ## Observation on the rule
 
-The rule counts only `pass` toward acceptance. A `pass_with_fixes` with no blocking and no major
-finding (seat 1 here) carries the same risk as a `pass` whose minor findings are fixed without a
-new round, which the rule already allows for confirmed lone minors. Treating such a vote as an
-approval would have accepted this round (seats 1 and 2), with the two confirmed lone majors fixed
-before merge only if the rule also requires confirmed lone majors to be fixed — which it does
-(they force `fix`). The owner decides whether to change the rule.
+The rule counts only `pass` toward acceptance, so a `pass_with_fixes` with no blocking and no major
+finding (seat 1 here) counts against acceptance although it carries little risk. Counting such a
+vote as an approval would not have changed this round: seats 1 and 2 would approve, but the two
+confirmed lone majors of seat 3 still force `fix`. What escalated this round is real: two confirmed
+majors, both of them wording, after three rounds. The owner decides whether to accept with those
+fixes and whether to change how `pass_with_fixes` counts.
