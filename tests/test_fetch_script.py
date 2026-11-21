@@ -4,8 +4,6 @@ import json
 import urllib.error
 from pathlib import Path
 
-import pytest
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "fetch_hf_benchmarks.py"
 
 

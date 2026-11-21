@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# The gate: every check that must hold before a merge. Run by git hooks and CI.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+if [ "${CI:-}" != "true" ]; then
+  if [ "$(git config --get core.hooksPath || true)" != ".githooks" ]; then
+    echo "warning: git hooks are off. Run: git config core.hooksPath .githooks" >&2
+  fi
+  if [ "$(git config --get merge.ff || true)" != "false" ]; then
+    echo "warning: fast-forward merges skip the pre-merge-commit gate. Run: git config merge.ff false" >&2
+  fi
+fi
+
+uv run --group dev ruff check
+uv run --group dev pytest -q
