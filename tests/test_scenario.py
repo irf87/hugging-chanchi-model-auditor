@@ -7,7 +7,7 @@ ARGON = "agy:gemini-4-argon-high:high"
 FLASH = "agy:gemini-3.8-flash-high:high"
 FLASH_MEDIUM = "agy:gemini-3.8-flash-medium:medium"
 SONNET = "claude:sonnet:medium"
-CHANGE = "clinical-summary-doctor-addressee-and-polish"
+CHANGE = "reference-change-replay"
 
 # session, executor, task type, complexity, tasks
 SESSIONS = [

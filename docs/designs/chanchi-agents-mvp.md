@@ -534,6 +534,9 @@ budget chooses the executors.
    `<item>-chanchi-<slug>-<name>` items, including their feature map and evals.
 5. Decide how a project's lessons, evals and ledger relate to chanchi's database (stage 2 of the
    lessons design already covers lesson inboxes).
+6. Decide where the global items chanchi builds for a user (not exclusive to chanchi) live. They
+   belong to the user, like the database, so they are never committed to this repository: they go
+   to the user's home or to a path in `.gitignore` (owner's rule, 2026-11-21).
 
 ---
 

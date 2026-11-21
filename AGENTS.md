@@ -33,6 +33,12 @@ micromanagement does not work with people and does not work with agentic LLMs
 either, so every design choice here should move work away from the human, not
 toward them.
 
+chanchi is the instrument maker, not the composer: it ships the instruments (the CLI, the agents,
+the skills that build items) and helps users build their own. What users make with them is
+theirs: their databases and records, their lessons, the projects they take as references, and the
+global items built for them that are not exclusive to chanchi. None of it is committed here; it
+stays in the user's home or in ignored paths (`.gitignore`). This repository is public.
+
 What the code does, how to install it and how to develop it: `README.md`.
 Designs: `docs/designs/<topic>.brief.md` (the request) and `docs/designs/<topic>.md` (the
 design), with their reviews in `docs/designs/reviews/<topic>/`. The first design and plans live in
@@ -109,6 +115,8 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   on it, and give every design that uses external sources an "Adopt / Adapt / Avoid" section that
   names the source of each item and the reason, so we keep what works and do not repeat what
   failed elsewhere.
-- Never commit `external-references/` (local symlinks to reference projects).
+- Never commit `external-references/` (local symlinks to reference projects), and never name a
+  reference project or write a home path (`/Users/<user>/`, `/home/<user>/`) in a committed file:
+  describe it generically ("a consumer project"). `tests/test_privacy.py` enforces both.
 - Tests: `uv run pytest`. A database migration commits the SQL file and the
   regenerated `src/chanchi/data/template.db` together (see `README.md`).

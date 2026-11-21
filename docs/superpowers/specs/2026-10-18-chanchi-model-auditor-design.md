@@ -31,7 +31,7 @@ Humans interact with `chanchi` through agents, almost never directly. Every inte
 - The orchestrator is therefore the **single writer** of audit data.
 - Small changes may skip OpenSpec ("adhoc"); complex changes always use it.
 
-The reference implementation of this workflow (DATEMApp) already produces per-session reports with `status: COMPLETE | STOPPED | BLOCKED`, `stops`, `verification`, `files_changed`, retries named `S1-attempt1`, and a planner audit that classifies each mismatch as an app, plan or executor defect. `chanchi` turns that existing output into data; it does not invent a new process.
+The reference implementation of this workflow (a consumer project) already produces per-session reports with `status: COMPLETE | STOPPED | BLOCKED`, `stops`, `verification`, `files_changed`, retries named `S1-attempt1`, and a planner audit that classifies each mismatch as an app, plan or executor defect. `chanchi` turns that existing output into data; it does not invent a new process.
 
 ### 1.3 Non-goals
 
@@ -137,7 +137,7 @@ The directory is created on first use; the database itself is created from the t
 
 ### 3.2 Project detection
 
-`git rev-parse --show-toplevel` from the cwd; the project slug is the toplevel directory's basename, and the absolute path is stored. `--project <slug>` overrides detection. A monorepo with sub-projects (e.g. `cacao-api/`, `cacao-app/`) is one project; use `--tags` to distinguish. Outside a git repository, `--project` is required. Projects are created only by `chanchi change open`; every other command referencing a project requires it to exist. `stats` and `recommend` are global (all projects) unless `stats --project` filters them.
+`git rev-parse --show-toplevel` from the cwd; the project slug is the toplevel directory's basename, and the absolute path is stored. `--project <slug>` overrides detection. A monorepo with sub-projects (e.g. `api/`, `app/`) is one project; use `--tags` to distinguish. Outside a git repository, `--project` is required. Projects are created only by `chanchi change open`; every other command referencing a project requires it to exist. `stats` and `recommend` are global (all projects) unless `stats --project` filters them.
 
 ### 3.3 Skills distribution (mirror)
 
@@ -515,7 +515,7 @@ Also covers catalog maintenance (`models list/set`, `taxonomy add-type`) when th
 
 - **Unit:** scoring formulas against fixed fixtures (including clamping, smoothing, fallback levels, cost-aware ranking, honesty red flag, attempt exclusion), model spec parsing (including `:free`-style model ids), taxonomy validation.
 - **Integration:** the CLI run as a subprocess against a temp database (`CHANCHI_DB` in `tmp_path`) through the full flow: catalog → change open → sessions → report → incidents → audit → close → stats → recommend → show. Error envelope and exit codes are asserted.
-- **Scenario:** a fixture embedded in the test suite (it never reads the DATEMApp repository) replaying DATEMApp's `clinical-summary-doctor-addressee-and-polish` change (S1–S10 on `agy` with `gemini-4-argon-high` and `gemini-3.8-flash-*`) plus synthetic incidents; `recommend` must produce the expected ranking.
+- **Scenario:** a fixture embedded in the test suite (it never reads the consumer project's repository) replaying the `reference-change-replay` change of a consumer project (S1–S10 on `agy` with `gemini-4-argon-high` and `gemini-3.8-flash-*`) plus synthetic incidents; `recommend` must produce the expected ranking.
 - **Skills link:** in a temp directory — absolute vs relative targets, idempotency, conflict reporting, `unlink` touching only its own symlinks, optional `.agent`/`.opencode` targets.
 - **Template integrity:** the committed `template.db` has `user_version` equal to the latest migration number; its schema (`sqlite_master` minus internal tables) equals the schema produced by applying every migration to an empty database; its seed rows match; and it contains zero rows in `projects`, `changes`, `sessions`, `incidents` and `model_capabilities`. This test is what forces every migration to update the template.
 - **Bootstrap:** a missing operational database is created from the template; an outdated one is backed up and migrated; a too-new one is refused.
