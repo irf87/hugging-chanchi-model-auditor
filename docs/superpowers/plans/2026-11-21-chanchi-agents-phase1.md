@@ -31,8 +31,8 @@
 | `skills/skill-chanchi-*` (renamed), `src/chanchi/skills_link.py`, `src/chanchi/cli.py` | 3 | rename, link repair, compatibility links, unlink |
 | `tests/test_items.py` | 4 | check 1 |
 | `src/chanchi/agents_sync.py`, `src/chanchi/cli.py`, `tests/test_agents_sync.py` | 5 | generator and check 2 |
-| `agents/agent-chanchi-*/AGENT.md`, generated wrappers, `skills/skill-chanchi-item-authoring/SKILL.md`, `skills/skill-chanchi-session-audit/SKILL.md` | 6 | the three agents and the authoring guide |
-| `FEATURE_MAP.md`, `tests/test_feature_map.py`, `skills/skill-chanchi-verify/SKILL.md` | 7 | layer 1 |
+| `agents/agent-chanchi-*/AGENT.md`, generated wrappers, `skills/skill-chanchi-item-authoring/SKILL.md`, `skills/skill-chanchi-verify/SKILL.md`, `skills/skill-chanchi-session-audit/SKILL.md` | 6 | the three agents, the authoring guide and the verify skill |
+| `FEATURE_MAP.md`, `tests/test_feature_map.py` | 7 | layer 1 feature map |
 | report only | 8 | live harness verification |
 
 ## Sessions
@@ -42,7 +42,7 @@
 | S1 | 1, 2 | gate and structural checks |
 | S2 | 3, 4 | rename and naming check |
 | S3 | 5, 6 | generator, agents, skills |
-| S4 | 7 | feature map and verify skill |
+| S4 | 7 | feature map |
 | S5 | 8 | live verification (read-only researcher) |
 
 S2 starts after S1 merges; S3 after S2; S4 after S3; S5 after S4.
@@ -162,17 +162,31 @@ jobs:
 
 - [ ] **Step 9: Prove the hook blocks**
 
+This step is the one allowed exception to "executors do not commit or merge": it commits to a
+throwaway branch and merges into another throwaway branch, both deleted at the end. It passes the
+hooks path with `git -c`, so the shared `.git/config` is not changed (the orchestrator sets the
+per-clone config when it merges this session).
+
 ```bash
-git config core.hooksPath .githooks && git config merge.ff false
-git switch -c scratch-gate-proof
+base="$(git rev-parse --abbrev-ref HEAD)"
+git stash -u -q                                   # park the session's uncommitted work
+git switch -q -c scratch-gate-target
+git stash apply -q                                # the hooks and scripts/check must exist here
+git add -A && git commit -qm "test: gate target" --no-verify
+git switch -q -c scratch-gate-probe
 printf 'import os\n' > src/chanchi/_gate_probe.py
 git add src/chanchi/_gate_probe.py && git commit -qm "test: probe" --no-verify
-git switch -
-git merge --no-ff scratch-gate-proof -m "merge: probe"   # must FAIL (F401)
-git merge --abort; git branch -D scratch-gate-proof
+git switch -q scratch-gate-target
+git -c core.hooksPath=.githooks merge --no-ff scratch-gate-probe -m "merge: probe"   # must FAIL (F401)
+git merge --abort 2>/dev/null; git reset -q --hard; git clean -fdq
+git switch -q "$base" && git stash pop -q
+git branch -D scratch-gate-target scratch-gate-probe
+git status --short                                # shows the session's work again
 ```
 
-Expected: the merge stops with ruff's `F401` on `_gate_probe.py`; `main` is unchanged (`git log -1` shows the previous commit). Executors run this inside their worktree branch instead of `main` and report the output.
+Expected: the merge stops with ruff's `F401` on `_gate_probe.py`; afterwards both scratch branches
+are gone and `git status --short` lists the session's changes as before. Paste the merge output
+into the report.
 
 - [ ] **Step 10: Document the gate in `README.md`**
 
@@ -193,7 +207,10 @@ GitHub Actions runs the same script on every push (`.github/workflows/check.yml`
 - [ ] **Step 11: Run the gate and hand off**
 
 Run: `scripts/check`
-Expected: exit 0, no warnings. Commit message for the orchestrator: `build(gate): add ruff, scripts/check, git hooks and CI mirror`.
+Expected: exit 0 (the two configuration warnings are expected in an executor worktree). Commit
+message for the orchestrator: `build(gate): add ruff, scripts/check, git hooks and CI mirror`.
+After merging, the orchestrator runs `git config core.hooksPath .githooks` and
+`git config merge.ff false` once in the main clone.
 
 ---
 
@@ -370,7 +387,7 @@ Run: `grep -rn "skill-skill-" skills README.md AGENTS.md src tests` — Expected
 
 - [ ] **Step 3: Write the failing link tests**
 
-Change the `skills_dir` fixture in `tests/test_skills_link.py` to create `skill-chanchi-a`, `skill-chanchi-b`, `other`, and `skill-chanchi-empty` (no `SKILL.md`), update every existing assertion from `chanchi-a` to `skill-chanchi-a`, and add:
+Change the `skills_dir` fixture in `tests/test_skills_link.py` to create `skill-chanchi-a`, `skill-chanchi-b`, `other`, and `skill-chanchi-empty` (no `SKILL.md`), and update every existing assertion from `chanchi-a` to `skill-chanchi-a`. In `test_global_link_adds_agy_cli_dir_only_when_present` the second call must still report `len(result["created"]) == 2` (compatibility links from the first call are `existing`). Add:
 
 ```python
 def legacy_layout(home, skills_dir):
@@ -421,6 +438,26 @@ def test_foreign_legacy_name_is_still_a_conflict(tmp_path, skills_dir):
     assert foreign.is_dir() and not foreign.is_symlink()
 
 
+def test_global_link_is_idempotent_with_compat(tmp_path, skills_dir):
+    home = tmp_path / "home"
+    home.mkdir()
+    skills_link.link(home, global_=True, skills_dir=skills_dir)
+    again = skills_link.link(home, global_=True, skills_dir=skills_dir)
+    assert again["created"] == [] and again["repaired"] == []
+
+
+def test_chained_secondary_to_foreign_primary_is_kept(tmp_path, skills_dir):
+    home = tmp_path / "home"
+    foreign = home / ".agents" / "skills" / "chanchi-x"
+    foreign.mkdir(parents=True)
+    chained = home / ".claude" / "skills" / "chanchi-x"
+    chained.parent.mkdir(parents=True)
+    chained.symlink_to(os.path.join("..", "..", ".agents", "skills", "chanchi-x"))
+    skills_link.link(home, global_=True, skills_dir=skills_dir)
+    skills_link.unlink(home, global_=True, skills_dir=skills_dir)
+    assert foreign.is_dir() and chained.is_symlink()
+
+
 def test_unlink_removes_new_legacy_and_compat_links(tmp_path, skills_dir):
     home = tmp_path / "home"
     legacy_layout(home, skills_dir)
@@ -461,18 +498,42 @@ def _points_into_repo(entry: Path, skills_dir: Path) -> bool:
 
 
 def _is_legacy(entry: Path, skills_dir: Path, primary: Path) -> bool:
-    """A link an older chanchi created: chanchi-<n> pointing into skills/ or chaining to the primary."""
-    if not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX):
+    """A link an older chanchi created: chanchi-<n> pointing into skills/, or a secondary chaining to a
+    primary chanchi-<n> that is itself chanchi's (or already gone). Never a foreign file."""
+    if not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX) or _is_compat(entry):
         return False
     if _points_into_repo(entry, skills_dir):
         return True
-    chained = os.path.relpath(primary / entry.name, entry.parent)
-    return os.readlink(entry) in (chained, f"{SKILL_PREFIX}{entry.name[len(LEGACY_PREFIX):]}")
+    target = primary / entry.name
+    chained = os.readlink(entry) == os.path.relpath(target, entry.parent)
+    return chained and (not os.path.lexists(target) or _points_into_repo(target, skills_dir))
+
+
+def _is_compat(entry: Path) -> bool:
+    """A compatibility link chanchi-<n> -> skill-chanchi-<n> (relative, same directory)."""
+    if not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX):
+        return False
+    return os.readlink(entry) == f"{SKILL_PREFIX}{entry.name[len(LEGACY_PREFIX):]}"
 ```
 
-In `link(...)`, add the parameter `compat: bool = True` and a `repaired: list[str] = []`. Before creating new links, for each directory in `[primary, *secondaries]` that exists, remove every entry for which `_is_legacy(entry, skills_dir, primary)` holds and record it in `repaired` (this also removes compatibility links from an earlier run; they are recreated below). After the existing loop that creates `skill-chanchi-*` links, when `global_ and compat`, create in each of `base / d for d in COMPAT_DIRS` a relative link `chanchi-<n>` → `skill-chanchi-<n>` for every skill `skill-chanchi-<n>` (use `_ensure(..., absolute=False, ...)` with target `directory / name`). Return `repaired` in the result dict.
+In `link(...)`, add the parameter `compat: bool = True` and the lists `repaired` and `removed`:
 
-In `_is_own(...)`, add as its first statement `if _is_legacy(entry, skills_dir, primary): return True` (before the `SKILL_PREFIX` guard, which would reject `chanchi-<n>` names), so `unlink` removes legacy and compatibility links.
+1. **Repair first.** For each directory in `[*secondaries, primary]` (secondaries first, so a
+   chained secondary is judged while its primary still exists) that exists, remove every entry
+   for which `_is_legacy(entry, skills_dir, primary)` holds and append it to `repaired`.
+   Compatibility links are not legacy and stay.
+2. Create the `skill-chanchi-*` links with the existing loop.
+3. **Compatibility.** For each directory `base / d` with `d` in `COMPAT_DIRS`, and each skill
+   `skill-chanchi-<n>`: when `global_ and compat`, call
+   `_ensure(directory / f"chanchi-{n}", directory / f"skill-chanchi-{n}", absolute=False, ...)`, so a
+   second run records it in `existing` (idempotent); when `global_ and not compat`, remove the
+   entry if `_is_compat(...)` holds and append it to `removed`.
+4. Return `repaired` and `removed` in the result dict.
+
+In `_is_own(...)`, add as its first statement
+`if _is_legacy(entry, skills_dir, primary) or _is_compat(entry): return True` (before the
+`SKILL_PREFIX` guard, which would reject `chanchi-<n>` names), so `unlink` removes legacy and
+compatibility links.
 
 - [ ] **Step 5: Wire `--no-compat` in `src/chanchi/cli.py`**
 
@@ -496,9 +557,13 @@ In the `skills` group loop, after the `--global` argument, add only for `link`:
 Run: `uv run pytest -q tests/test_skills_link.py tests/test_skills_content.py tests/test_cli.py`
 Expected: PASS.
 
-- [ ] **Step 7: Update the README skills section**
+- [ ] **Step 7: Update the README skills section and AGENTS.md**
 
-In `README.md` § "Give the skills to a project": new names; one paragraph: "`--global` also keeps `chanchi-<n>` compatibility links in `~/.agents/skills` and `~/.claude/skills` for projects that still use the old names; `--global --no-compat` removes them once those projects are updated."
+In `README.md` § "Give the skills to a project": new names, including the link paths
+(`.agents/skills/skill-chanchi-*`, `.claude/skills/skill-chanchi-*`); one paragraph: "`--global` also keeps `chanchi-<n>` compatibility links in `~/.agents/skills` and `~/.claude/skills` for projects that still use the old names; `--global --no-compat` removes them once those projects are updated."
+
+In `AGENTS.md` § "Items and Other Projects", delete the parenthetical "(the existing `chanchi-*`
+skills are renamed in phase 1)": it is done.
 
 - [ ] **Step 8: Run the gate and hand off**
 
@@ -613,7 +678,9 @@ Run: `scripts/check`. Expected: exit 0. Commit message: `test(items): enforce it
 
 **Files:**
 - Create: `src/chanchi/agents_sync.py`, `tests/test_agents_sync.py`
-- Modify: `src/chanchi/cli.py` (new `agents` group), `src/chanchi/errors.py` (add `stale_wrappers`)
+- Modify: `src/chanchi/cli.py` (new `agents` group), `src/chanchi/errors.py` (add `stale_wrappers`),
+  `src/chanchi/projects.py` (add `git_toplevel`; only `projects.py` may import `subprocess`,
+  `tests/test_no_network.py`)
 
 **Interfaces:**
 - Produces:
@@ -621,6 +688,7 @@ Run: `scripts/check`. Expected: exit 0. Commit message: `test(items): enforce it
   - `agents_sync.load_sources(agents_dir: Path) -> list[AgentSource]` (raises `ChanchiError("invalid_value", field=...)` on a bad source)
   - `agents_sync.render(source: AgentSource) -> dict[str, str]` mapping repo-relative wrapper path → content
   - `agents_sync.sync(root: Path, *, check: bool = False) -> dict` with keys `root, agents, written, removed, unchanged`; with `check=True` it writes nothing and raises `ChanchiError("stale_wrappers", details={"stale": [...]})` if anything would change
+  - `projects.git_toplevel(cwd: Path | None = None) -> Path | None`
   - CLI: `chanchi agents sync [path] [--check]` (path defaults to the git top level of the current directory)
 
 - [ ] **Step 1: Add the error code**
@@ -742,6 +810,18 @@ def test_invalid_source_is_refused(tmp_path, field, value):
     assert info.value.field == field
 
 
+def test_claude_wrappers_frontmatter():
+    """Design verification plan 3: every committed Claude wrapper has the fields Claude reads."""
+    for path in sorted((ROOT / ".claude" / "agents").glob("agent-chanchi-*.md")):
+        head, body = path.read_text().split("\n---\n", 1)
+        assert head.startswith("---\n"), path
+        assert f"name: {path.stem}" in head and "description: " in head, path
+        if "initialPrompt: |" in head:
+            assert body.strip() == "", f"{path}: a main-scope wrapper keeps its body empty"
+        else:
+            assert body.strip(), f"{path}: a subagent wrapper carries the role in its body"
+
+
 def test_repository_wrappers_are_in_sync():
     """Check 2: committed wrappers equal what the generator writes."""
     agents_sync.sync(ROOT, check=True)
@@ -762,6 +842,7 @@ Expected: FAIL (`cannot import name 'agents_sync'`).
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -804,6 +885,8 @@ def _parse(path: Path) -> AgentSource:
     head, body = text[4:].split("\n---\n", 1)
     fields: dict[str, str] = {}
     for line in head.splitlines():
+        if not line.strip():
+            continue
         key, sep, value = line.partition(":")
         if not sep:
             raise ChanchiError("invalid_value", f"{path}: bad frontmatter line {line!r}", field="frontmatter",
@@ -854,7 +937,7 @@ def _doc(head: list[str], body: str) -> str:
 
 
 def _claude(s: AgentSource) -> str:
-    head = [_header(s), f"name: {s.name}", f"description: {s.description}"]
+    head = [_header(s), f"name: {s.name}", f"description: {json.dumps(s.description)}"]
     if s.profile == "read-only":
         head.append("disallowedTools: Edit, NotebookEdit")
     if s.scope == "main":
@@ -865,7 +948,7 @@ def _claude(s: AgentSource) -> str:
 
 def _opencode(s: AgentSource) -> str:
     mode = {"main": "primary", "subagent": "subagent", "both": "all"}[s.scope]
-    head = [_header(s), f"description: {s.description}", f"mode: {mode}"]
+    head = [_header(s), f"description: {json.dumps(s.description)}", f"mode: {mode}"]
     if s.profile == "read-only":
         head += ["permission:", "  edit: deny", "  write: deny"]
     line = _skills_line(s)
@@ -878,7 +961,7 @@ def _agy(s: AgentSource) -> str:
         tools += AGY_EDIT_TOOLS
     if s.profile == "orchestrator":
         tools += AGY_ORCHESTRATOR_TOOLS
-    head = [_header(s), f"name: {s.name}", f"description: {s.description}",
+    head = [_header(s), f"name: {s.name}", f"description: {json.dumps(s.description)}",
             f"mainAgent: {'false' if s.scope == 'subagent' else 'true'}",
             f"subagent: {'false' if s.scope == 'main' else 'true'}", *_yaml_list("tools", tools)]
     line = ""
@@ -928,23 +1011,27 @@ def sync(root: Path, *, check: bool = False) -> dict:
 
 - [ ] **Step 4: Wire the CLI in `src/chanchi/cli.py`**
 
-Add `agents_sync` to the `from chanchi import (...)` list, then:
+In `src/chanchi/projects.py`, next to the other `_git` callers:
+
+```python
+def git_toplevel(cwd: Path | None = None) -> Path | None:
+    """The top level of the git work tree containing `cwd`, or None outside git."""
+    top = _git(cwd or Path.cwd(), "rev-parse", "--show-toplevel")
+    return Path(top) if top else None
+```
+
+In `src/chanchi/cli.py`, add `agents_sync` to the `from chanchi import (...)` list, then:
 
 ```python
 def cmd_agents_sync(args):
-    return agents_sync.sync(Path(args.path) if args.path else _git_toplevel(), check=args.check)
-
-
-def _git_toplevel() -> Path:
-    import subprocess
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
-    if out.returncode != 0:
+    root = Path(args.path) if args.path else projects.git_toplevel()
+    if root is None:
         raise ChanchiError("invalid_value", "not inside a git repository", field="path",
                            hint="pass the repository path: chanchi agents sync <path>")
-    return Path(out.stdout.strip())
+    return agents_sync.sync(root, check=args.check)
 ```
 
-(Move `import subprocess` to the module imports if `cli.py` has none yet.) In `build_parser`, after the `skills` group:
+In `build_parser`, after the `skills` group:
 
 ```python
     g = group("agents", "compile agents/<name>/AGENT.md into per-harness wrappers")
@@ -969,9 +1056,9 @@ Run: `scripts/check`. Expected: exit 0. Commit message: `feat(agents): compile a
 **Files:**
 - Create: `agents/agent-chanchi-orchestrator/AGENT.md`, `agents/agent-chanchi-executor/AGENT.md`, `agents/agent-chanchi-researcher/AGENT.md`
 - Create (generated): the nine wrappers under `.claude/agents/`, `.opencode/agents/`, `.agents/agents/`
-- Create: `skills/skill-chanchi-item-authoring/SKILL.md`
+- Create: `skills/skill-chanchi-item-authoring/SKILL.md`, `skills/skill-chanchi-verify/SKILL.md`
 - Modify: `skills/skill-chanchi-session-audit/SKILL.md` (tag and note tokens)
-- Modify: `tests/test_skills_content.py` (`test_all_skills_exist` gains the new skill names; `skill-chanchi-verify` is added in Task 7)
+- Modify: `tests/test_skills_content.py` (`test_all_skills_exist` gains both new skill names)
 
 **Interfaces:**
 - Consumes: `chanchi agents sync` (Task 5).
@@ -1106,7 +1193,7 @@ this and fails when an operational file names an item that does not exist.
 |---|---|---|
 | agent | `agents/agent-chanchi-<n>/AGENT.md` | wrappers are generated; never edit `.claude/agents`, `.opencode/agents` or `.agents/agents` by hand |
 | skill | `skills/skill-chanchi-<n>/SKILL.md`, optional `references/` | linked into projects by `chanchi skills link` |
-| eval | `evals/eval-chanchi-<item>/` | phase 2 |
+| eval | `evals/eval-chanchi-<item>/` | phase 2: from then on every new skill ships with at least one eval case |
 | hook | `hooks/hook-chanchi-<n>/` | a harness hook; git hooks are not items |
 
 ## Agent source
@@ -1135,27 +1222,68 @@ Move detail to `docs/` or `references/` and link to it.
 Run `scripts/check`. It must pass before the change is handed off.
 ```
 
+- [ ] **Step 6b: Write `skills/skill-chanchi-verify/SKILL.md`**
+
+The executor agent names this skill, so it is created in this task. It refers to `FEATURE_MAP.md`, which Task 7 writes; a file reference is not an item reference, so check 1 passes.
+
+```markdown
+---
+name: skill-chanchi-verify
+description: Use when you changed chanchi and must prove the change works before handing it off. Runs the affected FEATURE_MAP.md entries on a scratch database and the gate, and reports evidence. Not for auditing someone else's session (that is skill-chanchi-session-audit).
+---
+
+# chanchi — verify
+
+Prove the change with evidence an auditor can rerun. Never touch the operational database.
+
+## Launch
+    export CHANCHI_DB="$(mktemp -d)/chanchi.db"
+    uv run chanchi db status        # must show the scratch path
+
+## Doctor
+`chanchi db status` (run as `uv run chanchi db status`) reports the scratch path and `uv run pytest -q` is green before you
+start. If not, stop and report: the starting state is broken, not your change.
+
+## Drive
+Open `FEATURE_MAP.md`, find every entry for a command your change touches, and run its "How to
+get to it" and "Driving it" commands as written. For a new command, write its entry first.
+
+## Evidence
+For each command: the exact command and its last output line, plus the state it must leave
+(the row or status `chanchi show`, `chanchi lesson show` or `chanchi db status` reports), not only
+the exit code. Finish with `scripts/check` and its last line.
+
+## Cleanup
+Delete the scratch directory only after the evidence is in your report. Never delete evidence.
+
+## Helpers
+After a harness upgrade, check that agents still load: `agy agents` (in a trusted folder) and
+`opencode debug agents` list the `agent-chanchi-*` agents, and
+`claude -p --agent agent-chanchi-researcher "Name the test that guards the import layers."`
+answers `tests/test_layers.py`. If agy tool names changed, update `AGY_*_TOOLS` in
+`src/chanchi/agents_sync.py` and run `chanchi agents sync`.
+```
+
 - [ ] **Step 7: Update `tests/test_skills_content.py`**
 
 `test_all_skills_exist` expects:
 
 ```python
-["skill-chanchi-item-authoring", "skill-chanchi-lessons", "skill-chanchi-model-selection", "skill-chanchi-session-audit"]
+["skill-chanchi-item-authoring", "skill-chanchi-lessons", "skill-chanchi-model-selection", "skill-chanchi-session-audit", "skill-chanchi-verify"]
 ```
 
 `test_documented_commands_exist` requires each skill to document at least one command written as `` `chanchi <group> <sub>` `` (the backtick must sit right before `chanchi`); `skill-chanchi-item-authoring` documents `` `chanchi agents sync` ``. Run `uv run pytest -q tests/test_skills_content.py tests/test_items.py tests/test_agents_sync.py tests/test_rules_budget.py`. Expected: PASS.
 
 - [ ] **Step 8: Run the gate and hand off**
 
-Run: `scripts/check`. Expected: exit 0. Commit message: `feat(agents): add orchestrator, executor and researcher agents and the item-authoring skill`.
+Run: `scripts/check`. Expected: exit 0. Commit message: `feat(agents): add orchestrator, executor and researcher agents, and the item-authoring and verify skills`.
 
 ---
 
-### Task 7: Feature map and verify skill (check 3)
+### Task 7: Feature map (check 3)
 
 **Files:**
-- Create: `FEATURE_MAP.md`, `tests/test_feature_map.py`, `skills/skill-chanchi-verify/SKILL.md`
-- Modify: `tests/test_skills_content.py` (`test_all_skills_exist` adds `skill-chanchi-verify`)
+- Create: `FEATURE_MAP.md`, `tests/test_feature_map.py`
 
 **Interfaces:**
 - Consumes: `cli.build_parser()`.
@@ -1262,53 +1390,9 @@ For every other group, read the group's `--help`, its handler in `src/chanchi/cl
 Run: `uv run pytest -q tests/test_feature_map.py`
 Expected: PASS.
 
-- [ ] **Step 5: Write `skills/skill-chanchi-verify/SKILL.md`**
+- [ ] **Step 5: Run the gate and hand off**
 
-```markdown
----
-name: skill-chanchi-verify
-description: Use when you changed chanchi and must prove the change works before handing it off. Runs the affected FEATURE_MAP.md entries on a scratch database and the gate, and reports evidence. Not for auditing someone else's session (that is skill-chanchi-session-audit).
----
-
-# chanchi — verify
-
-Prove the change with evidence an auditor can rerun. Never touch the operational database.
-
-## Launch
-    export CHANCHI_DB="$(mktemp -d)/chanchi.db"
-    uv run chanchi db status        # must show the scratch path
-
-## Doctor
-`chanchi db status` (run as `uv run chanchi db status`) reports the scratch path and `uv run pytest -q` is green before you
-start. If not, stop and report: the starting state is broken, not your change.
-
-## Drive
-Open `FEATURE_MAP.md`, find every entry for a command your change touches, and run its "How to
-get to it" and "Driving it" commands as written. For a new command, write its entry first.
-
-## Evidence
-For each command: the exact command and its last output line, plus the state it must leave
-(the row or status `chanchi show`, `chanchi lesson show` or `chanchi db status` reports), not only
-the exit code. Finish with `scripts/check` and its last line.
-
-## Cleanup
-Delete the scratch directory only after the evidence is in your report. Never delete evidence.
-
-## Helpers
-After a harness upgrade, check that agents still load: `agy agents` (in a trusted folder) and
-`opencode debug agents` list the `agent-chanchi-*` agents, and
-`claude -p --agent agent-chanchi-researcher "Name the test that guards the import layers."`
-answers `tests/test_layers.py`. If agy tool names changed, update `AGY_*_TOOLS` in
-`src/chanchi/agents_sync.py` and run `chanchi agents sync`.
-```
-
-- [ ] **Step 6: Update `tests/test_skills_content.py`**
-
-Add `"skill-chanchi-verify"` to the expected list in `test_all_skills_exist` (sorted position). Run `uv run pytest -q tests/test_skills_content.py tests/test_items.py`. Expected: PASS.
-
-- [ ] **Step 7: Run the gate and hand off**
-
-Run: `scripts/check`. Expected: exit 0. Commit message: `feat(verify): add the feature map, its coverage check and the verify skill`.
+Run: `scripts/check`. Expected: exit 0. Commit message: `feat(verify): add the feature map and its coverage check`.
 
 ---
 
@@ -1325,9 +1409,14 @@ follow-up commit, re-running `chanchi agents sync`.
   - `opencode run --agent agent-chanchi-researcher "Name the test file that guards the import layers. Answer with the path only."`
   - `agy -p --agent agent-chanchi-researcher "Name the test file that guards the import layers. Answer with the path only."`
   Expected answer: `tests/test_layers.py`. Paste each answer.
-- [ ] **Step 3: Skill preload.** For agy: temporarily copy `.agents/agents/agent-chanchi-executor/agent.md` to `/tmp/preload-probe/.agents/agents/probe/agent.md` in a scratch git repo (trusted), replace the body line "Before starting, load these skills" with nothing, add `preloadSkills:\n  - skill-chanchi-verify` to its frontmatter, link the skill there (`chanchi skills link /tmp/preload-probe`), and ask `agy -p --agent probe "Without reading any file, what is the first section heading of the verify skill you were given?"`. Expected if preload works: `Launch`. Repeat with `skills:` instead of `preloadSkills:`. Record which key works. Do the same for a Claude subagent (`skills:`) by asking a Claude main session to spawn the probe as a subagent with the same question.
+- [ ] **Step 3: Skill preload.** agy loads workspace agents only in a trusted folder and headless `-p` cannot answer the trust prompt, so the probe goes in the repository root, which is already trusted, and is removed at the end:
+  1. Copy `.agents/agents/agent-chanchi-executor/agent.md` to `.agents/agents/probe/agent.md`; set `name: probe`; delete the body line starting "Before starting, load these skills"; add `preloadSkills:` with `  - skill-chanchi-verify`; run `chanchi skills link .` so `.agents/skills/skill-chanchi-verify` exists.
+  2. Run `agy agents` and confirm `probe` is listed; then `agy -p --agent probe "Without reading any file, what is the first section heading of the verify skill you were given? Answer with the heading only."` Expected if preload works: `Launch`.
+  3. Repeat with `skills:` instead of `preloadSkills:`. Record which key works, or that neither does.
+  4. For Claude Code, copy `.claude/agents/agent-chanchi-researcher.md` to `.claude/agents/probe.md` with `name: probe` and `skills:` listing `skill-chanchi-verify`, then run `claude -p "Spawn the probe subagent and ask it, without reading files, for the first section heading of the verify skill it was given. Reply with its answer only."` Expected: `Launch`.
+  5. Remove every probe file and the links `chanchi skills link .` created (`chanchi skills unlink .`), and show `git status --short` is clean.
 - [ ] **Step 4: Link transition.** In a temporary `HOME` (`export HOME="$(mktemp -d)"`), recreate the legacy layout (`~/.agents/skills/chanchi-<n>` → `<repo>/skills/chanchi-<n>`, `~/.claude/skills/chanchi-<n>` → `../../.agents/skills/chanchi-<n>`), run `chanchi skills link --global`, and show that `ls ~/.agents/skills/chanchi-*/SKILL.md ~/.claude/skills/chanchi-*/SKILL.md` resolves; then `chanchi skills unlink --global` and show both directories empty.
-- [ ] **Step 5: Report** to `.claude/worktrees/research/REPORT-phase1-live.md` with each step's commands and outputs, and a final list of required changes (empty if none).
+- [ ] **Step 5: Report** (never committed; describe consumer projects generically) to `.claude/worktrees/research/REPORT-phase1-live.md` with each step's commands and outputs, and a final list of required changes (empty if none).
 
 ---
 
@@ -1335,6 +1424,6 @@ follow-up commit, re-running `chanchi agents sync`.
 
 After S5, the orchestrator:
 
-1. Applies the S5 changes, merges with `--no-ff`, runs `chanchi skills link --global` on the real home directory (repairs the legacy links, creates the compatibility links) and checks that `ls ~/.agents/skills/chanchi-*/SKILL.md` still resolves.
+1. Applies the S5 changes, merges with `--no-ff`, runs `chanchi skills link --global` on the real home directory (repairs the legacy links, creates the compatibility links) and checks that `ls ~/.agents/skills/chanchi-*/SKILL.md ~/.claude/skills/chanchi-*/SKILL.md` resolves. Then, from a directory outside this repository, it proves a harness loads a skill through a compatibility link: `claude -p "Read ~/.claude/skills/chanchi-lessons/SKILL.md and give its frontmatter name only."` must answer `skill-chanchi-lessons`.
 2. Records the phase-1 sessions in chanchi with the tags and notes of the design.
 3. Starts counting the phase-1 exit signal (three consecutive executor changes with `accepted` and `gate:first-green`, at least one with `verify:feature-map`).
