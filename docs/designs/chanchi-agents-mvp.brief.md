@@ -61,7 +61,8 @@ installed binaries (`claude` 2.1.330, `opencode` 2.2.6, `agy` 1.5.14):
   `system`, and agy prepends it. One Markdown file cannot serve every harness, so symlinks are not
   an option.
 - **Headless invocation exists in all three:** `claude -p --agent <name>`,
-  `opencode run --agent <name>` and `agy -p --agent <name>`.
+  `opencode run --agent <name>` and `agy --agent <name> -p="<prompt>"` (agy needs the prompt attached
+  to `-p`).
 - **Two consumer projects** already keep one agnostic role file per role plus hand-written
   wrappers for each harness. Their wrappers have drifted: some roles are missing in some harnesses.
   Their role files load chanchi skills by a hardcoded path glob (`~/.agents/skills/chanchi-*`), and

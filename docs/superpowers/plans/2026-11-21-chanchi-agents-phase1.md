@@ -1417,11 +1417,11 @@ follow-up commit, re-running `chanchi agents sync`.
 - [ ] **Step 2: Headless smoke.** Run, from the repository root:
   - `claude -p --agent agent-chanchi-researcher "Name the test file that guards the import layers. Answer with the path only."`
   - `opencode run --agent agent-chanchi-researcher "Name the test file that guards the import layers. Answer with the path only."`
-  - `agy -p --agent agent-chanchi-researcher "Name the test file that guards the import layers. Answer with the path only."`
+  - `agy --agent agent-chanchi-researcher -p="Name the test file that guards the import layers. Answer with the path only." < /dev/null`
   Expected answer: `tests/test_layers.py`. Paste each answer.
 - [ ] **Step 3: Skill preload.** agy loads workspace agents only in a trusted folder and headless `-p` cannot answer the trust prompt, so the probe goes in the repository root, which is already trusted, and is removed at the end:
   1. Copy `.agents/agents/agent-chanchi-executor/agent.md` to `.agents/agents/probe/agent.md`; set `name: probe`; delete the body line starting "Before starting, load these skills"; add `preloadSkills:` with `  - skill-chanchi-verify`; run `chanchi skills link .` so `.agents/skills/skill-chanchi-verify` exists.
-  2. Run `agy agents` and confirm `probe` is listed; then `agy -p --agent probe "Without reading any file, what is the first section heading of the verify skill you were given? Answer with the heading only."` Expected if preload works: `Launch`.
+  2. Run `agy agents` and confirm `probe` is listed; then `agy --agent probe -p="Without reading any file, what is the first section heading of the verify skill you were given? Answer with the heading only." < /dev/null` Expected if preload works: `Launch`.
   3. Repeat with `skills:` instead of `preloadSkills:`. Record which key works, or that neither does.
   4. For Claude Code, copy `.claude/agents/agent-chanchi-researcher.md` to `.claude/agents/probe.md` with `name: probe` and `skills:` listing `skill-chanchi-verify`, then run `claude -p "Spawn the probe subagent and ask it, without reading files, for the first section heading of the verify skill it was given. Reply with its answer only."` Expected: `Launch`.
   5. Remove every probe file and the links `chanchi skills link .` created (`chanchi skills unlink .`), and show `git status --short` is clean.

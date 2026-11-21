@@ -1,7 +1,7 @@
 # chanchi Agents and the Agentic Trust MVP
 
 - **Author:** Iván R
-- **Status:** Proposed
+- **Status:** Phase 1 implemented (2026-11-21, change `chanchi-agents-phase1`)
 - **Date:** 2026-11-21
 - **Revision:** 2 (after two independent audits of Revision 1, both `PASS WITH FIXES` and both
   agreeing with option A:
@@ -303,7 +303,7 @@ candidate `agent-chanchi-orchestrator` on `claude` / `sonnet`, judge on `agy` /
    `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate` or `arena` (pstack
    `eval.md`). `CHANCHI_DB` points inside the work directory.
 2. **Two arms.** Run the candidate headless (`claude -p --agent`, `opencode run --agent`,
-   `agy -p --agent`) **with the skill** and **without it** (or with the previous version, from
+   `agy --agent <name> -p="<prompt>"`) **with the skill** and **without it** (or with the previous version, from
    git), so the result measures the skill's lift, not the model. The runner copies the candidate's
    generated wrapper and, for the with-skill arm, the skill directory into the work directory's
    `.claude/`, `.opencode/` or `.agents/` folder; the other arm gets the wrapper only. Before it
@@ -313,7 +313,7 @@ candidate `agent-chanchi-orchestrator` on `claude` / `sonnet`, judge on `agy` /
    naming the global copy when it cannot isolate it. A baseline arm contaminated by a global copy
    would measure nothing.
    Transcripts are captured from each CLI's structured output: `claude -p --verbose
-   --output-format stream-json` (Claude requires `--verbose` with it), `agy -p --output-format stream-json`, `opencode run --format json`.
+   --output-format stream-json` (Claude requires `--verbose` with it), `agy --output-format stream-json -p="<prompt>"`, `opencode run --format json`.
 3. **Repeat.** Three runs per arm; the ledger keeps the median.
 4. **Code graders.** `grade.py` checks the end state, such as the scratch chanchi database (sessions,
    incidents with evidence, verdict), files and exit codes.
