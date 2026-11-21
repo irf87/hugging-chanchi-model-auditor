@@ -64,6 +64,12 @@ def git_head(cwd: Path | None = None) -> str | None:
     return _git(cwd or Path.cwd(), "rev-parse", "HEAD") or None
 
 
+def git_toplevel(cwd: Path | None = None) -> Path | None:
+    """The top level of the git work tree containing `cwd`, or None outside git."""
+    top = _git(cwd or Path.cwd(), "rev-parse", "--show-toplevel")
+    return Path(top) if top else None
+
+
 def detect(cwd: Path | None = None) -> tuple[str, str]:
     target_cwd = cwd or Path.cwd()
     top_out = _git(target_cwd, "rev-parse", "--show-toplevel")

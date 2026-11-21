@@ -26,6 +26,7 @@ ERROR_CODES = frozenset(
         "duplicate_lesson",
         "invalid_transition",
         "lesson_not_found",
+        "stale_wrappers",
         "internal",
     }
 )
