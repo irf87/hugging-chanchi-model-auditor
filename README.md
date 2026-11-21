@@ -38,14 +38,18 @@ GitHub Actions runs the same script on every push (`.github/workflows/check.yml`
 chanchi skills link /path/to/project
 ```
 
-This creates `.agents/skills/chanchi-*` (read by opencode and agy) and `.claude/skills/chanchi-*`
+This creates `.agents/skills/skill-chanchi-*` (read by opencode and agy) and `.claude/skills/skill-chanchi-*`
 (read by Claude Code) as symlinks to this repository, and prints a line to add to the project's
 `openspec/config.yaml`. `chanchi skills link --global` does the same in your home directory;
 `chanchi skills unlink` removes only the links it created.
 
-- `chanchi-model-selection` — used while planning: asks `chanchi recommend` for each session.
-- `chanchi-session-audit` — used while orchestrating: records sessions, incidents and verdicts.
-- `chanchi-lessons` — used by writer roles at the end of a conversation, and in maintenance
+`--global` also keeps `chanchi-<n>` compatibility links in `~/.agents/skills` and `~/.claude/skills`
+for projects that still use the old names; `--global --no-compat` removes them once those projects
+are updated.
+
+- `skill-chanchi-model-selection` — used while planning: asks `chanchi recommend` for each session.
+- `skill-chanchi-session-audit` — used while orchestrating: records sessions, incidents and verdicts.
+- `skill-chanchi-lessons` — used by writer roles at the end of a conversation, and in maintenance
   conversations that review lessons.
 
 ## Everyday commands
@@ -104,7 +108,7 @@ chanchi lesson apply 12 --as planner --author claude:sonnet:medium --conversatio
 chanchi lesson summary
 ```
 
-The full procedure, field guide and example body are in the `chanchi-lessons` skill. Two lines
+The full procedure, field guide and example body are in the `skill-chanchi-lessons` skill. Two lines
 tell agents where to go: the writer-role block goes into the planner's role file, and the reporter
 line goes into every other role. `chanchi skills link` prints the project-rules line.
 

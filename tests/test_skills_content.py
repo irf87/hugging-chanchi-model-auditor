@@ -25,14 +25,14 @@ def frontmatter(path: Path) -> dict:
 
 def test_all_skills_exist():
     assert [p.parent.name for p in SKILL_FILES] == [
-        "chanchi-lessons",
-        "chanchi-model-selection",
-        "chanchi-session-audit",
+        "skill-chanchi-lessons",
+        "skill-chanchi-model-selection",
+        "skill-chanchi-session-audit",
     ]
 
 
 def test_lessons_skill_is_at_most_150_lines():
-    lines = (SKILLS / "chanchi-lessons" / "SKILL.md").read_text(encoding="utf-8").splitlines()
+    lines = (SKILLS / "skill-chanchi-lessons" / "SKILL.md").read_text(encoding="utf-8").splitlines()
     assert len(lines) <= 150, len(lines)
 
 
@@ -55,13 +55,13 @@ def test_documented_commands_exist(path, capsys):
 
 
 def test_rubric_covers_every_incident_code():
-    rubric = (SKILLS / "chanchi-session-audit" / "references" / "rubric.md").read_text(encoding="utf-8")
+    rubric = (SKILLS / "skill-chanchi-session-audit" / "references" / "rubric.md").read_text(encoding="utf-8")
     for code in taxonomy.INCIDENT_CODES:
         assert f"`{code}`" in rubric, code
 
 
 def test_selection_skill_documents_exploration_rules():
-    text = (SKILLS / "chanchi-model-selection" / "SKILL.md").read_text(encoding="utf-8")
+    text = (SKILLS / "skill-chanchi-model-selection" / "SKILL.md").read_text(encoding="utf-8")
     for token in (
         "explore",
         "explore_reason",

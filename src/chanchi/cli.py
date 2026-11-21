@@ -122,7 +122,7 @@ def _skills_base(args) -> Path:
 
 
 def cmd_skills_link(args):
-    return skills_link.link(_skills_base(args), global_=args.global_)
+    return skills_link.link(_skills_base(args), global_=args.global_, compat=not args.no_compat)
 
 
 def cmd_skills_unlink(args):
@@ -481,6 +481,11 @@ def build_parser() -> argparse.ArgumentParser:
         p = leaf(g, name, handler, f"{name} the chanchi skills")
         p.add_argument("path", nargs="?", default=".", help="project directory (default: cwd)")
         p.add_argument("--global", dest="global_", action="store_true", help="target ~ instead of a project")
+        if name == "link":
+            p.add_argument(
+                "--no-compat", dest="no_compat", action="store_true",
+                help="with --global, remove the chanchi-<n> compatibility links instead of creating them",
+            )
 
     g = group("change", "OpenSpec or adhoc changes")
     p = leaf(g, "open", cmd_change_open, "open a change (creates the project on first use)")

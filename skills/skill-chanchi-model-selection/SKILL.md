@@ -1,5 +1,5 @@
 ---
-name: chanchi-model-selection
+name: skill-chanchi-model-selection
 description: Use when planning an OpenSpec change or any multi-session work and you must assign an agent, model and effort to each executor session. Queries the local chanchi rating for the best-value model per task type and complexity, and opens the change record.
 ---
 
@@ -59,7 +59,7 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
 5. **Write it into the session protocol** of the plan, one line per session, e.g.:
    `chanchi: recommended agy:gemini-3.8-flash-high:high (99.6, low confidence, task_type+complexity) · chosen agy:gemini-3.8-flash-high:high`
    If you deviate, add `· reason: <why>`. For an explore session, append `· explore: <spec>`.
-6. Hand the change over to orchestration; the `chanchi-session-audit` skill takes it from there.
+6. Hand the change over to orchestration; the `skill-chanchi-session-audit` skill takes it from there.
 
 ## Catalog maintenance (when the human asks)
 

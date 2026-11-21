@@ -1,13 +1,13 @@
 ---
-name: chanchi-lessons
-description: Use at the end of a conversation in a writer role, after an audit or a stop found a failure of the process, or in a maintenance conversation that reviews pending lessons. Records a lesson (cause and one general rule) in chanchi, or reviews and applies one. Not for a single model's weakness (record an incident with chanchi-session-audit) and not for a code bug (fix the code).
+name: skill-chanchi-lessons
+description: Use at the end of a conversation in a writer role, after an audit or a stop found a failure of the process, or in a maintenance conversation that reviews pending lessons. Records a lesson (cause and one general rule) in chanchi, or reviews and applies one. Not for a single model's weakness (record an incident with skill-chanchi-session-audit) and not for a code bug (fix the code).
 ---
 
 # chanchi — lessons
 
 A lesson records a failure of the setup that guides agents (roles, skills, rules files, workflows,
 hooks) and one general rule that would have prevented it. A lesson never fixes code and never rates
-a model. Model weakness is an incident (`chanchi-session-audit`).
+a model. Model weakness is an incident (`skill-chanchi-session-audit`).
 
 Every command takes `--as <role>`, `--author <agent:model[:effort]>` and `--conversation <id>`.
 Use the harness, model and effort you run in, and the conversation id or a label you reuse for
@@ -140,7 +140,7 @@ Paste verbatim: the writer-role block into the planner's role file; the reporter
 
 Writer-role block (planner's role file):
 
-> You are a writer role for chanchi lessons. At the end of each conversation, or when something went wrong, follow the `chanchi-lessons` skill: fix first, then record the cause and a general rule. Never review or apply a lesson you recorded.
+> You are a writer role for chanchi lessons. At the end of each conversation, or when something went wrong, follow the `skill-chanchi-lessons` skill: fix first, then record the cause and a general rule. Never review or apply a lesson you recorded.
 
 Reporter line (every other role):
 
