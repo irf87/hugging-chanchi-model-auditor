@@ -71,6 +71,8 @@ def test_agy_flags_and_tools(tmp_path):
     text = agents_sync.render(source)[".agents/agents/agent-chanchi-demo/agent.md"]
     assert "mainAgent: false" in text and "subagent: true" in text
     assert "  - view_file" in text and "replace_file_content" not in text
+    assert "preloadSkills:\n  - skill-chanchi-verify" in text
+    assert "Before starting, load these skills" not in text
 
 
 def test_sync_then_check_is_clean(tmp_path):

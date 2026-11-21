@@ -22,9 +22,9 @@ AGY_READ_TOOLS = ("view_file", "list_dir", "find_by_name", "grep_search", "run_c
 AGY_EDIT_TOOLS = ("replace_file_content", "multi_replace_file_content")
 AGY_ORCHESTRATOR_TOOLS = ("invoke_subagent", "define_subagent", "manage_task")
 
-# Whether the harness preloads skills natively in this launch mode. Verified live in Task 8;
-# where False, the generator writes an explicit "load these skills" line instead.
-AGY_PRELOAD_VERIFIED = False
+# agy preloads skills listed under `preloadSkills:` (not `skills:`), verified live on agy 1.5.14
+# (phase-1 session S5, 2026-11-21). Set to False to fall back to an explicit "load these skills" line.
+AGY_PRELOAD_VERIFIED = True
 
 
 @dataclass(frozen=True)

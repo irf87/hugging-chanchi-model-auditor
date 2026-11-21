@@ -52,6 +52,25 @@ are updated.
 - `skill-chanchi-lessons` — used by writer roles at the end of a conversation, and in maintenance
   conversations that review lessons.
 
+## Agents
+
+chanchi's own agents are written once in `agents/agent-chanchi-<name>/AGENT.md` and compiled into
+committed wrappers for Claude Code (`.claude/agents/`), opencode (`.opencode/agents/`) and agy
+(`.agents/agents/`). Never edit a wrapper by hand:
+
+```bash
+chanchi agents sync            # regenerate the wrappers after editing a source
+chanchi agents sync --check    # fail if any wrapper is stale (part of scripts/check)
+```
+
+- `agent-chanchi-orchestrator` — plans, assigns executors, audits, records, merges.
+- `agent-chanchi-executor` — implements one brief in a worktree and reports; never commits.
+- `agent-chanchi-researcher` — read-only research with VERIFIED/UNVERIFIED claims.
+
+Launch one with `claude --agent <name>`, `opencode run --agent <name>` or
+`agy --agent <name>` (headless: `agy --agent <name> -p="<prompt>"`). `FEATURE_MAP.md` tells an
+agent how to reach and verify every command. Design: `docs/designs/chanchi-agents-mvp.md`.
+
 ## Everyday commands
 
 ```bash

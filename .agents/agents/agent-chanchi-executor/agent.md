@@ -17,6 +17,8 @@ tools:
   - read_url_content
   - replace_file_content
   - multi_replace_file_content
+preloadSkills:
+  - skill-chanchi-verify
 ---
 
 # Executor
@@ -33,5 +35,3 @@ You implement exactly one brief. Follow `AGENTS.md`.
 5. If the brief is unclear or wrong, stop and say so in the report; do not guess.
 6. Never commit, merge, push or write chanchi records. If something went wrong, say so in your
    report; do not record it in chanchi.
-
-Before starting, load these skills: skill-chanchi-verify.

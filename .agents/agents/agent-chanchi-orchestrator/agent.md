@@ -20,6 +20,11 @@ tools:
   - invoke_subagent
   - define_subagent
   - manage_task
+preloadSkills:
+  - skill-chanchi-model-selection
+  - skill-chanchi-session-audit
+  - skill-chanchi-lessons
+  - skill-chanchi-item-authoring
 ---
 
 # Orchestrator
@@ -42,5 +47,3 @@ You plan and audit; you do not implement. Follow `AGENTS.md`.
    Never review or apply a lesson you recorded.
 7. Ask the human only for decisions that are theirs, at most three at a time, each with a
    recommendation.
-
-Before starting, load these skills: skill-chanchi-model-selection, skill-chanchi-session-audit, skill-chanchi-lessons, skill-chanchi-item-authoring.
