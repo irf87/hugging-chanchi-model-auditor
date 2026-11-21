@@ -25,3 +25,24 @@ Option A: AGREE. Local binary checks (`claude` 2.1.330, `opencode` 2.2.6, `agy` 
 - **Deterministic-first Layer 2 & 3:** Code graders on scratch SQLite DBs before LLM judging, blinded candidates with with/without-skill arms, 10-label owner calibration, and promoting repeated lessons (`occurrences >= 2`) into checks rather than prose.
 - **Evidence-driven Adopt / Adapt / Avoid:** Properly rejects false claims from the third-party report, grounds design choices in primary sources (`REPORT-r3.md`), and bases all three phase exit signals on verifiable `chanchi` DB and git state.
 - **Brief and `AGENTS.md` structure:** `AGENTS.md` stays concise (113/150 lines), harness-agnostic, and cleanly documents item naming, the current consumer contract, and the independent-audit convention.
+
+## Re-check of revision 2
+
+Checked against commit `6e9bd7c` (`docs/designs/chanchi-agents-mvp.md`, `AGENTS.md`) and `chanchi lesson show 1`:
+
+- F1 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:67` now uses the fictional `skill-chanchi-acme-invoice-format` and no private consumer project name remains in commit `6e9bd7c`.
+- F2 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:175-178,554-557` drops `claude agents` (noting it lists running sessions) in favor of `claude -p --agent agent-chanchi-researcher` plus a pytest frontmatter check.
+- F3 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:159,558-559` injects the explicit skill-read line into `initialPrompt`/body wherever native preload is unsupported (including Claude main sessions) and adds live preload verification.
+- F4 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:157,159,558-559` maps `agy` `mainAgent` (`true`/`false`) by scope and requires live verification to pin `skills:` vs `preloadSkills:` with a load-line fallback.
+- F5 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:90-105,560-563` specifies dangling-link repair, `--global` compatibility links in `~/.agents/skills/` and `~/.claude/skills/`, `unlink` recognition, and `--no-compat` removal (minor cosmetic leftover: `:544` Risks table still mentions only `~/.agents/skills`).
+- F6 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:266-316,355-356` adds `eval.toml`, concrete `rubric.md` and `triggers.md` templates, isolated temp-`HOME` (or fail-closed error) for the `without-skill` arm, and verified structured-output transcript flags across all three CLIs.
+- F7 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:389` scopes Check 1's reference scan to operational files and explicitly excludes `docs/`.
+- F8 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:393` exempts `__main__` from the "no module imports `cli`" rule in Check 5.
+- F9 | RESOLVED | `docs/designs/chanchi-agents-mvp.md:464-483` fixes the verdict to `accepted` and defines concrete `--tags` and `--notes` tokens supported by `src/chanchi/cli.py:503,514`.
+- F10 | RESOLVED | `AGENTS.md:97` requires `git merge --no-ff` and `docs/designs/chanchi-agents-mvp.md:368-375` configures `git config merge.ff false` with a `scripts/check` warning.
+- F11 | RESOLVED | `AGENTS.md:75-76` folds the private-memory rule into Core Rule 4 and removes the duplicate Working Conventions bullet (`AGENTS.md` stays 115 lines; `tests/test_agent_rules.py` passes).
+- F12 | DEFERRED | Lesson #1 was updated cleanly (`cause`, English `evidence`, concrete `proposal` without claiming prior application) and remains `pending` for independent review, `[lesson #1]` tagging, and `lesson apply` in another conversation after merge.
+
+New blocking or major issues introduced: none.
+
+RECHECK: PASS

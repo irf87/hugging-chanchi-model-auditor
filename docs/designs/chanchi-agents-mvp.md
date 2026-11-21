@@ -312,8 +312,8 @@ candidate `agent-chanchi-orchestrator` on `claude` / `sonnet`, judge on `agy` /
    temporary directory that holds only that harness's credential files, or stops with an error
    naming the global copy when it cannot isolate it. A baseline arm contaminated by a global copy
    would measure nothing.
-   Transcripts are captured from each CLI's structured output: `claude -p --output-format
-   stream-json`, `agy -p --output-format stream-json`, `opencode run --format json`.
+   Transcripts are captured from each CLI's structured output: `claude -p --verbose
+   --output-format stream-json` (Claude requires `--verbose` with it), `agy -p --output-format stream-json`, `opencode run --format json`.
 3. **Repeat.** Three runs per arm; the ledger keeps the median.
 4. **Code graders.** `grade.py` checks the end state, such as the scratch chanchi database (sessions,
    incidents with evidence, verdict), files and exit codes.
@@ -353,9 +353,12 @@ from capability cases (allowed to start low).
 
 Evals never run in the gate. They run when an evaluated item changes, through
 `scripts/run_evals.py <item>`. The runner prints the planned number of headless runs (cases × 2
-arms × 3 runs, plus the judge calls and triggers) and refuses more than 30 without `--yes`. The gate only reads the ledger: from phase 2 it fails when an
-evaluated item's current `item_sha` has no `kept` or `baseline` row, with the hint to run the
-command above.
+arms × 3 runs, plus the judge calls and triggers) and refuses more than 30 without `--yes`.
+
+The gate only reads the ledger: from phase 2 it fails when an evaluated item's current `item_sha`
+has no `kept` or `baseline` row, with the hint to run the command above. There is no exemption for
+text-only edits: a skill's text is its behavior, so any change to an evaluated item's directory
+needs a new ledger row.
 
 ---
 
@@ -541,7 +544,7 @@ budget chooses the executors.
 | A harness upgrade renames tools or paths | Mapping table in one module; smoke check in `skill-chanchi-verify`; the generator test pins the expected output |
 | agy ignores workspace agents in an untrusted folder | Worktree launches answer the trust prompt first (already in the delegation procedure); the smoke check lists agents |
 | A Claude `both` agent run as a main session loses the default prompt | Documented; `scope: main` exists for agents that run as main sessions |
-| Duplicate skill listings during the rename transition | Compatibility links only in `~/.agents/skills`, removed by TODO 1 |
+| Duplicate skill listings during the rename transition | Compatibility links only in `~/.agents/skills` and `~/.claude/skills`, removed by TODO 1 |
 | Ruff flags existing code | Fix findings in the same change; per-file ignores only with a reason comment |
 | Eval cost | Evals run only when an evaluated item changes; the gate reads the ledger |
 

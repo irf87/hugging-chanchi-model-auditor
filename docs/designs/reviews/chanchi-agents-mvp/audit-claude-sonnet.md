@@ -40,3 +40,24 @@ Minimal and well scoped: three agents, a judge deferred, evals out of the gate, 
 - Adopt/Adapt/Avoid table with a source and a reason per row, and the explicit rejection of the third-party report.
 - The "can a check enforce it?" question in lesson review, and the rules budget check.
 - AGENTS.md additions are short, non-duplicated and harness agnostic (modulo F8); the author-does-not-judge rule generalizes lesson skill rule 4 without contradicting it.
+
+## Re-check of revision 2
+
+Checked against commit 6e9bd7c (design revision 2, AGENTS.md, `chanchi lesson show 1`) and local CLI help.
+
+- F1 | RESOLVED | `claude agents` is dropped; Claude is smoked by `claude -p --agent agent-chanchi-researcher` plus a frontmatter pytest check, and the text says why.
+- F2 | RESOLVED | Native `skills:` is kept only where verified live (Claude subagents); everywhere else a "load these skills" line is written, and verification step 5 checks preload live per harness and launch mode.
+- F3 | RESOLVED | A "How each agent is launched" paragraph fixes the primary mode (Claude subagent via the Agent tool; agy and opencode main sessions) and states the only case that loses the default prompt.
+- F4 | RESOLVED | Signals now use `session start --tags agent-chanchi-<agent>` and `session audit --notes` tokens (`gate:first-green`, `verify:feature-map`); both flags exist and the verdict value `accepted` matches the taxonomy.
+- F5 | RESOLVED | Check 1 reference scan is limited to operational files and excludes `docs/`.
+- F6 | RESOLVED | The design adds repair of legacy dangling links, compatibility links in both consumer directories (`--global` only), `unlink` coverage and `--no-compat`, plus verification step 6 in a temporary HOME; `skills unlink` already exists.
+- F7 | PARTIAL | Candidate and judge (`eval.toml`), wrapper and skill copy-in, global-copy contamination guard, transcript capture, trigger detection and a 30-run cap are added; the item_sha gate still has no docs-only escape hatch (minor, not blocking).
+- F8 | RESOLVED | AGENTS.md now says the existing skills are renamed in phase 1, "except skill links" for repository writes, and the memory rule sits in rule 4.
+- F9 | RESOLVED | `hook` is defined as a harness hook under `hooks/hook-chanchi-<name>/`, git hooks are excluded, and check 1 covers `hooks/`.
+- F10 | DEFERRED | The example is now `skill-chanchi-acme-invoice-format` and the new design, brief, reviews and AGENTS.md contain no consumer names; older committed docs (and `/Users/...` paths) remain, out of scope for this change.
+- F11 | RESOLVED | The CI mirror moves to phase 1 and ruff becomes a dev dependency with its configuration in `pyproject.toml`.
+- F12 | RESOLVED | Lesson 1 is now in English, the cause names the missing rule and the memory prompt, and the proposal lists two sites (AGENTS.md rule 4, lessons skill step 1); the lessons-skill line is still a proposal, which is correct while the lesson is pending.
+
+New blocking or major issues introduced by the fixes: none. Minor notes: `claude -p --output-format stream-json` normally needs `--verbose` (confirm when building the runner); `merge.ff false` is a per-clone setting that the gate only warns about.
+
+RECHECK: PASS
