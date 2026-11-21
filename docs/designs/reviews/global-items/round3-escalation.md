@@ -41,3 +41,15 @@ vote as an approval would not have changed this round: seats 1 and 2 would appro
 confirmed lone majors of seat 3 still force `fix`. What escalated this round is real: two confirmed
 majors, both of them wording, after three rounds. The owner decides whether to accept with those
 fixes and whether to change how `pass_with_fixes` counts.
+
+## Owner's decision (2026-11-21)
+
+- **Accepted with fixes.** Revision 4 applies the two confirmed majors of seat 3 (the
+  `lesson apply` value with its tag and precondition; Principle 4 states the `test_items.py` check
+  as a phase-2 deliverable) and the minors of all three seats (audits bind to version and content
+  hash; collision checks against scanned items from phase 3; the mirror manifest follows
+  `CHANCHI_DB`; the separation sentence matches `_is_own`; agy-only machines and the second agy
+  skills folder; family inference in `models add`; `pass` votes cannot carry blocking or major
+  findings; `promotion.toml` keys and vendored text).
+- **Rule change.** A `pass_with_fixes` with no blocking and no major finding counts as an approval;
+  its minors are fixed without a new round. Recorded in `AGENTS.md` and the design's outcome table.
