@@ -947,7 +947,8 @@ Only the parts that stages 1 and 2 must not contradict are fixed here. Brief §1
 contract (normalized input fields, command matching, the guarded-verb list, the session-start
 line, the fixture-test matrix). It is revised into a file-level plan once Q6 is answered.
 
-- **Migration `005_runs.sql`**: a `runs` table, one row per harness conversation
+- **Migration `005_runs.sql`** (renumbered: `docs/designs/global-items.md` takes 005 for audits
+  and model families, so this stage takes the next free number when it is built): a `runs` table, one row per harness conversation
   (`UNIQUE(agent, conversation_id)`), with its project, role and where the role came from, its
   model, effort and linked session, and the retrospective timestamps.
 - **`chanchi hook check`** always exits 0. Any error, lock, missing git, unregistered project or

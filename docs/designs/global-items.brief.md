@@ -65,8 +65,8 @@ Research ran in agy as `agent-chanchi-researcher` (`gemini-4-hydrogen-high`), re
 - **Harness global locations** (verified on claude 2.1.330, opencode 2.3.2, agy 1.5.14): Claude
   Code reads `~/.claude/skills` and `~/.claude/agents`; opencode reads `~/.config/opencode/agents`
   and skills from `~/.agents/skills` and `~/.claude/skills`; agy reads `~/.gemini/config/skills`,
-  `~/.gemini/antigravity-cli/skills` and `~/.gemini/config/agents`. All three follow symlinks and
-  reload changes. Claude Code lets a personal skill win over a project skill of the same name, but
+  `~/.gemini/antigravity-cli/skills` and `~/.gemini/config/agents`. All three follow symlinks;
+  Claude Code and opencode reload changes during a session (an open agy TUI was not verified). Claude Code lets a personal skill win over a project skill of the same name, but
   a project subagent wins over a personal one, so global and project items must never share a name.
   Claude Code rewrites `~/.claude.json`, so runtime-mutated files are never mirrored.
 - **Prior art** (primary sources): promote a shared item only after repeated independent use

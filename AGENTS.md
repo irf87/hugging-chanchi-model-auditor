@@ -87,9 +87,11 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
 ## Items and Other Projects
 
 - An item is agent setup a harness loads or runs: `agent`, `skill`, `eval`, `hook`. chanchi's
-  own items are named `<item>-chanchi-<name>`. Items chanchi later helps another project create are named
-  `<item>-chanchi-<project-slug>-<name>` and live only in that project. Design and adoption
-  phases: `docs/designs/chanchi-agents-mvp.md`.
+  own items are named `<item>-chanchi-<name>`. Items chanchi helps another project create are
+  `<item>-chanchi-<project-slug>-<name>` and live only in that project. The user's global items
+  are `<item>-chanchi-global-<name>` (`global` is a reserved slug) and live in the user's `SYNC/`,
+  never in this repository. Designs: `docs/designs/chanchi-agents-mvp.md`,
+  `docs/designs/global-items.md`.
 - How other projects use chanchi today: they get skills through `chanchi skills link`, are
   identified from git and `chanchi project register` (chanchi writes nothing into their
   repository except skill links), and only their orchestrating role writes chanchi records, into
@@ -108,8 +110,9 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   rules, skills, agents, lessons) is audited before merge by agents from other conversations,
   which check it against the request and the evidence: three auditors per round, each of a
   different model family when available (otherwise the next one in the user's roster, and the
-  round is recorded as degraded), accepted when two of three agree, at most three rounds, then
-  the human decides with the disagreement report. Procedure: `docs/designs/global-items.md`.
+  round is recorded as degraded), accepted when at least two of three pass, at most three
+  rounds, then the human decides with the disagreement report. Procedure:
+  `docs/designs/global-items.md`.
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one.
