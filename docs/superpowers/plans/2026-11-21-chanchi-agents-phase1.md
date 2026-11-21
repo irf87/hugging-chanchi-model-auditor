@@ -47,6 +47,16 @@
 
 S2 starts after S1 merges; S3 after S2; S4 after S3; S5 after S4.
 
+Session protocol (chanchi change `chanchi-agents-phase1`, available
+`agy:gemini-4-hydrogen-{medium,high}`, `claude:sonnet:{medium,high}`; explore budget 1, unused
+because S1-S4 block later sessions):
+
+- S1 `infra-config-ci` medium — chanchi: recommended agy:gemini-4-hydrogen-high:high (low confidence, complexity) · chosen agy:gemini-4-hydrogen-high:high
+- S2 `refactor` medium — chanchi: recommended agy:gemini-4-hydrogen-high:high (low confidence, complexity) · chosen agy:gemini-4-hydrogen-high:high
+- S3 `business-logic` medium — chanchi: recommended agy:gemini-4-hydrogen-high:high (low confidence, complexity) · chosen agy:gemini-4-hydrogen-high:high
+- S4 `docs` medium — chanchi: recommended agy:gemini-4-hydrogen-high:high (low confidence, complexity) · chosen agy:gemini-4-hydrogen-high:high
+- S5 `integration` low — chanchi: recommended claude:sonnet:medium (low confidence, complexity) · chosen claude:sonnet:medium
+
 ---
 
 ### Task 1: Gate, hooks and CI mirror
@@ -365,7 +375,7 @@ Expected: exit 0. Commit message: `test(gate): add import-layer, stdlib-runtime 
 **Interfaces:**
 - Produces:
   - `skills_link.SKILL_PREFIX = "skill-chanchi-"`, `skills_link.LEGACY_PREFIX = "chanchi-"`
-  - `skills_link.link(base, *, global_=False, skills_dir=None, compat=True) -> dict` with keys `base, skills, created, existing, repaired, suggested_config_line`
+  - `skills_link.link(base, *, global_=False, skills_dir=None, compat=True) -> dict` with keys `base, skills, created, existing, repaired, removed, suggested_config_line`
   - `skills_link.unlink(base, *, global_=False, skills_dir=None) -> dict` with keys `base, removed`
   - CLI: `chanchi skills link [path] [--global] [--no-compat]`
 

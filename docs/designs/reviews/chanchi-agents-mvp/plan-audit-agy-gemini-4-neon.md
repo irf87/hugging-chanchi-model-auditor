@@ -25,3 +25,22 @@ The plan covers all Phase 1 deliverables from `docs/designs/chanchi-agents-mvp.m
 - **(D) Commands and flags:** All `chanchi`, `uv`, `ruff`, `git`, `claude`, `opencode`, and `agy` commands/flags exist, subject to P5's `agy` trust/name fix.
 - **(E) Executor readiness:** Clear and actionable once P1–P5 and P8 are fixed.
 - **(F) Public repo:** No private project names, emails, or home paths appear in the plan.
+
+## Re-check
+
+Checked against commit `51dcf57` (`docs/superpowers/plans/2026-11-21-chanchi-agents-phase1.md`) and re-tested P1–P4, P6, P8, and P9 in a temporary copy of the repository:
+
+- P1 | RESOLVED | `git_toplevel()` moved to `src/chanchi/projects.py` (`plan:1017-1020`) and called from `cli.py` with no `subprocess` import; `tests/test_no_network.py` + `tests/test_agents_sync.py` pass (14/14).
+- P2 | RESOLVED | `skills/skill-chanchi-verify/SKILL.md` moved to Task 6 Step 6b (`plan:1225-1265`) and added to `test_skills_content.py` in Step 7; `test_items.py` + `test_skills_content.py` + `test_agents_sync.py` + `test_no_network.py` pass after Task 6 (38/38).
+- P3 | RESOLVED | `_is_compat()` is split from `_is_legacy()` so `compat=True` leaves existing compatibility links in `existing` (idempotent) and `compat=False` removes them; all 19 tests in `tests/test_skills_link.py` pass (incl. `test_global_link_adds_agy_cli_dir_only_when_present` and `test_global_link_is_idempotent_with_compat`; minor cosmetic note: `plan:368` Interfaces list omits `removed` returned at `:531`).
+- P4 | RESOLVED | `_is_legacy()` now requires a chained secondary's primary to be missing or repo-owned (`plan:507-509`), and repair iterates `[*secondaries, primary]`; `test_chained_secondary_to_foreign_primary_is_kept` and `test_global_link_repairs_legacy_links_into_compat_links` pass.
+- P5 | RESOLVED | Task 8 Step 3 (`plan:1412-1417`) runs the probe in the already-trusted repository root, explicitly sets `name: probe`, verifies `agy agents` lists `probe` before invoking `agy -p --agent probe`, and cleans up all probe files/links.
+- P6 | RESOLVED | `tests/test_agents_sync.py` adds `test_claude_wrappers_frontmatter()` (`plan:813-822`, verified passing on the 3 generated wrappers) and Phase 1 completion (`plan:1427`) adds a live `claude -p` check loading a skill through `~/.claude/skills/chanchi-lessons/SKILL.md`.
+- P7 | RESOLVED | Task 3 Step 7 (`plan:560-566`) updates `README.md:31` to `skill-chanchi-*` and removes the transitional parenthetical from `AGENTS.md:84`.
+- P8 | RESOLVED | Task 1 Step 9 (`plan:165-189`) is explicitly scoped as a throwaway-branch exception using `git stash -u` and `git -c core.hooksPath=.githooks` (leaving shared `.git/config` untouched; verified in `/tmp`), with per-clone `git config` moved to the orchestrator at Step 11 (`plan:212-213`).
+- P9 | RESOLVED | `agents_sync.py` skips blank lines in `_parse()` (`plan:888-889`) and quotes `description` with `json.dumps()` (`plan:940,951,964`); verified with a blank line and `"Foo: bar [baz]"`.
+- P10 | RESOLVED | `skills/skill-chanchi-item-authoring/SKILL.md` (`plan:1196`) now states that from Phase 2 onward every new skill ships with at least one eval case.
+
+New blocking or major issues introduced: none.
+
+RECHECK: PASS
