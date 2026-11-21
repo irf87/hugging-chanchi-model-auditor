@@ -233,7 +233,7 @@ def test_cuj7_a_global_lesson_from_outside_any_project(db_env, cli_env, tmp_path
     home.mkdir()
     glob = ("lesson", "add", "--global", "--json", "-")
     body = lesson_body(
-        "skill", target_kind="skill", target="skill ~/.agents/skills/chanchi-session-audit"
+        "skill", target_kind="skill", target="skill ~/.agents/skills/skill-chanchi-session-audit"
     )
 
     error = run_fail(home, env, "lesson", "add", *identity(), "--json", "-", stdin=body)
@@ -262,6 +262,6 @@ def test_cuj7_a_global_lesson_from_outside_any_project(db_env, cli_env, tmp_path
     assert reviewed["lesson"]["status"] == "approved"
     applied = run_ok(
         home, env, "lesson", "apply", str(owner["id"]), *identity(conversation="conv-maint"), "--site", "global",
-        "--where", f"~/.agents/skills/chanchi-session-audit/SKILL.md [lesson #{owner['id']}]",
+        "--where", f"~/.agents/skills/skill-chanchi-session-audit/SKILL.md [lesson #{owner['id']}]",
     )
     assert applied["site"]["site"] == "global" and applied["site"]["project"] is None

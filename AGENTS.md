@@ -81,8 +81,7 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
 ## Items and Other Projects
 
 - An item is agent setup a harness loads or runs: `agent`, `skill`, `eval`, `hook`. chanchi's
-  own items are named `<item>-chanchi-<name>` (the existing `chanchi-*` skills are renamed in
-  phase 1). Items chanchi later helps another project create are named
+  own items are named `<item>-chanchi-<name>`. Items chanchi later helps another project create are named
   `<item>-chanchi-<project-slug>-<name>` and live only in that project. Design and adoption
   phases: `docs/designs/chanchi-agents-mvp.md`.
 - How other projects use chanchi today: they get skills through `chanchi skills link`, are
@@ -97,8 +96,8 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   English; the orchestrating session merges to `main` with `git merge --no-ff` after
   verifying the work.
 - The orchestrator plans and audits; executors implement and hand off. Record
-  sessions, incidents and verdicts with the `chanchi-session-audit` skill; pick
-  executors with `chanchi-model-selection`.
+  sessions, incidents and verdicts with the `skill-chanchi-session-audit` skill; pick
+  executors with `skill-chanchi-model-selection`.
 - The author does not judge its own work. Everything the orchestrator writes (designs, briefs,
   rules, skills, agents, lessons) is audited before merge by an agent from another conversation,
   preferably of another model family, which checks it against the request and the evidence.

@@ -167,9 +167,9 @@ def test_skills_link_command(capsys, tmp_path, db_env):
     target.mkdir()
     result = ok(capsys, "skills", "link", str(target))
     assert result["base"] == str(target.resolve())
-    assert "chanchi-lessons" in result["skills"]
-    assert (target / ".agents" / "skills" / "chanchi-lessons" / "SKILL.md").is_file()
-    assert "`chanchi-lessons`" in result["suggested_config_line"]
+    assert "skill-chanchi-lessons" in result["skills"]
+    assert (target / ".agents" / "skills" / "skill-chanchi-lessons" / "SKILL.md").is_file()
+    assert "`skill-chanchi-lessons`" in result["suggested_config_line"]
     assert ok(capsys, "skills", "unlink", str(target))["base"] == str(target.resolve())
 
 
