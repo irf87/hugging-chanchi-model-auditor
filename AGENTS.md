@@ -105,8 +105,11 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   sessions, incidents and verdicts with the `skill-chanchi-session-audit` skill; pick
   executors with `skill-chanchi-model-selection`.
 - The author does not judge its own work. Everything the orchestrator writes (designs, briefs,
-  rules, skills, agents, lessons) is audited before merge by an agent from another conversation,
-  preferably of another model family, which checks it against the request and the evidence.
+  rules, skills, agents, lessons) is audited before merge by agents from other conversations,
+  which check it against the request and the evidence: three auditors per round, each of a
+  different model family when available (otherwise the next one in the user's roster, and the
+  round is recorded as degraded), accepted when two of three agree, at most three rounds, then
+  the human decides with the disagreement report. Procedure: `docs/designs/global-items.md`.
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one.
