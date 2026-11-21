@@ -67,7 +67,9 @@ Research ran in agy as `agent-chanchi-researcher` (`gemini-4-hydrogen-high`), re
   and skills from `~/.agents/skills` and `~/.claude/skills`; agy reads `~/.gemini/config/skills`,
   `~/.gemini/antigravity-cli/skills` and `~/.gemini/config/agents`. All three follow symlinks;
   Claude Code and opencode reload changes during a session (an open agy TUI was not verified). Claude Code lets a personal skill win over a project skill of the same name, but
-  a project subagent wins over a personal one, so global and project items must never share a name.
+  a project subagent wins over a personal one (code.claude.com docs, *Skills* and *Subagents*),
+  while opencode lets a project skill override a global one (opencode docs, *Skills*), so global
+  and project items must never share a name.
   Claude Code rewrites `~/.claude.json`, so runtime-mutated files are never mirrored.
 - **Prior art** (primary sources): promote a shared item only after repeated independent use
   ("rule of three", InnerSource extensions); no skill standard has `extends`, so wrapping is an

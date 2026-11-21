@@ -3,8 +3,10 @@
 - **Author:** Iván R
 - **Status:** Proposed
 - **Date:** 2026-11-21
-- **Revision:** 2 (after audit round 1: three auditors of three families, all `PASS WITH FIXES`;
-  consolidation and dissent decisions in [reviews/global-items/round1-consolidation.md](reviews/global-items/round1-consolidation.md))
+- **Revision:** 3 (after audit rounds 1 and 2: three auditors of three families, all
+  `PASS WITH FIXES` both times; consolidations in
+  [round1-consolidation.md](reviews/global-items/round1-consolidation.md) and
+  [round2-consolidation.md](reviews/global-items/round2-consolidation.md))
 - **Brief:** [global-items.brief.md](global-items.brief.md). This document is complete without it.
 
 ---
@@ -35,7 +37,12 @@ agents, a gate and a feature map. This design lets chanchi help the projects tha
    removes a project's own item: only that project's adoption decision does.
 3. **Evidence before promotion.** An item becomes global after repeated, independent use.
 4. **One name, one item.** A global item and a project item never share a name, because harnesses
-   disagree on which one wins.
+   resolve a same-name clash in opposite directions: Claude Code prefers a personal skill over a
+   project skill but a project subagent over a personal one (code.claude.com docs, *Skills* and
+   *Subagents*), and opencode lets a project skill override a global one (opencode docs,
+   *Skills*, precedence). Global names always contain `-chanchi-global-`, project names
+   `-chanchi-<slug>-` with a slug other than `global`, and chanchi's own items never use
+   `-chanchi-global-` (`tests/test_items.py` enforces the last rule here).
 5. **chanchi decides and records; agents execute.** chanchi stays a standard-library CLI that never
    launches a harness: it selects, validates and records; the orchestrating agent runs commands.
 6. **Diversity over repetition, and fail closed.** Auditors come from different model families
@@ -104,29 +111,39 @@ hint. `chanchi items check` validates `SYNC/ITEMS/`: every directory is
 
 ### Versions and hashes
 
-- **Version.** An `AGENT.md` frontmatter carries `version: <x.y.z>`; a `SKILL.md` frontmatter
-  carries it as `metadata:` followed by `  version: "<x.y.z>"` (the Agent Skills standard allows a
-  free-form `metadata` map). `agents_sync` accepts the optional `version` key and does not emit it
-  into wrappers except in the generated header.
+- **Version and status.** An `AGENT.md` frontmatter carries `version: <x.y.z>` and
+  `status: draft|published|retired`; a `SKILL.md` frontmatter carries them as `metadata:` followed
+  by the indented lines `  version: "<x.y.z>"` and `  status: "<status>"` (the Agent Skills
+  standard allows a free-form `metadata` map). chanchi's frontmatter reader accepts exactly that
+  shape: a `metadata:` line followed by two-space-indented `key: value` lines. `agents_sync` accepts
+  the optional `version` and `status` keys and does not emit them into wrappers except in the
+  generated header.
+- **Draft until audited.** The item builder writes new items and new versions with
+  `status: draft`. The mirror never exposes a draft. `chanchi items publish <name> --audit <id>`
+  sets `status: published` only when that audit is of kind `item`, names this item, and its last
+  round is `accepted` at this item's current version; otherwise it fails with the reason.
 - **Changelog.** `CHANGELOG.md` has one `## <x.y.z> — <YYYY-MM-DD>` section per version, newest
   first; the current version must have one.
 - **Content hash.** SHA-256 over, for each regular file in the item directory sorted by relative
-  POSIX path: the path, a NUL byte, the file's bytes, a NUL byte. Excluded: `CHANGELOG.md`, any
+  POSIX path: the UTF-8 path, a NUL byte, the file's length in bytes as ASCII decimal, a NUL byte,
+  then the file's bytes (length framing makes the stream unambiguous). Excluded: `CHANGELOG.md`, any
   path with a component starting with `.`, cloud placeholders and conflict copies (`*.icloud`,
   names containing `conflicted copy` or `(conflict`). A symlink inside an item is an error
   (`items check` fails). Bytes are hashed as stored; no line-ending normalization.
-- **Retirement.** `retired.json` is a JSON list of `{"name", "version", "replaced_by", "date",
-  "reason"}` (`replaced_by` is a global item name or `null`); entries are only appended. A retired
-  item's directory may stay for history. Effects: `items mirror` removes its entries;
-  `items inbox` shows the retirement to every project that adopted or wrapped it, with the
-  replacement if any; a retired name may never be published again (`items check` fails on a live
-  directory or a new version under a retired name).
+- **Retirement.** `chanchi items retire <name> [--replaced-by <name>] --reason "<why>"` sets
+  `status: retired` and appends `{"name", "version", "replaced_by", "date", "reason"}` to
+  `retired.json` (entries are only appended). The directory stays for history. Effects:
+  `items mirror` removes the item's entries; `items inbox` shows the retirement to every project
+  that adopted or wrapped it, with the replacement if any; `items check` fails when a name listed
+  in `retired.json` has any status other than `retired`, so a retired name is never published
+  again.
 
 ### Mirror
 
 `chanchi items mirror` exposes `SYNC/ITEMS/` to the harnesses installed on the machine; `--check`
 writes nothing and fails when the mirror is stale; `--remove` deletes only what the mirror made.
-It reuses chanchi's existing link code instead of adding a second scheme:
+It exposes only `published` items and reuses chanchi's existing link code instead of adding a
+second scheme:
 
 - **Skills** go through `skills_link`, generalized to take a source directory and a name prefix.
   Global skills get exactly the links chanchi's own skills get from `chanchi skills link --global`
@@ -142,13 +159,27 @@ It reuses chanchi's existing link code instead of adding a second scheme:
   `~/.config/opencode/agents/<n>.md`, and agy's user agents folder, whose exact layout under
   `~/.gemini/config/agents/` is verified by a live probe before phase 2 is built). Mirrored files
   carry `# generated by chanchi items mirror from SYNC/ITEMS/agents/<n>/AGENT.md; do not edit`.
-- **Ownership.** The mirror owns an entry named `*-chanchi-global-*` that is either a symlink whose
-  link text starts with the resolved `SYNC/ITEMS/` path (dangling or not) or a file whose
-  frontmatter carries the mirror header. Anything else with such a name is a conflict and is never
-  overwritten. When `SYNC` is re-pointed or unmounted, `items mirror` and `--remove` still recognize
-  and fix the dangling entries by that rule.
+- **Ownership by manifest.** Every entry the mirror creates (absolute primaries, relative
+  secondaries, generated agent files) is recorded in `$XDG_DATA_HOME/chanchi/mirror.json` with its
+  path, kind and link text or content hash. The mirror updates or removes only entries in that
+  manifest; an entry named `*-chanchi-global-*` that is not in it is a conflict and is never
+  overwritten. Because ownership does not depend on the link's target, re-pointing or unmounting
+  `SYNC` does not orphan anything: the next `items mirror` repairs the entries and `--remove`
+  deletes them, dangling or not. The manifest lives with the database, outside `SYNC`, because it
+  describes this machine.
+- **Separation from chanchi's own skills.** `chanchi skills link/unlink` keep recognizing only
+  links into this repository's `skills/` and never touch mirror entries; `items mirror --remove`
+  never touches `skill-chanchi-*` links of chanchi's own skills. Tests cover both directions.
+- **Harness detection.** `harnesses.py` names the folder whose existence means a harness is
+  installed for this user: `~/.claude` (Claude Code); `$OPENCODE_CONFIG_DIR`, else
+  `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode` (opencode); `~/.gemini` (agy). The
+  mirror writes a harness's entries only when its folder exists, and reports skipped harnesses.
+  `~/.agents/skills/` is written when Claude Code or opencode is installed (both read it through
+  the chain). For the mirror, `skills_link` takes this existence check as a parameter; its current
+  behaviour for `chanchi skills link` does not change.
+- **Name collisions.** Before writing, the mirror and `items check` fail when a global item's
+  name equals any project item recorded by `items scan` or any of chanchi's own items.
 - It never links or writes a file the harness rewrites at runtime (for example `~/.claude.json`).
-  A harness whose home folder is missing is skipped and reported.
 
 ---
 
@@ -193,8 +224,13 @@ It reuses chanchi's existing link code instead of adding a second scheme:
 | otherwise | **fix** — apply every confirmed finding; the next round re-checks |
 | round 3 ends with any outcome other than accepted | **escalated** — the human decides with the disagreement report |
 
-7. **Next round.** `chanchi audit round <audit-id> --commit <sha>` opens the next round with the
-   same seats when those auditors are available; they re-check their own findings and the fixes.
+7. **Next round.** `chanchi audit round <audit-id> --commit <sha> | --version <x.y.z>` opens the
+   next round with the same seats when those auditors are available; they re-check their own
+   findings and the fixes. It is refused unless the last round's outcome is `fix` or `rework` and
+   that round is below 3.
+8. **Guards.** `audit close` is refused while any seat is still `assigned`; `audit vote` and
+   `audit unavailable` are refused on a closed round. An escalation records its reason:
+   `quorum` (fewer than two seats voted) or `round_cap` (round 3 not accepted).
 
 `chanchi audit show <audit-id>` prints every round, seat, vote, dissent and outcome;
 `chanchi audit list` lists audits with their last outcome.
@@ -229,11 +265,13 @@ effort = "high"
 ```
 
 - Each entry resolves to a catalog model `harness:model` (the harness is the catalog's agent). An
-  entry that is not in the catalog is an error with the hint
-  `chanchi models add --agent <harness> --model <model> --cost <1-3>`.
+  entry that is not in the catalog (as on a fresh database) is skipped as unavailable, and
+  `audit open` prints the hint `chanchi models add --agent <harness> --model <model> --cost <1-3>`;
+  if that leaves fewer than two seats, the round escalates with reason `quorum`.
 - **Family** belongs to the model, not the harness: `agy:claude-opus-5-5-high` is Anthropic, like
   `claude:opus`. Migration 005 adds `models.family` and seeds it for the models already in the
-  catalog from their names (`claude*`, `opus`, `sonnet`, `haiku`, `fable` → `anthropic`; `gemini*`
+  catalog from their names, matched on the last `/`-separated segment of the model with any
+  `#variant` removed, so `opencode-go/minimax-m3#thinking` matches `minimax*` (`claude*`, `opus`, `sonnet`, `haiku`, `fable` → `anthropic`; `gemini*`
   → `google`; `gpt*` → `openai`; `minimax*` → `minimax`; `deepseek*` → `deepseek`; `glm*` →
   `zhipu`; `kimi*` → `moonshot`; `qwen*` → `alibaba`; `grok*` → `xai`; `mimo*` → `xiaomi`; others
   stay unknown). The owner corrects it with `chanchi models set <agent:model> --family <name>`.
@@ -247,7 +285,7 @@ effort = "high"
 
 ### The auditor agent
 
-`agent-chanchi-auditor` (scope `both`, profile `read-only`, audience `global`) audits one subject
+`agent-chanchi-auditor` (scope `both`, profile `read-only`, install `user`) audits one subject
 against a brief and writes one report: first line `VERDICT: ...`, then a findings table with
 severity, place, problem, evidence and fix. It never edits the subject and never reads other
 auditors' reports.
@@ -262,7 +300,7 @@ mirror writes. Launch templates verified on the installed CLIs (the phase-1 plan
 |---|---|
 | claude | `claude -p --agent <a> --model <m> --effort <e> "<prompt>" < /dev/null` |
 | opencode | `opencode run --agent <a> -m <provider/model>[#variant] "<prompt>" < /dev/null` |
-| agy | `agy --agent <a> --model <m> --effort <e> -p="<prompt>" < /dev/null` (the model id carries the effort suffix) |
+| agy | `agy --agent <a> --model <base> --effort <e> -p="<prompt>" < /dev/null`, where the catalog id `<base>-<e>` (for example `gemini-4-neon-high`) is split into base and effort; a roster `effort` that differs from the id's suffix is an error |
 
 chanchi only checks whether the binary is on `PATH` (`shutil.which`); it never runs a harness.
 Adding a harness (Cursor, OpenAI Codex) needs an adapter row, an agent renderer in `agents_sync`
@@ -283,8 +321,8 @@ CREATE TABLE audits (
   subject_ref  TEXT NOT NULL,
   project_id   INTEGER REFERENCES projects(id),
   change_id    INTEGER REFERENCES changes(id),
-  author_model_id INTEGER NOT NULL REFERENCES models(id),
-  author_effort   TEXT,
+  author_raw   TEXT NOT NULL,                             -- agent:model[:effort] as declared
+  author_model_id INTEGER REFERENCES models(id),          -- NULL when not in the catalog
   outcome      TEXT,                                      -- last round's outcome
   opened_at    TEXT NOT NULL,
   closed_at    TEXT
@@ -297,6 +335,7 @@ CREATE TABLE audit_rounds (
   subject_at  TEXT NOT NULL,                              -- commit sha or item version
   degraded    INTEGER NOT NULL DEFAULT 0,
   outcome     TEXT,                                       -- accepted | fix | rework | escalated
+  escalation  TEXT,                                       -- quorum | round_cap (when escalated)
   opened_at   TEXT NOT NULL,
   closed_at   TEXT,
   UNIQUE (audit_id, round)
@@ -306,8 +345,7 @@ CREATE TABLE audit_seats (
   id          INTEGER PRIMARY KEY,
   round_id    INTEGER NOT NULL REFERENCES audit_rounds(id),
   seat        INTEGER NOT NULL CHECK (seat BETWEEN 1 AND 3),
-  harness     TEXT NOT NULL,
-  model_id    INTEGER NOT NULL REFERENCES models(id),
+  model_id    INTEGER NOT NULL REFERENCES models(id),     -- the harness is models.agent
   effort      TEXT,
   status      TEXT NOT NULL,                              -- assigned | voted | unavailable
   verdict     TEXT,                                       -- pass | pass_with_fixes | fail
@@ -344,6 +382,15 @@ all seats voted, how to record votes, unavailability and dissent, and when to st
 `agent-chanchi-orchestrator` points to it. Until phase 1 is built, the procedure is run by hand
 and its rounds are backfilled into the database when the commands exist.
 
+### Fitting the existing code
+
+- New modules: `harnesses.py` is a leaf (imports only `errors`; added to the leaf set in
+  `tests/test_layers.py`), `audits.py`, `sync.py` and `items.py` are domain modules; only `cli.py`
+  renders.
+- Every phase adds its commands to `FEATURE_MAP.md` (check 3), its skills to
+  `tests/test_skills_content.py`, its commands to `README.md`, and its upgrade checks to the
+  Helpers of `skill-chanchi-verify`.
+
 ---
 
 ## The improvement and promotion pipeline
@@ -378,6 +425,11 @@ skills score low (0.12 to 0.38 in the consumer projects). A candidate is evidenc
 
 For the first experiment, the herdr skill is promoted by the owner's decision (2026-11-21) even if
 the counted uses are fewer than three; `items propose` records it as owner-promoted.
+
+Each run of `items propose` stores its candidates (`item_proposals`, migration 006) with their
+evidence and counted uses, so the builder, the audit and later runs refer to the same candidate.
+When a global item built from lessons is published, those lessons are applied at the global site
+(`chanchi lesson apply <id> --site global --where "SYNC item <name>@<version>"`).
 
 `agent-chanchi-item-builder` takes a candidate, reads the evidence (the project copies and the
 lessons) and writes the global item in `SYNC/ITEMS/`: the shared core, harness agnostic, with no
@@ -431,6 +483,19 @@ CREATE TABLE project_items (
   UNIQUE (project_id, path)
 );
 
+CREATE TABLE item_proposals (
+  id             INTEGER PRIMARY KEY,
+  kind           TEXT NOT NULL,                           -- agent | skill
+  name           TEXT NOT NULL,                           -- proposed global name
+  evidence       TEXT NOT NULL,                           -- JSON: project items and lesson ids
+  uses           INTEGER NOT NULL,                        -- independent uses counted
+  owner_promoted INTEGER NOT NULL DEFAULT 0,
+  status         TEXT NOT NULL,                           -- open | built | rejected
+  global_item    TEXT,                                    -- set when built
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
+
 CREATE TABLE item_decisions (
   id          INTEGER PRIMARY KEY,
   project_id  INTEGER NOT NULL REFERENCES projects(id),
@@ -449,11 +514,13 @@ The latest row per `(project_id, global_item)` is the current decision; earlier 
 
 ### E. Project items (in each project)
 
-An agent source gains `audience: repo|global` (default `repo`). `repo` agents (orchestrator,
-executor, researcher) run only inside this repository; `global` agents are also compiled into the
-user's harness folders by `chanchi agents link --global`, with the same target map and ownership
-rule as the mirror. The first global agents are `agent-chanchi-auditor` and
-`agent-chanchi-item-builder`, then `agent-chanchi-replicator`. Inside a project, the item builder
+An agent source gains `install: repo|user` (default `repo`; the word avoids confusion with global
+items). `repo` agents (orchestrator, executor, researcher) run only inside this repository; `user`
+agents are also compiled into the user's harness folders by `chanchi agents link --user`, with the
+same target map, harness detection and manifest ownership as the mirror. `install` and
+`agents link --user` ship in phase 1 with `agent-chanchi-auditor`, so audits can run in any
+project from phase 1 on; `agent-chanchi-item-builder` (phase 3) and `agent-chanchi-replicator`
+(phase 6) follow. Inside a project, the item builder
 creates `<item>-chanchi-<slug>-<name>` items with the project's layout; the project can run
 `chanchi agents sync <project-root>` on its own `agents/` sources.
 
@@ -489,11 +556,11 @@ and the owner approves it; the item builder and the project's executor carry it 
 
 | Phase | Delivers | Signal that it works |
 |---|---|---|
-| 1 | Redundant audits: migration 005 (families, audits, rounds, seats, dissents), harness adapters, roster, `chanchi audit`, `agent-chanchi-auditor`, `skill-chanchi-audit-rounds` | This design's rounds, run by hand, are backfilled and `chanchi audit show` reproduces their outcomes; the next design is audited with the commands |
-| 2 | `SYNC/` and `ITEMS/`: `sync init/status`, reserved slug, `items check/list`, versions and hashes, `retired.json`, `items mirror` | A test global skill and agent appear in all three harnesses; `--check` catches a hand edit; `--remove` leaves nothing behind |
+| 1 | Redundant audits: migration 005 (families, audits, rounds, seats, dissents), harness adapters, roster, `chanchi audit`, `install` and `agents link --user`, `agent-chanchi-auditor`, `skill-chanchi-audit-rounds` | This design's rounds, run by hand, are backfilled and `chanchi audit show` reproduces their outcomes; the next design is audited with the commands |
+| 2 | `SYNC/` and `ITEMS/`: `sync init/status`, reserved slug, `items check/list/publish/retire`, versions, status and hashes, `retired.json`, `items mirror` with its manifest | A published test global skill and agent load in all three harnesses (headless run per harness); a draft does not appear; `--check` catches a hand edit; `--remove` leaves nothing behind |
 | 3 | Capture and proposal: migration 006, `items scan`, `project items-dirs`, `items propose`, `agent-chanchi-item-builder` | `skill-chanchi-global-herdr` is built from the consumer copies and accepted by a redundant audit |
 | 4 | Adoption: `items inbox/decide`, `skill-chanchi-item-adoption` | Each consumer project records an audited decision for the herdr skill (owner's go-ahead per project) |
-| 5 | Project items: `audience`, `agents link --global`, project-side item builder | One consumer project creates one `<item>-chanchi-<slug>-<name>` item through the audit procedure |
+| 5 | Project items: project-side item builder, `chanchi agents sync <project-root>` on a consumer's sources | One consumer project creates one `<item>-chanchi-<slug>-<name>` item through the audit procedure |
 | 6 | Replication: `agent-chanchi-replicator` | One consumer project gets an audited, owner-approved replication plan |
 
 Each phase gets its own plan, executed with chanchi's agents and recorded in chanchi.
@@ -525,9 +592,15 @@ Each phase gets its own plan, executed with chanchi's agents and recorded in cha
 4. `SYNC` resolution from the main checkout, from a worktree, with `CHANCHI_SYNC`, and with
    `sync init --link` on a temporary directory; `git check-ignore SYNC`; an existing `SYNC` is never
    replaced.
-5. `items mirror` in a temporary `HOME` for all three harnesses; `--check` after a hand edit;
-   `--remove` cleanup including dangling links after re-pointing `SYNC`; a foreign entry with a
-   global name is a conflict, never overwritten; content hash ignores excluded files and fails on
-   symlinks.
-6. One headless run per harness that loads a test global skill through the mirror, using the
-   adapter's launch template.
+5. `items mirror` in a temporary `HOME` for all three harnesses and with a harness folder
+   missing; drafts never mirrored; `--check` after a hand edit; `--remove` cleanup including
+   dangling links after re-pointing `SYNC`; a foreign entry with a global name is a conflict,
+   never overwritten; content hash framing, excluded files and the symlink error.
+6. `chanchi skills unlink --global` leaves every mirror entry, and `items mirror --remove` leaves
+   every `skill-chanchi-*` link of chanchi's own skills.
+7. Name collisions: a global name equal to a scanned project item or a chanchi item is refused;
+   `tests/test_items.py` refuses an own item named `*-chanchi-global-*`.
+8. `items publish` refused without an accepted `item` audit at the current version; `items retire`
+   followed by an attempted publish is refused.
+9. Gate for phase 2: one headless run per harness loads a published test global skill through the
+   mirror, using the adapter's launch template; phase 2 is not done until all three pass.

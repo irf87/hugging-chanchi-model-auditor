@@ -105,7 +105,7 @@ regenerated template database, its tests, and its skill and README changes.
 |---|---|---|---|
 | 1 | `004_lessons.sql` | project registration by path; writer roles per project and global; lessons with the full record, the author's harness, model and effort, and links to changes, sessions and incidents; decisions tracked apart from the places a lesson is applied; duplicate blocking; the `chanchi-lessons` skill | nothing |
 | 2 | none | the inbox (approved agnostic rules offered to other projects, which apply or decline them); `replaces` retirement on apply; `lesson verify` (database against files) | stage 1 on `main` |
-| 3 | `005_runs.sql` | hooks for Claude Code: conversation identity, the actor's role checked on lesson commands, one retrospective reminder for writer roles | stage 2; Q6 answered |
+| 3 | `005_runs.sql` (renumbered: next free number, see stage 3) | hooks for Claude Code: conversation identity, the actor's role checked on lesson commands, one retrospective reminder for writer roles | stage 2; Q6 answered |
 | 4 | none | the same hooks for agy and opencode, limited to what was observed working | stage 3 |
 
 ## Goals
