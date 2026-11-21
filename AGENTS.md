@@ -34,7 +34,9 @@ either, so every design choice here should move work away from the human, not
 toward them.
 
 What the code does, how to install it and how to develop it: `README.md`.
-Design: `docs/superpowers/specs/`.
+Designs: `docs/designs/<topic>.brief.md` (the request) and `docs/designs/<topic>.md` (the
+design), with their reviews in `docs/designs/reviews/<topic>/`. The first design and plans live in
+`docs/superpowers/`.
 
 ## Core Rules
 
@@ -70,21 +72,44 @@ Design: `docs/superpowers/specs/`.
   Every harness that edits this repository must stay compatible with the others.
 - Put shared knowledge in agnostic places: this file, `skills/` (the source of
   truth for chanchi skills, exposed to harnesses through `chanchi skills link`),
-  `README.md` and `docs/`.
+  `README.md` and `docs/`. A rule that guides agents is written there, never only
+  in one harness's private memory.
 - Harness-specific files stay thin wrappers. Never make a feature depend on one
   harness unless an agnostic fallback exists, and never verify a harness's
   capability from memory — check it locally first.
 
+## Items and Other Projects
+
+- An item is agent setup a harness loads or runs: `agent`, `skill`, `eval`, `hook`. chanchi's
+  own items are named `<item>-chanchi-<name>` (the existing `chanchi-*` skills are renamed in
+  phase 1). Items chanchi later helps another project create are named
+  `<item>-chanchi-<project-slug>-<name>` and live only in that project. Design and adoption
+  phases: `docs/designs/chanchi-agents-mvp.md`.
+- How other projects use chanchi today: they get skills through `chanchi skills link`, are
+  identified from git and `chanchi project register` (chanchi writes nothing into their
+  repository except skill links), and only their orchestrating role writes chanchi records, into
+  one shared database. Helping them build their own items is a later phase (TODO list in the
+  design).
+
 ## Working Conventions
 
 - Branch per change (never work on `main` directly), Conventional Commits in
-  English; the orchestrating session merges to `main` after verifying the work.
+  English; the orchestrating session merges to `main` with `git merge --no-ff` after
+  verifying the work.
 - The orchestrator plans and audits; executors implement and hand off. Record
   sessions, incidents and verdicts with the `chanchi-session-audit` skill; pick
   executors with `chanchi-model-selection`.
+- The author does not judge its own work. Everything the orchestrator writes (designs, briefs,
+  rules, skills, agents, lessons) is audited before merge by an agent from another conversation,
+  preferably of another model family, which checks it against the request and the evidence.
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one.
+- External research (repositories, posts, papers) is adapted, never adopted wholesale: rarely
+  does anything cover our goal completely. Verify each claim at its primary source before relying
+  on it, and give every design that uses external sources an "Adopt / Adapt / Avoid" section that
+  names the source of each item and the reason, so we keep what works and do not repeat what
+  failed elsewhere.
 - Never commit `external-references/` (local symlinks to reference projects).
 - Tests: `uv run pytest`. A database migration commits the SQL file and the
   regenerated `src/chanchi/data/template.db` together (see `README.md`).
