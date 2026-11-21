@@ -105,7 +105,7 @@ regenerated template database, its tests, and its skill and README changes.
 |---|---|---|---|
 | 1 | `004_lessons.sql` | project registration by path; writer roles per project and global; lessons with the full record, the author's harness, model and effort, and links to changes, sessions and incidents; decisions tracked apart from the places a lesson is applied; duplicate blocking; the `chanchi-lessons` skill | nothing |
 | 2 | none | the inbox (approved agnostic rules offered to other projects, which apply or decline them); `replaces` retirement on apply; `lesson verify` (database against files) | stage 1 on `main` |
-| 3 | `005_runs.sql` | hooks for Claude Code: conversation identity, the actor's role checked on lesson commands, one retrospective reminder for writer roles | stage 2; Q6 answered |
+| 3 | `005_runs.sql` (renumbered: next free number, see stage 3) | hooks for Claude Code: conversation identity, the actor's role checked on lesson commands, one retrospective reminder for writer roles | stage 2; Q6 answered |
 | 4 | none | the same hooks for agy and opencode, limited to what was observed working | stage 3 |
 
 ## Goals
@@ -947,7 +947,8 @@ Only the parts that stages 1 and 2 must not contradict are fixed here. Brief §1
 contract (normalized input fields, command matching, the guarded-verb list, the session-start
 line, the fixture-test matrix). It is revised into a file-level plan once Q6 is answered.
 
-- **Migration `005_runs.sql`**: a `runs` table, one row per harness conversation
+- **Migration `005_runs.sql`** (renumbered: `docs/designs/global-items.md` takes 005 for audits
+  and model families, so this stage takes the next free number when it is built): a `runs` table, one row per harness conversation
   (`UNIQUE(agent, conversation_id)`), with its project, role and where the role came from, its
   model, effort and linked session, and the retrospective timestamps.
 - **`chanchi hook check`** always exits 0. Any error, lock, missing git, unregistered project or

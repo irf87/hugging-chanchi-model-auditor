@@ -47,3 +47,7 @@ Thumbs.db
 
 # --- Local reference projects (symlinks, never committed) ---
 external-references
+
+# --- User-owned results (AGENTS.md: users own what they make with chanchi) ---
+# Global items and user configuration; recommended as a symlink to a synced folder.
+SYNC
