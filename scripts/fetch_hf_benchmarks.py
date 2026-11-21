@@ -6,6 +6,7 @@ import argparse
 from collections import Counter
 from contextlib import nullcontext
 from datetime import datetime, timezone
+import http.client
 import json
 import math
 import os
@@ -158,7 +159,7 @@ def main(argv: list[str] | None = None, *, root: Path | None = None, opener=None
     for key, spec in model_map.items():
         try:
             fetched[key] = fetch_repo(spec["hf_repo"], token, actual_opener)
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, http.client.HTTPException) as exc:
             message = str(exc).strip() or type(exc).__name__
             fetched[key] = {"error": message}
 

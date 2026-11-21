@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Blocks a merge commit unless the gate passes. Merges into main use --no-ff (AGENTS.md).
+exec "$(git rev-parse --show-toplevel)/scripts/check"

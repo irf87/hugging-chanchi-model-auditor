@@ -22,6 +22,16 @@ uv tool install --editable .
 `--editable` keeps this checkout as the live source, which the skill symlinks rely on. The first
 command that opens the database (anything except `chanchi db status` and `chanchi db migrate --template`) creates the operational database by copying the committed template.
 
+## Development gate
+
+`scripts/check` runs ruff and the test suite. Turn on the git hooks once per clone, so every merge
+and push runs it, and keep merges as merge commits so the merge hook fires:
+
+    git config core.hooksPath .githooks
+    git config merge.ff false
+
+GitHub Actions runs the same script on every push (`.github/workflows/check.yml`).
+
 ## Give the skills to a project
 
 ```bash
