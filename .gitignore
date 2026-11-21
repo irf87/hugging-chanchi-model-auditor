@@ -46,4 +46,4 @@ Thumbs.db
 *~
 
 # --- Local reference projects (symlinks, never committed) ---
-external-references/
+external-references

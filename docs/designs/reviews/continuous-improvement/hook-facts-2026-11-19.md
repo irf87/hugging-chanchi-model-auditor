@@ -183,8 +183,8 @@ Lab folder: `lab/opencode-q4/` (`.opencode/plugins/probe.js`, `.opencode/agents/
   - `opencode --version`: `opencode v2.2.6`
 - **Source of agy facts (Q2 & Q3):**
   - Every agy fact in Q2(a)–(d) and Q3 came from **direct empirical observation** of `agy` `1.5.12` runs in `lab/agy-q2/` and `lab/agy-q2-nohooks/`.
-  - `/Users/irf87/.gemini/antigravity-cli/cache/CHANGELOG.md` could not be read (`read_file` returned `Permission denied ... Matches hardcoded system protection boundary rule`), so no changelog line citations are claimed from that file.
-  - `/Users/irf87/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/hooks.md` (lines 1–429) and `agy changelog` (lines for `1.5.12`–`1.5.7`) were read only as background reference to configure the probes.
+  - `~/.gemini/antigravity-cli/cache/CHANGELOG.md` could not be read (`read_file` returned `Permission denied ... Matches hardcoded system protection boundary rule`), so no changelog line citations are claimed from that file.
+  - `~/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/hooks.md` (lines 1–429) and `agy changelog` (lines for `1.5.12`–`1.5.7`) were read only as background reference to configure the probes.
 
 ---
 

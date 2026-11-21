@@ -184,7 +184,7 @@ scores stay the only evidence of quality.
 
 ### CUJ 4: Another project's agent cannot fetch
 
-*   **Given**: A planner agent in another project (for example DATEMApp) has the chanchi skills
+*   **Given**: A planner agent in another project (for example a consumer project) has the chanchi skills
     linked.
 *   **When**: It reads the skills or runs `chanchi --help`.
 *   **Then**: No skill text and no `chanchi` subcommand mentions or performs a fetch. Running the

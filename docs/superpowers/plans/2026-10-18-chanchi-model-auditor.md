@@ -4923,7 +4923,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write `tests/test_scenario.py`**
 
-This replays DATEMApp's `clinical-summary-doctor-addressee-and-polish` change with data embedded here (it never reads that repository), plus one synthetic change.
+This replays the `reference-change-replay` change of a consumer project with data embedded here (it never reads that repository), plus one synthetic change.
 
 ```python
 import pytest
@@ -4935,7 +4935,7 @@ ARGON = "agy:gemini-4-argon-high:high"
 FLASH = "agy:gemini-3.8-flash-high:high"
 FLASH_MEDIUM = "agy:gemini-3.8-flash-medium:medium"
 SONNET = "claude:sonnet:medium"
-CHANGE = "clinical-summary-doctor-addressee-and-polish"
+CHANGE = "reference-change-replay"
 
 # session, executor, task type, complexity, tasks
 SESSIONS = [
