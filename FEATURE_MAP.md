@@ -281,7 +281,7 @@ Covered by: tests/test_scoring.py, tests/test_cli.py, tests/test_cli_integration
 ## project
 
 ### Sub-features
-`project register`, `project relink`, `project list`, `project show`, `project writers`
+`project register`, `project relink`, `project list`, `project show`, `project writers`, `project items-dirs`
 
 ### How to get to it
     scratch="$(mktemp -d)" && git -C "$scratch" init -q && cd "$scratch"
@@ -292,17 +292,32 @@ Covered by: tests/test_scoring.py, tests/test_cli.py, tests/test_cli_integration
     chanchi project show scratch
     chanchi project writers scratch --set planner,orchestrator --as planner --author claude:opus:high --conversation c1
     chanchi project relink scratch
+    mkdir -p "$scratch/docs/agents"
+    chanchi project items-dirs
+    chanchi project items-dirs --add docs/agents
+    chanchi project items-dirs --add docs/agents
+    chanchi project items-dirs --add ../outside
+    chanchi project items-dirs --remove docs/agents
 
 ### Evidence
 `project register` returns `project.slug` `scratch`; `project list` and `project show` report its
 `locators`, `writers` and `lessons`; `project writers --set` sets `roles` to
 `["planner", "orchestrator"]`; `project relink` confirms `locator` is linked to `scratch`.
-Covered by: tests/test_projects.py, tests/test_lessons.py, tests/test_cli.py, tests/test_cli_integration.py
+`project items-dirs` prints `project` `scratch`, the seven scanned-by-default folders in `defaults` and `dirs`
+`[]`; `--add docs/agents` prints `added` `true` and `dirs` `["docs/agents"]`, the same command again prints
+`added` `false`; `--add ../outside` fails with `invalid_value`, `field` `path`; `--remove docs/agents` prints
+`removed` `true` and `dirs` `[]`.
+Covered by: tests/test_projects.py, tests/test_lessons.py, tests/test_cli.py, tests/test_cli_integration.py, tests/test_inventory.py
 
 ### Gotchas
 - `project register` registers the main worktree; use `project relink <slug>` to attach a linked worktree.
 - `project writers --set` requires `--as`, `--author` and `--conversation`.
 - `global` is a reserved slug: `project register` inside a directory named `global` requires `--name <other>`, and `--name global` is refused (`invalid_value`, `field: "slug"`).
+- `project items-dirs` needs a registered project (the working directory's, or `--project <slug>`). `--add` takes a
+  relative folder that exists below the project root; an absolute path, `..`, the root itself, a default root, a
+  missing folder, a symbolic link or a path under one is refused (`invalid_value`, `field` `path`), and a project
+  whose folder is gone on this machine is `missing_prerequisite` (run `project relink`). `--add` and `--remove`
+  are exclusive; without flags it lists.
 
 ## lesson
 
@@ -440,7 +455,7 @@ Covered by: tests/test_sync.py, tests/test_cli.py
 ## items
 
 ### Sub-features
-`items check`, `items list`, `items publish`, `items retire`, `items mirror`
+`items check`, `items list`, `items publish`, `items retire`, `items mirror`, `items scan`
 
 ### How to get to it
     export CHANCHI_DB="$(mktemp -d)/chanchi.db"
@@ -457,6 +472,14 @@ Covered by: tests/test_sync.py, tests/test_cli.py
     printf -- '# Changelog\n\n## 0.1.0 — 2026-11-22\n\n- First draft.\n' > "$item/CHANGELOG.md"
     scratch_home="$(mktemp -d)"   # `items mirror` writes user folders: never run it against the real home
     mkdir -p "$scratch_home/.claude" "$scratch_home/.config/opencode" "$scratch_home/.gemini/antigravity-cli"
+    # `items scan` reads registered projects: two scratch git repositories, registered from inside each
+    proj_a="$(mktemp -d)/project-a" && mkdir -p "$proj_a" && git -C "$proj_a" init -q
+    proj_b="$(mktemp -d)/project-b" && mkdir -p "$proj_b" && git -C "$proj_b" init -q
+    mkdir -p "$proj_a/.agents/skills/workflow/tool-x" "$proj_b/agents/skills/tool-x" "$proj_b/.claude/agents"
+    printf -- '---\nname: tool-x\ndescription: Demo tool.\n---\n\n# tool-x\n' > "$proj_a/.agents/skills/workflow/tool-x/SKILL.md"
+    printf -- '---\nname: tool-x\ndescription: >-\n  Demo tool,\n  folded.\n---\n\n# tool-x\n' > "$proj_b/agents/skills/tool-x/SKILL.md"
+    printf -- '---\ndescription: Helps.\n---\n\nHelp.\n' > "$proj_b/.claude/agents/helper.md"
+    (cd "$proj_a" && chanchi project register) && (cd "$proj_b" && chanchi project register)
 
 ### Driving it
     chanchi items check
@@ -481,6 +504,16 @@ Covered by: tests/test_sync.py, tests/test_cli.py
     mirror --remove
     find "$scratch_home" -name '*-chanchi-global-*'
     chanchi items retire skill-chanchi-global-demo --reason "demo is over"
+    chanchi items scan
+    chanchi items scan                                  # second run: added, changed and removed are all 0
+    printf 'More.\n' >> "$proj_a/.agents/skills/workflow/tool-x/SKILL.md"
+    chanchi items scan --project project-a              # one changed row
+    rm "$proj_b/.claude/agents/helper.md"
+    chanchi items scan --project project-b              # one removed row
+    mkdir -p "$proj_a/.agents/skills/skill-chanchi-global-demo"
+    printf -- '---\nname: skill-chanchi-global-demo\ndescription: Project copy.\n---\n' > "$proj_a/.agents/skills/skill-chanchi-global-demo/SKILL.md"
+    chanchi items scan --project project-a
+    chanchi items check                                 # fails: project_item_collision
 
 ### Evidence
 `items check` prints `problems` `[]` and one entry per item (`name`, `kind`, `version`, `status`, `hash`,
@@ -501,7 +534,15 @@ both items are published it prints `written` (the skill's primary `.agents/skill
 per path. After the hand edit, `mirror --check` fails with `stale_wrappers` and the edited path in
 `details.stale`; `mirror` lists only that path in `written` and `mirror --check` then passes with every path in
 `unchanged`. `mirror --remove` lists every entry in `removed` and the final `find` prints nothing.
-Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py
+`items scan` prints `projects` (one `{project, root, items, added, changed, removed, skipped}` per registered
+project whose folder exists) and `missing` `[]`. The first run adds `tool-x` to `project-a` (`path`
+`.agents/skills/workflow/tool-x`) and `tool-x` and `helper` to `project-b` (`agents/skills/tool-x`,
+`.claude/agents/helper.md`); the second run prints `added`, `changed` and `removed` `0` everywhere. The append
+makes `--project project-a` print `changed` `1`, the `rm` makes `--project project-b` print `removed` `1`. Once
+`project-a` holds a skill named `skill-chanchi-global-demo`, `items check` fails with `invalid_value`, `field`
+`items` and `details.problems` `[{item: skill-chanchi-global-demo, code: project_item_collision, ...}]`;
+`items mirror` refuses the same way and writes nothing.
+Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py, tests/test_inventory.py
 
 ### Gotchas
 - Every command needs `SYNC` (`missing_prerequisite`, hint `chanchi sync init`).
@@ -516,6 +557,19 @@ Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_
   (`unknown_audit`), an audit that is not an `item` audit of this name (`invalid_value`, `field` `audit`), a last
   round that is not `accepted` at the item's current `<version>@<draft hash>` (`invalid_transition`: any edit
   after the audit needs a new round or a new version).
+- `items scan` is read-only on projects and needs no `SYNC`. It reads the seven default folders (`.agents/skills`,
+  `.claude/skills`, `.opencode/skills`, `agents`, `.claude/agents`, `.opencode/agents`, `.agents/agents`) and the
+  folders added with `project items-dirs --add`, at most 4 directory levels deep, never through a symbolic link
+  and never into a name starting with `.` or `node_modules`. A directory holding `SKILL.md` is a skill, one
+  holding `AGENT.md` (or `agent.md` directly under `.agents/agents`) an agent, and each `*.md` directly in
+  `.claude/agents` or `.opencode/agents` a single-file agent. `skipped` lists links (`symlink`), files that
+  `chanchi agents sync` generated (`generated`) and files that are not UTF-8 (`unreadable`). Only the
+  fingerprint (`sha256`, `lines`) and the frontmatter `description` reach the database. A registered project whose
+  folder is gone is listed under `missing` and keeps its rows. `--project <slug>` limits the scan to one registered
+  project (`project_not_registered` otherwise).
+- `project_item_collision` is reported by `items check`, `items publish` and `items mirror` for a global item named
+  like a scanned project item. `items check` and `items mirror --check` read the scan data only when the
+  operational database file already exists, so they never create it; `items mirror --remove` ignores it.
 - A published item that is edited reports `edited_after_publish`; `status: published` set by hand, with no
   `Published:` line, reports `published_without_record`. Retired and draft items are exempt.
 - `items mirror` exposes only `published` items and is all or nothing: an `items check` problem is refused

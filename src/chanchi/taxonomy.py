@@ -191,6 +191,10 @@ ITEM_STATUSES = ("draft", "published", "retired")
 ITEM_KINDS = {"agents": "agent", "skills": "skill"}
 ITEM_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 
+# Project items and proposals (phase 3, migration 006): enum sets validated in code, not in SQL.
+PROJECT_ITEM_KINDS = ("agent", "skill", "hook", "rule")
+PROPOSAL_STATUSES = ("open", "built", "rejected")
+
 # Model families (decision D7): the last `/`-separated segment of a model id, lowercased, matched
 # by prefix. Migration 005 seeds models.family with the same rule in SQL; a test holds both equal.
 FAMILY_PREFIXES = (
@@ -322,5 +326,7 @@ def describe() -> dict:
         "items": {
             "statuses": list(ITEM_STATUSES),
             "kinds": dict(ITEM_KINDS),
+            "project_item_kinds": list(PROJECT_ITEM_KINDS),
+            "proposal_statuses": list(PROPOSAL_STATUSES),
         },
     }

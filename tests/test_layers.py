@@ -43,3 +43,15 @@ def test_only_main_imports_cli():
 def test_only_cli_imports_render():
     offenders = sorted(m for m, deps in MODULES.items() if "render" in deps and m != "cli")
     assert not offenders, f"{offenders} import chanchi.render; only cli.py renders output."
+
+
+def test_items_never_imports_inventory():
+    assert "inventory" not in MODULES["items"], (
+        "items.py imports inventory.py; the CLI passes scanned names into items.check and items.mirror."
+    )
+
+
+def test_inventory_imports_only_domain_modules_it_may():
+    allowed = {"db", "items", "projects", "sync", "taxonomy", "errors", "timeutil"}
+    extra = MODULES["inventory"] - allowed
+    assert not extra, f"inventory.py imports {sorted(extra)}; it may import only {sorted(allowed)}."

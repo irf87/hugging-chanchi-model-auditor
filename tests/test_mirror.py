@@ -422,6 +422,19 @@ def test_a_name_equal_to_an_own_item_refuses_the_mirror(world):
     assert [p["code"] for p in info.value.details["problems"]] == ["own_item_collision"]
 
 
+def test_a_name_equal_to_a_project_item_refuses_the_mirror_and_writes_nothing(world):
+    for check in (False, True):
+        with pytest.raises(ChanchiError) as info:
+            world.run(check=check, project_names=[SKILL_PUB, "unrelated"])
+        assert info.value.code == ("stale_wrappers" if check else "invalid_value")
+        assert info.value.field == "items"
+        assert [(p["item"], p["code"]) for p in info.value.details["problems"]] == [
+            (SKILL_PUB, "project_item_collision")]
+    assert not (world.home / ".agents").exists() and not (world.home / ".claude" / "agents").exists()
+    assert not world.db.exists()
+    assert world.run(project_names=["unrelated"])["items"] == sorted([SKILL_PUB, AGENT_PUB])
+
+
 def own_skills(tmp_path) -> Path:
     root = tmp_path / "repo" / "skills"
     for name in ("skill-chanchi-a", "skill-chanchi-b"):

@@ -315,7 +315,7 @@ def own_names() -> list[str]:
     return names
 
 
-def _inspect(kind: str, entry: Path, own: set[str]) -> tuple[Item, list[dict]]:
+def _inspect(kind: str, entry: Path, own: set[str], project_names: frozenset[str] = frozenset()) -> tuple[Item, list[dict]]:
     name = entry.name
     problems: list[dict] = []
 
@@ -335,6 +335,8 @@ def _inspect(kind: str, entry: Path, own: set[str]) -> tuple[Item, list[dict]]:
         return bare, problems
     if name in own:
         add("own_item_collision", f"{name} is also one of chanchi's own items")
+    if name in project_names:
+        add("project_item_collision", f"{name} is also the name of a project item recorded by `chanchi items scan`")
 
     files, conflicts, symlinks = _scan(entry)
     for rel in conflicts:
@@ -391,7 +393,9 @@ def _inspect(kind: str, entry: Path, own: set[str]) -> tuple[Item, list[dict]]:
     return item, problems
 
 
-def _entries(sync_root: Path, own: set[str]) -> tuple[list[Item], list[dict]]:
+def _entries(
+    sync_root: Path, own: set[str], project_names: frozenset[str] = frozenset()
+) -> tuple[list[Item], list[dict]]:
     items_root = Path(sync_root) / "ITEMS"
     found: list[Item] = []
     problems: list[dict] = []
@@ -422,7 +426,7 @@ def _entries(sync_root: Path, own: set[str]) -> tuple[list[Item], list[dict]]:
                 problems.append({"item": entry.name, "code": "unexpected_entry",
                                  "detail": f"ITEMS/{folder}/ holds only item directories"})
                 continue
-            item, item_problems = _inspect(kind, entry, own)
+            item, item_problems = _inspect(kind, entry, own, project_names)
             found.append(item)
             problems += item_problems
     return found, problems
@@ -433,9 +437,13 @@ def load(sync_root: Path) -> list[Item]:
     return _entries(sync_root, set())[0]
 
 
-def check(sync_root: Path, *, own_names: Iterable[str]) -> dict:
-    """Validate SYNC/ITEMS. Never raises for item problems: returns {items, problems}."""
-    found, problems = _entries(sync_root, set(own_names))
+def check(sync_root: Path, *, own_names: Iterable[str], project_names: Iterable[str] = ()) -> dict:
+    """Validate SYNC/ITEMS. Never raises for item problems: returns {items, problems}.
+
+    `project_names` are the names of scanned project items (`inventory.project_item_names`); a global item
+    named like one is a `project_item_collision`.
+    """
+    found, problems = _entries(sync_root, set(own_names), frozenset(project_names))
     retired, error = _retired_entries(sync_root)
     if error is not None:
         problems.append({"item": RETIRED, "code": "bad_retired_json", "detail": error})
@@ -466,7 +474,9 @@ def list_items(sync_root: Path) -> list[dict]:
 # --- one item -----------------------------------------------------------------------------
 
 
-def _find(sync_root: Path, name: str, field: str = "name", own: Iterable[str] = ()) -> tuple[Item, list[dict]]:
+def _find(
+    sync_root: Path, name: str, field: str = "name", own: Iterable[str] = (), project_names: Iterable[str] = ()
+) -> tuple[Item, list[dict]]:
     match = GLOBAL_NAME.match(name) if isinstance(name, str) else None
     if match is None:
         raise ChanchiError(
@@ -480,7 +490,7 @@ def _find(sync_root: Path, name: str, field: str = "name", own: Iterable[str] = 
             "invalid_value", f"no global item {name!r} in SYNC/ITEMS/{KIND_FOLDER[kind]}/", field=field,
             hint="run `chanchi items list`",
         )
-    return _inspect(kind, entry, set(own))
+    return _inspect(kind, entry, set(own), frozenset(project_names))
 
 
 def subject_at(sync_root: Path | None, name: str, version: str) -> str:
@@ -531,10 +541,11 @@ def publish(
     *,
     audit_id: int,
     own_names: Iterable[str],
+    project_names: Iterable[str] = (),
     today: str | None = None,
 ) -> dict:
     """Set `status: published` when an accepted `item` audit covers the item's draft version and hash."""
-    item, problems = _find(sync_root, name, own=own_names)
+    item, problems = _find(sync_root, name, own=own_names, project_names=project_names)
     retired, retired_error = _retired_entries(sync_root)
     if item.status == "retired" or name in _names(retired):
         raise ChanchiError(
@@ -719,6 +730,7 @@ def mirror(
     home: Path,
     db_dir: Path,
     own_names: Iterable[str],
+    project_names: Iterable[str] = (),
     check: bool = False,
     remove: bool = False,
 ) -> dict:
@@ -752,7 +764,7 @@ def mirror(
 
     if sync_root is None:
         raise ChanchiError("missing_prerequisite", "SYNC is not initialized", field="sync", hint="chanchi sync init")
-    inspected = _check_items(sync_root, own_names=own_names)
+    inspected = _check_items(sync_root, own_names=own_names, project_names=project_names)
     if inspected["problems"]:
         raise _mirror_problems(inspected["problems"], check=check)
     published = sorted((item for item in inspected["items"] if item.status == "published"), key=lambda i: i.name)

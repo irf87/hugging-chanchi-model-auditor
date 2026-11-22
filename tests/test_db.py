@@ -24,6 +24,10 @@ OPERATIONAL_TABLES = (
     "audit_rounds",
     "audit_seats",
     "audit_dissents",
+    "project_item_dirs",
+    "project_items",
+    "item_proposals",
+    "item_decisions",
 )
 
 
@@ -253,13 +257,14 @@ def test_migration_v1_to_v2_preserves_data(tmp_path):
             "VALUES (1, 'S1', 1, 1, 'ui-component', 'medium', 5, '2026-10-18T00:00:00Z')"
         )
 
+        probe = db.latest_version() + 1
         synthetic_migrations = [
             *db.migrations(),
-            (6, "006_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
+            (probe, f"{probe:03d}_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
         ]
         new_applied = db.apply_migrations(conn, migrations_list=synthetic_migrations)
-        assert new_applied == [2, 3, 4, 5, 6]
-        assert db.user_version(conn) == 6
+        assert new_applied == list(range(2, probe + 1))
+        assert db.user_version(conn) == probe
 
         assert conn.execute("SELECT slug FROM projects WHERE id = 1").fetchone()[0] == "demo"
         assert conn.execute("SELECT ref FROM changes WHERE id = 1").fetchone()[0] == "c1"
@@ -287,8 +292,8 @@ def test_migration_v2_keeps_user_task_types(tmp_path):
         )
 
         new_applied = db.apply_migrations(conn)
-        assert new_applied == [2, 3, 4, 5]
-        assert db.user_version(conn) == 5
+        assert new_applied == list(range(2, db.latest_version() + 1))
+        assert db.user_version(conn) == db.latest_version()
 
         rows = {
             row["code"]: row["description"]
@@ -315,8 +320,8 @@ def test_migration_v3_to_v4_keeps_projects_and_adds_registered_at(tmp_path):
         before = tuple(conn.execute("SELECT id, slug FROM projects").fetchone())
 
         new_applied = db.apply_migrations(conn)
-        assert new_applied == [4, 5]
-        assert db.user_version(conn) == 5
+        assert new_applied == list(range(4, db.latest_version() + 1))
+        assert db.user_version(conn) == db.latest_version()
 
         row = conn.execute("SELECT id, slug, registered_at FROM projects").fetchone()
         assert (row["id"], row["slug"]) == before
@@ -351,7 +356,7 @@ def test_migration_005_seeds_the_same_families_as_family_for(tmp_path):
                 "INSERT INTO models (agent, model, cost_tier, created_at) VALUES (?, ?, 1, ?)",
                 ("claude", model, "2026-11-21T00:00:00Z"),
             )
-        assert db.apply_migrations(conn) == [5]
+        assert db.apply_migrations(conn) == list(range(5, db.latest_version() + 1))
         rows = {
             row["model"]: row["family"]
             for row in conn.execute("SELECT model, family FROM models WHERE agent = 'claude'")
@@ -362,5 +367,67 @@ def test_migration_005_seeds_the_same_families_as_family_for(tmp_path):
             assert rows[model] == taxonomy.family_for(model), model
         human = conn.execute("SELECT family FROM models WHERE agent = 'human'").fetchone()
         assert human["family"] is None
+    finally:
+        conn.close()
+
+
+def test_migration_006_creates_the_item_tables_and_indexes(tmp_path):
+    conn = _fresh(tmp_path)
+    try:
+        names = {row["name"] for row in _schema(conn)}
+        for table in ("project_item_dirs", "project_items", "item_proposals", "item_decisions"):
+            assert table in names
+        assert {"project_items_name", "item_proposals_open"} <= names
+        open_index = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'item_proposals_open'"
+        ).fetchone()[0]
+        assert "UNIQUE" in open_index and "status = 'open'" in open_index
+        columns = {
+            table: [row["name"] for row in conn.execute(f"PRAGMA table_info({table})")]
+            for table in ("project_item_dirs", "project_items", "item_proposals", "item_decisions")
+        }
+        assert columns["project_item_dirs"] == ["id", "project_id", "path"]
+        assert columns["project_items"] == [
+            "id", "project_id", "kind", "name", "path", "sha256", "lines", "description", "scanned_at",
+        ]
+        assert columns["item_proposals"] == [
+            "id", "kind", "name", "evidence", "uses", "owner_promoted", "status", "global_item",
+            "created_at", "updated_at",
+        ]
+        assert columns["item_decisions"] == [
+            "id", "project_id", "global_item", "version", "hash", "decision", "local_item", "reason",
+            "audit_id", "decided_at",
+        ]
+    finally:
+        conn.close()
+
+
+def test_migration_006_keeps_existing_rows(tmp_path):
+    conn = db.connect(tmp_path / "v5.db", wal=False)
+    try:
+        assert db.apply_migrations(conn, db.migrations()[:5]) == [1, 2, 3, 4, 5]
+        conn.execute("INSERT INTO projects (slug, path, created_at) VALUES ('demo', '/demo', '2026-11-22T00:00:00Z')")
+        assert db.apply_migrations(conn) == list(range(6, db.latest_version() + 1))
+        assert conn.execute("SELECT slug FROM projects").fetchone()[0] == "demo"
+        assert conn.execute("SELECT COUNT(*) FROM project_items").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_one_open_proposal_per_kind_and_name(tmp_path):
+    conn = _fresh(tmp_path)
+    try:
+        def add(status):
+            conn.execute(
+                "INSERT INTO item_proposals (kind, name, evidence, uses, status, created_at, updated_at) "
+                "VALUES ('skill', 'skill-chanchi-global-x', '{}', 1, ?, 't', 't')",
+                (status,),
+            )
+
+        add("open")
+        add("built")
+        add("rejected")
+        with pytest.raises(sqlite3.IntegrityError):
+            add("open")
     finally:
         conn.close()

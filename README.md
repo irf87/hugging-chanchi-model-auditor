@@ -120,6 +120,15 @@ chanchi project writers --set planner,auditor
 chanchi project writers --global --set planner
 ```
 
+`chanchi items scan` reads the item folders of every registered project. Besides the defaults it reads the
+agnostic folders a project registers (a relative folder that exists, never a link):
+
+```bash
+chanchi project items-dirs                       # the default folders and the ones registered
+chanchi project items-dirs --add docs/agents
+chanchi project items-dirs --remove docs/agents
+```
+
 Record a lesson from a JSON body on stdin, review it from another conversation, then apply it:
 
 ```bash
@@ -198,6 +207,7 @@ chanchi items retire <item> [--replaced-by <item>] --reason "<why>"
 chanchi items mirror                                # expose published items to the installed harnesses
 chanchi items mirror --check                        # write nothing; fail when the mirror is stale
 chanchi items mirror --remove                       # delete exactly what the mirror made
+chanchi items scan [--project <slug>]               # fingerprint the item folders of registered projects
 ```
 
 `items mirror` links each published skill into `~/.agents/skills` (plus relative links for Claude Code and the
@@ -205,6 +215,13 @@ agy CLI) and writes each published agent for the installed harnesses (`~/.claude
 `agents` folder, `~/.gemini/config/agents`). Drafts and retired items never appear. Every entry is recorded
 in `mirror.json` next to the database; the mirror updates or removes only what it recorded, refuses to
 overwrite anything else, and leaves `chanchi skills link` and `chanchi agents link --user` entries alone.
+
+`items scan` is read-only on projects: it never writes into one and never follows a link. For each skill and
+agent it finds (`.agents/skills`, `.claude/skills`, `.opencode/skills`, `agents`, `.claude/agents`,
+`.opencode/agents`, `.agents/agents` and the folders from `project items-dirs`) it stores the path, a content
+hash, the line count and the frontmatter `description`, never the item text; wrappers that `chanchi agents sync`
+generated are skipped. Running it twice changes nothing. A global item named like a scanned project item is a
+`project_item_collision` in `items check`, `items publish` and `items mirror`.
 
 ## Exploration
 
