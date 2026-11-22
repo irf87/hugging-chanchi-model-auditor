@@ -576,6 +576,28 @@ def cmd_items_scan(args):
         return inventory.scan(conn, project=args.project)
 
 
+def cmd_items_propose(args):
+    config = sync.promotion()
+    with _conn() as conn:
+        return inventory.propose(
+            conn, own_names=items.own_names(), config=config, owner_promote=args.owner_promote
+        )
+
+
+def cmd_items_proposals(args):
+    config = sync.promotion()
+    with _conn() as conn:
+        return {"proposals": inventory.proposals(conn, config=config, status=args.status, proposal_id=args.id)}
+
+
+def cmd_items_proposal_status(args):
+    root = sync.require() if args.status == "built" else None
+    with _conn() as conn:
+        return inventory.set_proposal_status(
+            conn, root, args.id, status=args.status, global_item=args.global_item
+        )
+
+
 # --- parser ----------------------------------------------------------------
 
 
@@ -886,6 +908,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reason", required=True, help="why the item is retired")
     p = leaf(g, "scan", cmd_items_scan, "fingerprint the item folders of registered projects (read-only on projects)", project=False)
     p.add_argument("--project", default=None, metavar="SLUG", help="scan only this registered project (default: all)")
+    p = leaf(g, "propose", cmd_items_propose, "list candidate global items from the scan and the lessons, with evidence", project=False)
+    p.add_argument("--owner-promote", dest="owner_promote", metavar="NAME",
+                   help="mark the candidate <agent|skill>-chanchi-global-<name> as promoted by the owner")
+    p = leaf(g, "proposals", cmd_items_proposals, "list stored item proposals, or show one with absolute copy paths", project=False)
+    p.add_argument("--status", default=None, metavar="STATUS", help="open, built or rejected (not with --id)")
+    p.add_argument("--id", default=None, type=_int("id"), help="show this proposal, with the absolute path of each copy")
+    p = leaf(g, "proposal-status", cmd_items_proposal_status, "close an open proposal as built or rejected", project=False)
+    p.add_argument("id", type=_int("id"), help="the proposal id")
+    p.add_argument("--status", required=True, metavar="STATUS", help="built or rejected")
+    p.add_argument("--global-item", dest="global_item", default=None, metavar="NAME",
+                   help="with built: the global item built from the proposal (must exist in SYNC/ITEMS)")
     p = leaf(g, "mirror", cmd_items_mirror, "expose published items to the installed harnesses", project=False)
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="write nothing; fail if the mirror is stale")

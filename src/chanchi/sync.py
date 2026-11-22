@@ -220,3 +220,49 @@ def roster(env: Mapping[str, str] | None = None, *, repo_root: Path | None = Non
     if not isinstance(entries, list) or not entries:
         raise _bad(path, "needs at least one [[auditor]] table", hint="or remove the file to use the built-in roster")
     return [_entry(path, index, raw) for index, raw in enumerate(entries, 1)]
+
+
+PROMOTION_DEFAULTS = {"min_uses": 3, "vendored_share": 0.5}
+
+
+def _promotion_bad(path: Path, detail: str) -> ChanchiError:
+    return ChanchiError(
+        "invalid_value",
+        f"{path}: {detail}",
+        field="promotion",
+        hint="fix the file or remove it to use the defaults (min_uses = 3, vendored_share = 0.5)",
+    )
+
+
+def promotion(env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> dict:
+    """`{min_uses, vendored_share}` from `SYNC/config/promotion.toml`; defaults when SYNC or the file is missing.
+
+    `min_uses` is an integer of at least 1 (default 3); `vendored_share` is a number in (0, 1] (default 0.5;
+    `1` is accepted). A boolean is never a number. Any other key, type, out-of-range value or a TOML error is
+    `invalid_value` with field `promotion`.
+    """
+    result = dict(PROMOTION_DEFAULTS)
+    base = sync_dir(env, repo_root=repo_root)
+    path = base / "config" / "promotion.toml" if base is not None else None
+    if path is None or not path.is_file():
+        return result
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError, OSError) as exc:
+        raise _promotion_bad(path, f"cannot read promotion.toml: {exc}") from None
+    unknown = sorted(set(data) - set(PROMOTION_DEFAULTS))
+    if unknown:
+        raise _promotion_bad(path, f"promotion.toml has unknown keys {unknown}; valid keys are {sorted(PROMOTION_DEFAULTS)}")
+    if "min_uses" in data:
+        value = data["min_uses"]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise _promotion_bad(path, f"promotion.toml: min_uses must be an integer of at least 1, got {value!r}")
+        result["min_uses"] = value
+    if "vendored_share" in data:
+        value = data["vendored_share"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= 1:
+            raise _promotion_bad(
+                path, f"promotion.toml: vendored_share must be a number above 0 and at most 1, got {value!r}"
+            )
+        result["vendored_share"] = float(value)
+    return result

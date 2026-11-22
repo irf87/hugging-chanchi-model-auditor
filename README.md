@@ -208,6 +208,9 @@ chanchi items mirror                                # expose published items to 
 chanchi items mirror --check                        # write nothing; fail when the mirror is stale
 chanchi items mirror --remove                       # delete exactly what the mirror made
 chanchi items scan [--project <slug>]               # fingerprint the item folders of registered projects
+chanchi items propose [--owner-promote <name>]      # candidate global items from the scan and the lessons
+chanchi items proposals [--status open|built|rejected | --id <n>]   # stored candidates; --id adds absolute paths
+chanchi items proposal-status <n> --status built --global-item <item>   # or --status rejected
 ```
 
 `items mirror` links each published skill into `~/.agents/skills` (plus relative links for Claude Code and the
@@ -222,6 +225,21 @@ agent it finds (`.agents/skills`, `.claude/skills`, `.opencode/skills`, `agents`
 hash, the line count and the frontmatter `description`, never the item text; wrappers that `chanchi agents sync`
 generated are skipped. Running it twice changes nothing. A global item named like a scanned project item is a
 `project_item_collision` in `items check`, `items publish` and `items mirror`.
+
+`items propose` turns the scan and the agnostic lessons into stored candidates, each with its evidence and its
+independent uses (copies that share most of their lines count once, so vendored upstream text is not mistaken
+for several uses). It never writes into a project, and it fails with `missing_prerequisite` when a counted copy
+changed since the last `items scan`. `--owner-promote <name>` records the owner's decision to promote a
+candidate before it reaches the threshold; the flag stays set on later runs. `SYNC/config/promotion.toml` is
+optional and accepts exactly two keys:
+
+```toml
+min_uses = 3          # independent uses that make a candidate eligible (integer, at least 1)
+vendored_share = 0.5  # two copies sharing a block of identical lines this share of the shorter one count once
+```
+
+`items proposals --id <n>` prints one candidate with the absolute path of each copy, for the item builder;
+`items proposal-status` closes an open candidate as `built` (linked to the draft in `SYNC/ITEMS`) or `rejected`.
 
 ## Exploration
 

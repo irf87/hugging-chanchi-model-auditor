@@ -116,6 +116,77 @@ def test_unknown_harness_lists_valid_values(tmp_path):
     assert "entry 1" in exc.value.message
 
 
+# --- promotion.toml -------------------------------------------------------------------
+
+
+def write_promotion(tmp_path, text):
+    (tmp_path / "config").mkdir(exist_ok=True)
+    (tmp_path / "config" / "promotion.toml").write_text(text, encoding="utf-8")
+    return {"CHANCHI_SYNC": str(tmp_path)}
+
+
+def test_promotion_defaults_without_sync_and_without_the_file(tmp_path):
+    defaults = {"min_uses": 3, "vendored_share": 0.5}
+    assert sync.promotion({"CHANCHI_SYNC": str(tmp_path / "missing")}) == defaults
+    (tmp_path / "config").mkdir()  # SYNC exists but has no promotion.toml
+    assert sync.promotion({"CHANCHI_SYNC": str(tmp_path)}) == defaults
+
+
+def test_promotion_reads_both_keys_and_either_alone(tmp_path):
+    env = write_promotion(tmp_path, "min_uses = 2\nvendored_share = 0.75\n")
+    assert sync.promotion(env) == {"min_uses": 2, "vendored_share": 0.75}
+    env = write_promotion(tmp_path, "min_uses = 5\n")
+    assert sync.promotion(env) == {"min_uses": 5, "vendored_share": 0.5}
+    env = write_promotion(tmp_path, "# only a comment\nvendored_share = 0.6\n")
+    assert sync.promotion(env) == {"min_uses": 3, "vendored_share": 0.6}
+
+
+def test_promotion_accepts_a_vendored_share_of_exactly_one(tmp_path):
+    env = write_promotion(tmp_path, "vendored_share = 1\n")
+    assert sync.promotion(env)["vendored_share"] == 1
+    env = write_promotion(tmp_path, "vendored_share = 1.0\n")
+    assert sync.promotion(env)["vendored_share"] == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "other = 1\n",
+        "min_uses = 3\nextra = true\n",
+        "min_uses = 0\n",
+        "min_uses = -1\n",
+        "min_uses = true\n",
+        "min_uses = 2.0\n",
+        'min_uses = "3"\n',
+        "vendored_share = 0\n",
+        "vendored_share = 0.0\n",
+        "vendored_share = 1.01\n",
+        "vendored_share = -0.5\n",
+        "vendored_share = true\n",
+        'vendored_share = "0.5"\n',
+        "vendored_share = nan\n",
+        "min_uses = [1]\n",
+        "[section]\nmin_uses = 3\n",
+        "min_uses = \n",
+    ],
+)
+def test_promotion_refuses_bad_files(tmp_path, text):
+    env = write_promotion(tmp_path, text)
+    with pytest.raises(ChanchiError) as exc:
+        sync.promotion(env)
+    assert exc.value.code == "invalid_value"
+    assert exc.value.field == "promotion"
+    assert "promotion.toml" in exc.value.message
+
+
+def test_promotion_refuses_a_file_that_is_not_utf8(tmp_path):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "promotion.toml").write_bytes(b"min_uses = \xff\n")
+    with pytest.raises(ChanchiError) as exc:
+        sync.promotion({"CHANCHI_SYNC": str(tmp_path)})
+    assert exc.value.code == "invalid_value" and exc.value.field == "promotion"
+
+
 def test_sync_init_creates_folders_and_is_idempotent(tmp_path):
     target = tmp_path / "SYNC"
     env = {"CHANCHI_SYNC": str(target)}
