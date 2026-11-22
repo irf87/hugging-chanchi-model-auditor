@@ -451,6 +451,35 @@ def cmd_audit_list(args):
         return {"audits": audits.list_audits(conn, kind=args.kind, ref=args.ref)}
 
 
+def cmd_audit_vote(args):
+    with _conn() as conn:
+        return audits.vote(
+            conn, args.id, round=args.round, seat=args.seat, verdict=args.verdict,
+            blocking=args.blocking, major=args.major, minor=args.minor, report=args.report,
+        )
+
+
+def cmd_audit_dissent(args):
+    with _conn() as conn:
+        return audits.dissent(
+            conn, args.id, round=args.round, seat=args.seat, finding=args.finding,
+            severity=args.severity, decision=args.decision, evidence=args.evidence,
+        )
+
+
+def cmd_audit_close(args):
+    with _conn() as conn:
+        return audits.close_round(conn, args.id, round=args.round)
+
+
+def cmd_audit_round(args):
+    roster = sync.roster()
+    with _conn() as conn:
+        return audits.next_round(
+            conn, args.id, commit=args.commit, version=args.version, roster=roster, which=shutil.which,
+        )
+
+
 # --- parser ----------------------------------------------------------------
 
 
@@ -706,6 +735,31 @@ def build_parser() -> argparse.ArgumentParser:
     p = leaf(g, "list", cmd_audit_list, "list audits with their last outcome", project=False)
     p.add_argument("--kind")
     p.add_argument("--ref")
+    p = leaf(g, "vote", cmd_audit_vote, "record a seat's verdict, finding counts and report path", project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--round", required=True, type=_int("round"))
+    p.add_argument("--seat", required=True, type=_int("seat"))
+    p.add_argument("--verdict", required=True, help=" | ".join(taxonomy.AUDIT_VERDICTS))
+    p.add_argument("--blocking", required=True, type=_int("blocking"))
+    p.add_argument("--major", required=True, type=_int("major"))
+    p.add_argument("--minor", required=True, type=_int("minor"))
+    p.add_argument("--report", required=True, help="path to the auditor's report")
+    p = leaf(g, "dissent", cmd_audit_dissent, "record a confirmed or rejected decision on a lone finding", project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--round", required=True, type=_int("round"))
+    p.add_argument("--seat", required=True, type=_int("seat"))
+    p.add_argument("--finding", required=True, help='"<id: text>" of the lone finding')
+    p.add_argument("--severity", required=True, help=" | ".join(taxonomy.AUDIT_SEVERITIES))
+    p.add_argument("--decision", required=True, help=" | ".join(taxonomy.DISSENT_DECISIONS))
+    p.add_argument("--evidence", required=True, help="why the finding is confirmed or rejected")
+    p = leaf(g, "close", cmd_audit_close, "close an audit round and compute its outcome", project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--round", required=True, type=_int("round"))
+    p = leaf(g, "round", cmd_audit_round, "open the next round with the same seats when still available", project=False)
+    p.add_argument("id", type=_int("id"))
+    nxt = p.add_mutually_exclusive_group(required=True)
+    nxt.add_argument("--commit", help="the commit the next round audits")
+    nxt.add_argument("--version", help="the item version the next round audits")
 
     g = group("scoring", "scoring formulas")
     leaf(g, "explain", cmd_scoring_explain, "show current weights and formulas")

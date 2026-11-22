@@ -371,3 +371,367 @@ def test_cli_project_detected_from_a_recorded_change(cli_env, git_repo):
     assert error["code"] == "invalid_value"
     error = fail(cli_env, "audit", "show", "42")
     assert error["code"] == "unknown_audit"
+
+
+# --- outcome (pure function) -------------------------------------------------
+
+
+def _v(verdict, blocking=0, major=0, minor=0):
+    return {"verdict": verdict, "blocking": blocking, "major": major, "minor": minor}
+
+
+def _d(severity, decision):
+    return {"severity": severity, "decision": decision}
+
+
+@pytest.mark.parametrize(
+    ("votes", "dissents", "round_no", "expected"),
+    [
+        # 1. fewer than two voted -> escalated / quorum, whatever the round
+        ([], [], 1, ("escalated", "quorum")),
+        ([_v("pass")], [], 1, ("escalated", "quorum")),
+        ([_v("fail")], [], 2, ("escalated", "quorum")),
+        ([_v("pass")], [], 3, ("escalated", "quorum")),
+        # 2. at least two fail -> rework (round_cap on round 3)
+        ([_v("fail"), _v("fail"), _v("pass")], [], 1, ("rework", None)),
+        ([_v("fail"), _v("fail")], [], 2, ("rework", None)),
+        ([_v("fail"), _v("fail"), _v("pass")], [], 3, ("escalated", "round_cap")),
+        # 3. at least two approvals (pass, or pass_with_fixes 0/0/n) and no confirmed blocking/major dissent -> accepted
+        ([_v("pass"), _v("pass"), _v("fail")], [], 1, ("accepted", None)),
+        ([_v("pass_with_fixes", minor=4), _v("pass_with_fixes", minor=2), _v("pass_with_fixes", major=1)], [], 1, ("accepted", None)),
+        ([_v("pass"), _v("pass_with_fixes", minor=1)], [], 1, ("accepted", None)),
+        ([_v("pass"), _v("pass_with_fixes", minor=3), _v("pass_with_fixes", major=1)], [_d("major", "rejected")], 1, ("accepted", None)),
+        ([_v("pass"), _v("pass"), _v("pass_with_fixes", minor=1)], [_d("minor", "confirmed")], 1, ("accepted", None)),
+        ([_v("pass"), _v("pass_with_fixes", minor=2), _v("pass_with_fixes", major=1)], [], 3, ("accepted", None)),
+        # 4. otherwise -> fix (round_cap on round 3)
+        ([_v("pass"), _v("pass_with_fixes", minor=1), _v("pass_with_fixes", major=1)], [_d("major", "confirmed")], 1, ("fix", None)),
+        ([_v("pass"), _v("pass"), _v("pass_with_fixes", blocking=1)], [_d("blocking", "confirmed")], 2, ("fix", None)),
+        ([_v("pass"), _v("pass_with_fixes", major=1), _v("fail")], [], 1, ("fix", None)),
+        ([_v("pass_with_fixes", major=2), _v("pass_with_fixes", major=1), _v("pass_with_fixes", major=1)], [], 1, ("fix", None)),
+        ([_v("pass"), _v("pass_with_fixes", minor=6), _v("pass_with_fixes", major=2, minor=2)], [_d("major", "confirmed"), _d("major", "confirmed")], 3, ("escalated", "round_cap")),
+    ],
+)
+def test_outcome_rules(votes, dissents, round_no, expected):
+    assert audits.outcome(votes, dissents, round_no) == expected
+
+
+# --- vote, dissent, close_round, next_round ----------------------------------
+
+
+def _vote_all(conn, audit_id, *, round=1, specs_votes=None):
+    default = ("pass", 0, 0, 0, "/tmp/r.md")
+    for seat in (1, 2, 3):
+        verdict, b, m, mn, rep = (specs_votes or {}).get(seat, default)
+        audits.vote(conn, audit_id, round=round, seat=seat, verdict=verdict, blocking=b, major=m, minor=mn, report=rep)
+
+
+def test_vote_validations_and_guards(cat):
+    opened = open_(cat)
+    aid = opened["audit_id"]
+    with pytest.raises(ChanchiError) as pass_major:
+        audits.vote(cat, aid, round=1, seat=1, verdict="pass", blocking=0, major=1, minor=0, report="/tmp/r1.md")
+    assert pass_major.value.code == "invalid_value" and pass_major.value.field == "verdict"
+    assert "pass_with_fixes" in pass_major.value.hint
+
+    with pytest.raises(ChanchiError) as pass_blocking:
+        audits.vote(cat, aid, round=1, seat=1, verdict="pass", blocking=1, major=0, minor=0, report="/tmp/r1.md")
+    assert pass_blocking.value.code == "invalid_value" and pass_blocking.value.field == "verdict"
+
+    with pytest.raises(ChanchiError) as neg:
+        audits.vote(cat, aid, round=1, seat=1, verdict="fail", blocking=-1, major=0, minor=0, report="/tmp/r1.md")
+    assert neg.value.code == "invalid_value"
+
+    with pytest.raises(ChanchiError) as blank_rep:
+        audits.vote(cat, aid, round=1, seat=1, verdict="pass", blocking=0, major=0, minor=0, report="   ")
+    assert blank_rep.value.code == "invalid_value" and blank_rep.value.field == "report"
+
+    res = audits.vote(cat, aid, round=1, seat=1, verdict="pass", blocking=0, major=0, minor=2, report="/tmp/r1.md")
+    assert res["seat"]["status"] == "voted" and res["seat"]["minor"] == 2
+
+    with pytest.raises(ChanchiError) as revote:
+        audits.vote(cat, aid, round=1, seat=1, verdict="fail", blocking=1, major=0, minor=0, report="/tmp/r1.md")
+    assert revote.value.code == "invalid_transition"
+
+    audits.vote(cat, aid, round=1, seat=2, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/r2.md")
+    audits.vote(cat, aid, round=1, seat=3, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/r3.md")
+    audits.close_round(cat, aid, round=1)
+    with pytest.raises(ChanchiError) as closed:
+        audits.vote(cat, aid, round=1, seat=1, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/r1.md")
+    assert closed.value.code == "invalid_transition"
+
+
+def test_dissent_validations_and_guards(cat):
+    aid = open_(cat)["audit_id"]
+    with pytest.raises(ChanchiError) as not_voted:
+        audits.dissent(
+            cat, aid, round=1, seat=1, finding="F1: gap", severity="major", decision="confirmed", evidence="checked"
+        )
+    assert not_voted.value.code == "invalid_transition"
+
+    audits.vote(cat, aid, round=1, seat=1, verdict="pass_with_fixes", blocking=0, major=1, minor=0, report="/tmp/r1.md")
+    with pytest.raises(ChanchiError) as blank:
+        audits.dissent(cat, aid, round=1, seat=1, finding=" ", severity="major", decision="confirmed", evidence="ok")
+    assert blank.value.code == "invalid_value" and blank.value.field == "finding"
+    with pytest.raises(ChanchiError) as blank_ev:
+        audits.dissent(cat, aid, round=1, seat=1, finding="F1: gap", severity="major", decision="confirmed", evidence="  ")
+    assert blank_ev.value.code == "invalid_value" and blank_ev.value.field == "evidence"
+
+    d = audits.dissent(
+        cat, aid, round=1, seat=1, finding="F1: gap", severity="major", decision="confirmed", evidence="line 10"
+    )
+    assert d["dissent"]["decision"] == "confirmed"
+
+    audits.vote(cat, aid, round=1, seat=2, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/r2.md")
+    audits.vote(cat, aid, round=1, seat=3, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/r3.md")
+    audits.close_round(cat, aid, round=1)
+    with pytest.raises(ChanchiError) as closed:
+        audits.dissent(
+            cat, aid, round=1, seat=2, finding="F2: late", severity="minor", decision="rejected", evidence="no"
+        )
+    assert closed.value.code == "invalid_transition"
+
+
+def test_close_round_guards_and_accepted_minors(cat):
+    aid = open_(cat)["audit_id"]
+    audits.vote(cat, aid, round=1, seat=1, verdict="pass_with_fixes", blocking=0, major=0, minor=3, report="/tmp/r1.md")
+    audits.vote(cat, aid, round=1, seat=2, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/r2.md")
+    with pytest.raises(ChanchiError) as still_assigned:
+        audits.close_round(cat, aid, round=1)
+    assert still_assigned.value.code == "invalid_transition"
+
+    audits.vote(cat, aid, round=1, seat=3, verdict="pass_with_fixes", blocking=0, major=1, minor=2, report="/tmp/r3.md")
+    audits.dissent(
+        cat, aid, round=1, seat=3, finding="M1: lone major", severity="major", decision="rejected", evidence="invalid"
+    )
+    audits.dissent(
+        cat, aid, round=1, seat=3, finding="m1: lone minor", severity="minor", decision="confirmed", evidence="valid"
+    )
+    audits.dissent(
+        cat, aid, round=1, seat=3, finding="m2: nope", severity="minor", decision="rejected", evidence="not needed"
+    )
+    closed = audits.close_round(cat, aid, round=1)
+    assert closed["outcome"] == "accepted" and closed["escalation"] is None
+    assert closed["audit_closed_at"] is not None
+    assert closed["minor_fixes"] == [
+        {"kind": "seat", "seat": 1, "spec": "claude:sonnet:medium", "minor": 3, "report": "/tmp/r1.md"},
+        {
+            "kind": "dissent",
+            "seat": 3,
+            "spec": "opencode:opencode-go/minimax-m3",
+            "finding": "m1: lone minor",
+            "evidence": "valid",
+        },
+    ]
+    with pytest.raises(ChanchiError) as reclose:
+        audits.close_round(cat, aid, round=1)
+    assert reclose.value.code == "invalid_transition"
+    with pytest.raises(ChanchiError) as after_accepted:
+        audits.next_round(cat, aid, commit="def456", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    assert after_accepted.value.code == "invalid_transition"
+
+
+def test_next_round_keeps_seats_refills_missing_and_enforces_cap(cat):
+    aid = open_(cat)["audit_id"]
+    with pytest.raises(ChanchiError) as open_round:
+        audits.next_round(cat, aid, commit="def456", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    assert open_round.value.code == "invalid_transition"
+
+    _vote_all(cat, aid, round=1, specs_votes={
+        1: ("fail", 1, 0, 0, "/tmp/1.md"),
+        2: ("fail", 2, 0, 0, "/tmp/2.md"),
+        3: ("pass", 0, 0, 0, "/tmp/3.md"),
+    })
+    r1 = audits.close_round(cat, aid, round=1)
+    assert r1["outcome"] == "rework" and r1["audit_closed_at"] is None
+
+    # opencode goes off PATH before round 2 -> seat 3 refills with fallback (degraded) while seats 1 & 2 stay
+    r2_open = audits.next_round(cat, aid, commit="def456", roster=sync.BUILTIN_ROSTER, which=which_with("claude", "agy"))
+    assert r2_open["round"] == 2 and r2_open["degraded"] is True
+    assert [(s["seat"], s["spec"]) for s in r2_open["seats"]] == [
+        (1, "claude:sonnet:medium"),
+        (2, "agy:gemini-4-neon-high:high"),
+        (3, "agy:gemini-4-hydrogen-high:high"),
+    ]
+    _vote_all(cat, aid, round=2, specs_votes={
+        1: ("pass_with_fixes", 0, 1, 0, "/tmp/21.md"),
+        2: ("pass", 0, 0, 0, "/tmp/22.md"),
+        3: ("pass_with_fixes", 0, 1, 0, "/tmp/23.md"),
+    })
+    assert audits.close_round(cat, aid, round=2)["outcome"] == "fix"
+
+    r3_open = audits.next_round(cat, aid, commit="ghi789", roster=sync.BUILTIN_ROSTER, which=which_with("claude", "agy"))
+    assert r3_open["round"] == 3
+    _vote_all(cat, aid, round=3, specs_votes={
+        1: ("pass_with_fixes", 0, 1, 0, "/tmp/31.md"),
+        2: ("pass", 0, 0, 0, "/tmp/32.md"),
+        3: ("pass", 0, 0, 0, "/tmp/33.md"),
+    })
+    audits.dissent(cat, aid, round=3, seat=1, finding="R3: lone", severity="major", decision="confirmed", evidence="yes")
+    r3_close = audits.close_round(cat, aid, round=3)
+    assert (r3_close["outcome"], r3_close["escalation"]) == ("escalated", "round_cap")
+    assert r3_close["audit_closed_at"] is not None
+
+    with pytest.raises(ChanchiError) as past_cap:
+        audits.next_round(cat, aid, commit="jkl000", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    assert past_cap.value.code == "invalid_transition"
+
+
+def test_next_round_quorum_escalation(cat):
+    aid = open_(cat)["audit_id"]
+    _vote_all(cat, aid, round=1, specs_votes={
+        1: ("pass_with_fixes", 0, 1, 0, "/tmp/1.md"),
+        2: ("pass_with_fixes", 0, 1, 0, "/tmp/2.md"),
+        3: ("pass", 0, 0, 0, "/tmp/3.md"),
+    })
+    audits.close_round(cat, aid, round=1)
+    r2 = audits.next_round(cat, aid, commit="def456", roster=sync.BUILTIN_ROSTER, which=which_with("claude"))
+    assert r2["outcome"] == "escalated" and r2["escalation"] == "quorum"
+    assert len(r2["seats"]) == 1 and r2["seats"][0]["launch"] is None
+    assert cat.execute("SELECT closed_at FROM audits WHERE id = ?", (aid,)).fetchone()[0] is not None
+
+
+def test_next_round_version_and_deactivated_model_refill(cat):
+    aid = open_(cat, kind="item", ref="skill-chanchi-global-x", commit=None, version="0.1.0")["audit_id"]
+    _vote_all(cat, aid, round=1, specs_votes={
+        1: ("pass_with_fixes", 0, 1, 0, "/tmp/1.md"),
+        2: ("pass_with_fixes", 0, 1, 0, "/tmp/2.md"),
+        3: ("pass", 0, 0, 0, "/tmp/3.md"),
+    })
+    audits.close_round(cat, aid, round=1)
+    catalog.set_model(cat, spec="opencode:opencode-go/minimax-m3", active=False)
+    with pytest.raises(ChanchiError) as bad_subj:
+        audits.next_round(cat, aid, commit="abc", version="0.1.1", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    assert bad_subj.value.code == "invalid_value"
+    r2 = audits.next_round(cat, aid, version="0.1.1", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    assert [s["spec"] for s in r2["seats"]] == [
+        "claude:sonnet:medium",
+        "agy:gemini-4-neon-high:high",
+        "agy:gemini-4-hydrogen-high:high",
+    ]
+    assert r2["degraded"] is True
+
+
+def test_close_round_quorum_after_unavailable_exhaustion(cat):
+    aid = open_(cat)["audit_id"]
+    audits.mark_unavailable(cat, aid, round=1, seat=2, reason="err", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    audits.mark_unavailable(cat, aid, round=1, seat=2, reason="err", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    audits.mark_unavailable(cat, aid, round=1, seat=3, reason="err", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    audits.vote(cat, aid, round=1, seat=1, verdict="pass", blocking=0, major=0, minor=0, report="/tmp/1.md")
+    closed = audits.close_round(cat, aid, round=1)
+    assert (closed["outcome"], closed["escalation"]) == ("escalated", "quorum")
+    assert closed["audit_closed_at"] is not None
+
+
+def test_global_items_history_reproduction(cat):
+    """Reproduce docs/designs/global-items.md rounds 1-3 from Task 8's table (decision D9)."""
+    opened = audits.open_audit(
+        cat,
+        kind="design",
+        ref="docs/designs/global-items.md",
+        author="claude:opus:high",
+        commit="953ac5a",
+        roster=sync.BUILTIN_ROSTER,
+        which=ALL_BINARIES,
+    )
+    aid = opened["audit_id"]
+    assert [s["spec"] for s in opened["seats"]] == [
+        "claude:sonnet:medium",
+        "agy:gemini-4-neon-high:high",
+        "opencode:opencode-go/minimax-m3",
+    ]
+
+    # Round 1 at 953ac5a -> fix
+    _vote_all(cat, aid, round=1, specs_votes={
+        1: ("pass_with_fixes", 0, 8, 12, "docs/designs/reviews/global-items/round1-claude-sonnet.md"),
+        2: ("pass_with_fixes", 3, 5, 4, "docs/designs/reviews/global-items/round1-agy-gemini-4-neon.md"),
+        3: ("pass_with_fixes", 2, 6, 10, "docs/designs/reviews/global-items/round1-opencode-minimax-m3.md"),
+    })
+    r1 = audits.close_round(cat, aid, round=1)
+    assert (r1["outcome"], r1["escalation"]) == ("fix", None)
+
+    # Round 2 at a7a1a20 -> fix (open counts after re-check, partial carry-overs at original severity)
+    audits.next_round(cat, aid, commit="a7a1a20", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    _vote_all(cat, aid, round=2, specs_votes={
+        1: ("pass_with_fixes", 0, 2, 8, "docs/designs/reviews/global-items/round2-claude-sonnet.md"),
+        2: ("pass_with_fixes", 0, 5, 2, "docs/designs/reviews/global-items/round2-agy-gemini-4-neon.md"),
+        3: ("pass_with_fixes", 1, 3, 6, "docs/designs/reviews/global-items/round2-opencode-minimax-m3.md"),
+    })
+    r2 = audits.close_round(cat, aid, round=2)
+    assert (r2["outcome"], r2["escalation"]) == ("fix", None)
+
+    # Round 3 at e40d275 -> escalated / round_cap due to seat 3's two confirmed lone major dissents
+    audits.next_round(cat, aid, commit="e40d275", roster=sync.BUILTIN_ROSTER, which=ALL_BINARIES)
+    _vote_all(cat, aid, round=3, specs_votes={
+        1: ("pass_with_fixes", 0, 0, 6, "docs/designs/reviews/global-items/round3-claude-sonnet.md"),
+        2: ("pass", 0, 0, 2, "docs/designs/reviews/global-items/round3-agy-gemini-4-neon.md"),
+        3: ("pass_with_fixes", 0, 2, 2, "docs/designs/reviews/global-items/round3-opencode-minimax-m3.md"),
+    })
+    audits.dissent(
+        cat, aid, round=3, seat=3,
+        finding="R3-01: lesson apply --where syntax and precondition",
+        severity="major", decision="confirmed",
+        evidence="src/chanchi/lessons.py requires [lesson #<id>] and an approved agnostic lesson",
+    )
+    audits.dissent(
+        cat, aid, round=3, seat=3,
+        finding="R3-02: Principle 4 claims test_items.py check exists already",
+        severity="major", decision="confirmed",
+        evidence="tests/test_items.py does not enforce -chanchi-global- exclusion yet (phase 2)",
+    )
+    r3 = audits.close_round(cat, aid, round=3)
+    assert (r3["outcome"], r3["escalation"]) == ("escalated", "round_cap")
+
+    shown = audits.show(cat, aid)
+    assert shown["audit"]["outcome"] == "escalated" and shown["audit"]["closed_at"] is not None
+    assert [(r["round"], r["subject_at"], r["outcome"], r["escalation"]) for r in shown["rounds"]] == [
+        (1, "953ac5a", "fix", None),
+        (2, "a7a1a20", "fix", None),
+        (3, "e40d275", "escalated", "round_cap"),
+    ]
+    assert len(shown["rounds"][2]["seats"][2]["dissents"]) == 2
+
+
+def test_cli_vote_dissent_close_and_round(cli_env):
+    ok(
+        cli_env, "audit", "open", "--kind", "design", "--ref", "docs/designs/x.md",
+        "--author", "claude:opus:high", "--commit", "abc123",
+    )
+    bad = fail(
+        cli_env, "audit", "vote", "1", "--round", "1", "--seat", "1",
+        "--verdict", "pass", "--blocking", "0", "--major", "1", "--minor", "0", "--report", "/tmp/r1.md",
+    )
+    assert bad["code"] == "invalid_value" and bad["field"] == "verdict"
+
+    v1 = ok(
+        cli_env, "audit", "vote", "1", "--round", "1", "--seat", "1",
+        "--verdict", "pass_with_fixes", "--blocking", "0", "--major", "1", "--minor", "2", "--report", "/tmp/r1.md",
+    )
+    assert v1["seat"]["status"] == "voted"
+    ok(
+        cli_env, "audit", "vote", "1", "--round", "1", "--seat", "2",
+        "--verdict", "pass", "--blocking", "0", "--major", "0", "--minor", "1", "--report", "/tmp/r2.md",
+    )
+    ok(
+        cli_env, "audit", "vote", "1", "--round", "1", "--seat", "3",
+        "--verdict", "pass", "--blocking", "0", "--major", "0", "--minor", "0", "--report", "/tmp/r3.md",
+    )
+    d1 = ok(
+        cli_env, "audit", "dissent", "1", "--round", "1", "--seat", "1",
+        "--finding", "F1: gap", "--severity", "major", "--decision", "confirmed", "--evidence", "verified",
+    )
+    assert d1["dissent"]["severity"] == "major"
+    c1 = ok(cli_env, "audit", "close", "1", "--round", "1")
+    assert c1["outcome"] == "fix"
+
+    r2 = ok(cli_env, "audit", "round", "1", "--commit", "def456")
+    assert r2["round"] == 2 and len(r2["seats"]) == 3
+    for seat in ("1", "2", "3"):
+        ok(
+            cli_env, "audit", "vote", "1", "--round", "2", "--seat", seat,
+            "--verdict", "pass_with_fixes", "--blocking", "0", "--major", "0", "--minor", "1",
+            "--report", f"/tmp/r2-{seat}.md",
+        )
+    c2 = ok(cli_env, "audit", "close", "1", "--round", "2")
+    assert c2["outcome"] == "accepted" and len(c2["minor_fixes"]) == 3
+    shown = ok(cli_env, "audit", "show", "1")
+    assert shown["audit"]["outcome"] == "accepted" and len(shown["rounds"]) == 2

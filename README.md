@@ -147,13 +147,19 @@ else a built-in list of four auditors (`SYNC` is `CHANCHI_SYNC`, else `<main che
 ```bash
 chanchi audit open --kind design --ref docs/designs/<topic>.md --author claude:opus:high --commit <sha>
 chanchi audit unavailable <audit-id> --round 1 --seat <n> --reason "<error>"   # refill a seat
+chanchi audit vote <audit-id> --round 1 --seat <n> --verdict pass_with_fixes --blocking 0 --major 1 --minor 2 --report <path>
+chanchi audit dissent <audit-id> --round 1 --seat <n> --finding "<id: text>" --severity major --decision confirmed --evidence "<why>"
+chanchi audit close <audit-id> --round 1
+chanchi audit round <audit-id> --commit <next-sha>
 chanchi audit show <audit-id>
 chanchi audit list [--kind <k>] [--ref <ref>]
 ```
 
 A round with fewer than three distinct known families is recorded as degraded; a model whose
 family is unknown never counts as distinct (`chanchi models set <agent:model> --family <name>`).
-Design: `docs/designs/global-items.md`.
+Rounds run up to three times; `accepted` (at least two approvals and no confirmed lone blocking or
+major finding) or `escalated` (`quorum` or `round_cap`) closes the audit. Design:
+`docs/designs/global-items.md`.
 
 ## Exploration
 
