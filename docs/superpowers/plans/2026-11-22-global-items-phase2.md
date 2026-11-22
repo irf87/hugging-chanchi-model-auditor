@@ -1,7 +1,8 @@
 # Global Items — Phase 2 (SYNC and ITEMS) Implementation Plan
 
-- **Revision:** 2, after audit round 1 (`fix`; chanchi audit 3,
-  [round1-consolidation.md](../../designs/reviews/global-items-phase2-plan/round1-consolidation.md))
+- **Revision:** 3, after audit rounds 1 and 2 (both `fix`; chanchi audit 3,
+  [round1-consolidation.md](../../designs/reviews/global-items-phase2-plan/round1-consolidation.md),
+  [round2-consolidation.md](../../designs/reviews/global-items-phase2-plan/round2-consolidation.md))
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor`. Steps use
 > checkbox (`- [ ]`) syntax. Write the failing test first, then the code.
@@ -65,17 +66,17 @@ and ruff (dev only), uv.
 |---|---|---|
 | D1 | `sync.sync_path(env, *, repo_root)` returns where `SYNC` is or would be (`CHANCHI_SYNC`, else `<main checkout>/SYNC`), **never resolved** (a `SYNC` link stays in the path), `None` only when neither resolves; `sync_dir()` keeps its phase-1 contract (an existing directory or `None`). `sync init` creates `config/`, `ITEMS/agents/` and `ITEMS/skills/`. The design's sentence "An existing `SYNC` is never replaced: the command fails with `link_conflict`" is read as belonging to `sync init --link`, the only form that would replace `SYNC`: with `--link <dir>`, any existing entry at the `SYNC` path (directory, file or link, dangling or not) is `link_conflict`, and an existing non-directory `<dir>` is `invalid_value`. A plain `sync init` on an existing `SYNC` directory only adds the missing subfolders and replaces nothing; on a file at `SYNC` it is `link_conflict`; on a dangling link it is `missing_prerequisite` (hint `chanchi sync status`) | Under the other reading a plain re-run would fail although it replaces nothing; this reading keeps the design's guarantee (never replaced) and keeps `init` idempotent. Executors follow this reading and do not stop on it |
 | D2 | The reserved slug is enforced in `projects.ensure` (every new `projects` row, which is how `change open` and an explicit `--project global` create one) and in `projects.register`; `projects.relink` only accepts a registered slug, so it inherits the guard. `register` checks an explicit `--name` before anything else, and the folder-derived slug only after the existing-locator lookup, so re-running `register` in a `global/` checkout already registered with `--name <other>` still answers `already_registered`. Error: `invalid_value`, `field: "slug"`, hint `chanchi project register --name <other>` | One choke point per row-creating path; the operational database holds no project named `global` (checked 2026-11-22) |
-| D3 | Frontmatter for items: `AGENT.md` keeps `agents_sync`'s flat `key: value` lines and gains optional `version` and `status` (validated when present; never emitted into repository or user wrappers, whose bytes stay identical); `items check` parses each global `AGENT.md` with `agents_sync._parse` and turns its `ChanchiError` into a `bad_frontmatter` problem. `SKILL.md` carries `name`, `description` (both required, single line) and the design's `metadata:` block, read by `items.read_frontmatter(text) -> dict` (flat keys plus `metadata` as a dict; any other nesting, a folded or multi-line value, is `bad_frontmatter`). Both readers strip one pair of matching surrounding quotes from a value. Writers (`publish`, `retire`) rewrite only the `status` value and keep the line's form: unquoted in `AGENT.md`, double-quoted in the skill's `metadata:` block; when an item has no `status` line, they insert one right after `version` in the same form | Two documented shapes, one reader per shape that already exists or is needed; the round-trip keeps the design's quoting |
+| D3 | Frontmatter for items: `AGENT.md` keeps `agents_sync`'s flat `key: value` lines and gains optional `version` and `status` (validated when present; never emitted into repository or user wrappers, whose bytes stay identical); `items check` first checks, on every global item, the directory name (`bad_name`), the frontmatter `name` (`name_mismatch`), `version` (required, `bad_version`) and `status` (required, `bad_status`; a missing line is `bad_status` too), and only then parses an `AGENT.md` with `agents_sync._parse`, turning any remaining `ChanchiError` (syntax, `description`, `scope`, `profile`, `skills`, `install`) into `bad_frontmatter`. `SKILL.md` carries `name`, `description` (both required, single line) and the design's `metadata:` block, read by `items.read_frontmatter(text) -> dict` (flat keys plus `metadata` as a dict; any other nesting, a folded or multi-line value, is `bad_frontmatter`). Both readers strip one pair of matching surrounding quotes from a value. Writers (`publish`, `retire`) rewrite only the `status` value and keep the line's form: unquoted in `AGENT.md`, double-quoted in the skill's `metadata:` block; a writer that meets an item with no `status` line inserts one right after `version` in the same form (such an item already fails `items check`, so this only happens to a hand-made item) | Two documented shapes, one reader per shape that already exists or is needed; the round-trip keeps the design's quoting |
 | D4 | Valid version: `^\d+\.\d+\.\d+$`. Status: `draft`, `published`, `retired` (added to `taxonomy.py`). A global item name matches `^(agent|skill)-chanchi-global-[a-z0-9]+(-[a-z0-9]+)*$` | The design's `<x.y.z>`, its three statuses and its naming rule |
 | D5 | **Published hash.** Setting `status: published` changes the item's bytes, so its hash differs from the audited (draft) hash. `items publish` checks the audit against the draft hash, flips the status, then appends to the current version's `CHANGELOG.md` section the line `Published: <YYYY-MM-DD> · audit <id> · audited <draft-hash> · sha256 <published-hash>` (`CHANGELOG.md` is outside the hash). `published_hash` is read only from the current version's section. While an item's status is `published`, `items check` reports `edited_after_publish` when its hash differs from that line and `published_without_record` when the section has no such line (a status set by hand, or copied from another machine without its changelog); a `retired` or `draft` item is exempt | Keeps the design's hash definition, lets a second machine verify a published item without the local database, and makes "an edit after the audit needs a new round or a new version" enforceable after publishing; a hand-set `published` can never reach the mirror |
 | D6 | **Item audits get their subject from chanchi.** `audits.open_audit` and `audits.next_round` gain an optional keyword `sync_root: Path | None = None`; `cmd_audit_open` and `cmd_audit_round` pass `sync.sync_dir()`. For an audit of kind `item`, `audit open --kind item --ref <name> --version <x.y.z>` and `audit round <id> --version <x.y.z>` store `subject_at` as `items.subject_at(sync_root, name, version)` = `<x.y.z>@<content hash>`; refused when `sync_root` is `None` (`missing_prerequisite`, hint `chanchi sync init`), the ref is not a global item (`invalid_value`, `field: "ref"`), the version is not the item's current one (`invalid_value`, `field: "version"`), or `--commit` is given for an item (`invalid_value`). Other kinds ignore `sync_root` and work without `SYNC`. The existing tests in `tests/test_audits.py` that open `kind="item"` audits with a bare version (for example `subject_at == "1.2.0"`) switch to kind `other`, or build a `SYNC/ITEMS` fixture, keeping what they assert | The design requires `<version>@<content hash>`; a hash typed by hand could be wrong |
 | D7 | `items.check(...)` never raises for item problems: it returns `{items, problems}`, each problem `{item, code, detail}`; the CLI `items check` fails once with `invalid_value`, `field: "items"`, `details: {"problems": [...]}` when the list is not empty; `publish` and `mirror` read the returned list. Problem codes: `bad_name`, `wrong_folder`, `name_mismatch`, `bad_frontmatter`, `bad_version`, `bad_status`, `missing_changelog`, `symlink`, `conflict_copy`, `retired_not_retired`, `edited_after_publish`, `published_without_record`, `own_item_collision`, `bad_retired_json`, `unexpected_entry`. Expected in `ITEMS/`: `agents/`, `skills/` and `retired.json`; names starting with `.` are ignored there and in the kind folders; anything else is `unexpected_entry` | One run shows the user everything to fix; cloud folders leave dotfiles; `retired.json` belongs in `ITEMS/` (design tree) |
 | D8 | Conflict copies (`*.icloud`, names containing `conflicted copy` or `(conflict`) are excluded from the hash (design) **and** reported by `items check` as `conflict_copy` (design, *Risks*) | Both design statements hold |
 | D9 | `items retire <name> [--replaced-by <name>] --reason "<why>"` rewrites the item's `status` to `retired` (D3) **and** appends the `retired.json` entry (design, *Retirement*). Refused on a retired item (`invalid_transition`), with a blank reason (`invalid_value`), with `--replaced-by` equal to the name, or naming an item that does not exist, is retired, or is of another kind (`invalid_value`); a draft may be retired. The entry's `version` is the item's current version; `date` is UTC `YYYY-MM-DD`. A missing `retired.json` is an empty list; the file is a JSON array rewritten with the new entry appended and earlier entries unchanged | The design's effects and fields; a replacement that does not exist would point projects nowhere |
-| D10 | `items publish <name> --audit <id>` refusals, in order: unknown item (`invalid_value`); name in `retired.json` or status `retired` (`invalid_transition`); status `published` (`invalid_transition`, hint: write a new version as `draft`); `items check` problems for this item (`invalid_value`); audit missing (`unknown_audit`); audit kind not `item` or ref not this name (`invalid_value`, `field: "audit"`); last round not `accepted` or its `subject_at` not the current `<version>@<hash>` (`invalid_transition`, hint: open a new round or a new version) | The design's publish rule, made checkable in order |
+| D10 | `items publish <name> --audit <id>` refusals, in order: unknown item (`invalid_value`); name in `retired.json` or status `retired` (`invalid_transition`); status `published` (`invalid_transition`, hint: write a new version as `draft`); `items check` problems for this item (`invalid_value`); audit missing (`unknown_audit`); audit kind not `item` or ref not this name (`invalid_value`, `field: "audit"`); last round not `accepted` or its `subject_at` not the item's `<version>@<hash>` as it is **before** the status flip (the draft hash, D5) (`invalid_transition`, hint: open a new round or a new version) | The design's publish rule, made checkable in order |
 | D11 | Mirror manifest: the phase-1 file `mirror.json` next to the database, entries `{"owner": "items-mirror", "item", "kind", "path", ...}` with `kind` one of `skill-primary`, `skill-secondary` (plus `"link": <link text>`) or `claude`, `opencode`, `agy` (plus `"sha256"`). No `root` key: ownership does not depend on where `SYNC` points (design, *Ownership by manifest*). `agents-link` entries are preserved byte for byte, and a path owned by `agents-link` is a conflict for the mirror (and the reverse, already in phase 1) | One file, one ownership rule per owner |
 | D12 | Skill primaries link to the **unresolved** item path, `<SYNC path>/ITEMS/skills/<n>` (D1's path; `os.path.abspath`, never `.resolve()`), so re-pointing `SYNC` keeps the links valid | The design's "re-pointing ... does not orphan anything" |
-| D13 | `items mirror` is all or nothing: it first runs `items.check` (any problem → refused, nothing written), plans every wanted skill **and** agent entry, collects conflicts on the wanted paths (a path that exists and is not an `items-mirror` entry, including one owned by `agents-link`), and writes nothing when any conflict exists (`link_conflict`, paths in `details`). A foreign `*-chanchi-global-*` entry at a path the mirror does not want is left alone and is not a conflict. Then it writes, removes owned entries no longer wanted, and writes `mirror.json` once. `--check` writes nothing and fails with `stale_wrappers` on a check problem, a conflict, a missing or changed entry, or an owned entry no longer wanted. `--remove` deletes every `items-mirror` entry (dangling or not, and an agy `<n>/` folder left empty), drops them from the manifest, and works without `SYNC` | The design's ownership rule: a foreign global-named entry is never overwritten |
+| D13 | `items mirror` is all or nothing: it first runs `items.check` (any problem → refused, nothing written), plans every wanted skill **and** agent entry, collects conflicts on the wanted paths (a path that exists and is not an `items-mirror` entry, including one owned by `agents-link`), and writes nothing when any conflict exists (`link_conflict`, paths in `details`). A foreign `*-chanchi-global-*` entry at a path the mirror does not want is left alone and is not a conflict: the design's sentence "an entry named `*-chanchi-global-*` that is not in it is a conflict and is never overwritten" is read as a conflict where the mirror would write (the guarantee, never overwritten, holds either way); executors follow this reading and do not stop on it. Then it writes, removes owned entries no longer wanted, and writes `mirror.json` once. `--check` writes nothing and fails with `stale_wrappers` on a check problem, a conflict, a missing or changed entry, or an owned entry no longer wanted. `--remove` deletes every `items-mirror` entry (dangling or not, and an agy `<n>/` folder left empty), drops them from the manifest, and works without `SYNC` | The design's ownership rule: a foreign global-named entry is never overwritten |
 | D14 | `chanchi skills link/unlink` never treat a name containing `chanchi-global-` as theirs: `_is_own`, `_is_legacy` and `_is_compat` return `False` for it (the check is on `chanchi-global-`, so legacy-shaped names such as `chanchi-global-x` are covered too) | Verified 2026-11-22: a dangling `~/.claude/skills/skill-chanchi-global-<n>` secondary gives `_is_own == True` and `skills unlink --global` removes it, because global names start with `skill-chanchi-` |
 | D15 | The gate (Task 5) uses a scratch `CHANCHI_DB` and a scratch `CHANCHI_SYNC`, with the real `HOME` (the harnesses need their real credentials). The probe items' `item` audit lives only in that scratch database as fixture data, labelled so in the session log; `items mirror --remove` with the same scratch database cleans the real home afterwards. The change records (`change close`, `show`) stay in the operational database: the gate unsets both variables and returns to the main checkout before them | The operational database never holds test audits; the harnesses can only be exercised from the real home |
 | D16 | Agent writing is split into composable primitives in `agents_sync` (`read_manifest`, `write_manifest`, `remove_target`, a planner that returns wanted agent entries per installed harness, and a conflict collector); `link_user` is rebuilt on them with unchanged behaviour, and `items.mirror` plans skills and agents with them, checks every conflict, then writes | A single helper that writes agent files and the manifest in one call would either drop the mirror's skill entries as orphans or write before skill conflicts are known |
@@ -204,7 +205,11 @@ S2 starts from a `main` that has S1: the CLI gets the `SYNC` folder with `sync.r
 - `items.load(sync_root) -> list[Item]` where `Item` holds `name, kind, path, version, status,
   hash, published_hash` (from the D5 line, else `None`).
 - `items.check(sync_root, *, own_names) -> dict`: D7 (always returns `{items, problems}`),
-  `own_names` being this repository's item names (from `agents/` and `skills/`). Changelog: one
+  `own_names` being chanchi's own item names, from `items.own_names()`: the directory names under
+  `agents/` and `skills/` of the checkout that holds chanchi's source
+  (`Path(__file__).resolve().parents[2]`, checked like `sync._chanchi_checkout`), and an empty
+  list when chanchi is not installed from a checkout (then `own_item_collision` cannot fire; never
+  an `internal` error). Changelog: one
   `## <x.y.z> — <YYYY-MM-DD>` section per version, newest first; the current version must have
   one (`missing_changelog`). D5's two published problems.
 - `items.list_items(sync_root) -> list[dict]`: `name, kind, version, status, hash,
@@ -224,7 +229,9 @@ S2 starts from a `main` that has S1: the CLI gets the `SYNC` folder with `sync.r
   `ITEMS/`; an `AGENT.md` with an unknown `profile` (`bad_frontmatter`); a `SKILL.md` without
   `description` or with a multi-line one. A valid agent and a valid skill (skill with the quoted
   `metadata:` block) pass, with `retired.json` and a `.DS_Store` present in `ITEMS/`. `list_items`
-  on a tree with a broken item returns it with `null` fields. An `AGENT.md` with
+  on a tree with a broken item returns it with `null` fields. An item with no `status` line fails
+  with `bad_status`; an `AGENT.md` whose frontmatter name differs from its directory gives
+  `name_mismatch`, not `bad_frontmatter`. An `AGENT.md` with
   `version`/`status` parses and renders the same wrapper text as without them.
 - [ ] **Step 2:** Implement.
 
@@ -320,7 +327,8 @@ votes, `audit close` and `items publish` (paste `items list`); `uv run chanchi a
   chanchi's own skills linked by `skills_link.link(home, global_=True, skills_dir=<fixture>)` and
   the mirror applied, `skills_link.unlink(home, global_=True, ...)` leaves every mirror entry
   (including a secondary whose primary is dangling, and a legacy-shaped `chanchi-global-x` link),
-  and `items mirror --remove` leaves every `skill-chanchi-*` link of the fixture.
+  and `items mirror --remove` leaves every `skill-chanchi-*` and `chanchi-<n>` compatibility link
+  of the fixture, in `.agents/skills` and `.claude/skills`.
 - [ ] **Step 2:** Refactor first (`skill_targets`, the D16 primitives) with the existing
   `tests/test_skills_link.py` and `tests/test_agents_sync.py` green, then D14, then `items.mirror`
   and the CLI.
@@ -331,7 +339,7 @@ votes, `audit close` and `items publish` (paste `items list`); `uv run chanchi a
 **Verification (S3):** `uv run pytest -q tests/test_mirror.py tests/test_skills_link.py tests/test_agents_sync.py tests/test_skills_content.py`;
 the `items` entry of `FEATURE_MAP.md` driven with `uv run chanchi` in a scratch home through
 `mirror`, a hand edit, `--check`, `mirror` and `--remove` (paste each output's lists and a
-`find "$HOME" -name '*-chanchi-global-*'` after `--remove`, which must print nothing);
+`find "$SCRATCH_HOME" -name '*-chanchi-global-*'` after `--remove`, which must print nothing);
 `uv run chanchi agents sync --check`; `scripts/check`.
 
 ---
@@ -340,7 +348,9 @@ the `items` entry of `FEATURE_MAP.md` driven with `uv run chanchi` in a scratch 
 
 Runs from `main` after S3 merges, with the installed `chanchi` (now `main`'s code). **Writes to the
 real home** (mirror entries only), with a scratch database and a scratch `SYNC` (D15); steps 1-6 run
-from a scratch folder outside any repository. Keep the scratch database folder until step 6
+from a scratch folder outside any repository. The opencode folder is the adapter's:
+`OC="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"`, used wherever the
+steps name it. Keep the scratch database folder until step 6
 passes; if it is lost, remove the leftovers that step 6's `find` prints by hand.
 
 0. **Precondition (real home, operational database, read-only):** from the main checkout,
@@ -351,9 +361,10 @@ passes; if it is lost, remove the leftovers that step 6's `find` prints by hand.
 1. `export CHANCHI_DB="$(mktemp -d)/chanchi.db" CHANCHI_SYNC="$(mktemp -d)/SYNC"`; `chanchi db
    migrate`; `chanchi sync init`; register the four roster models as in the `audit` entry of
    `FEATURE_MAP.md`. Record the baseline: for each of `~/.agents/skills`, `~/.claude/skills`,
-   `~/.gemini/antigravity-cli/skills`, `~/.claude/agents`, `~/.config/opencode/agents` and
+   `~/.gemini/antigravity-cli/skills`, `~/.claude/agents`, `$OC/agents` and
    `~/.gemini/config/agents`, whether it exists and its sorted entry names.
-2. Write two drafts in `$CHANCHI_SYNC/ITEMS`, version `0.1.0`, each with a changelog section:
+2. Write two drafts in `$CHANCHI_SYNC/ITEMS`, each with `version: 0.1.0`, `status: draft` (quoted
+   in the skill's `metadata:` block) and a changelog section:
    `skill-chanchi-global-probe` (description "Probe skill for the chanchi mirror gate"; body: "When
    asked for the probe token, answer exactly `PROBE-<random 8 hex>`.") and
    `agent-chanchi-global-probe` (`scope: both`, `profile: read-only`, `skills:
@@ -370,15 +381,15 @@ passes; if it is lost, remove the leftovers that step 6's `find` prints by hand.
    - `opencode run --agent agent-chanchi-global-probe -m opencode-go/minimax-m3 "<prompt>" < /dev/null`
    - `agy --agent agent-chanchi-global-probe --model gemini-4-hydrogen --effort low -p="<prompt>" < /dev/null`
    Pass: the reply names `agent-chanchi-global-probe` and contains the exact token, which exists only
-   in the skill. Then the same three launch forms with `--agent agent-chanchi-auditor` and the
-   prompt "Load the skill skill-chanchi-global-probe and give its probe token only." — pass: the
-   exact token. A harness that fails is fixed (adapter row, target path) in a new session, not
-   waived: phase 2 is done only when all three pass both runs.
+   in the mirrored skill, so one run per harness proves both the mirrored agent and the mirrored
+   skill load (design, verification item 9 and phase row 2). A harness that fails is fixed
+   (adapter row, target path) in a new session of this change, not waived: phase 2 is done only
+   when all three pass.
 5. Hand-edit the mirrored claude agent file: `chanchi items mirror --check` fails; `chanchi items
    mirror` repairs it; `--check` passes.
 6. `chanchi items mirror --remove`. Read-only checks: every baseline folder that existed has the
    same entry names as in step 1 (a folder the mirror created may remain, empty);
-   `find ~/.agents ~/.claude ~/.config/opencode ~/.gemini -maxdepth 4 -name '*-chanchi-global-*'`
+   `find ~/.agents ~/.claude "$OC" ~/.gemini -maxdepth 4 -name '*-chanchi-global-*'`
    prints nothing.
 7. `unset CHANCHI_DB CHANCHI_SYNC`, `cd` to the main checkout, then `chanchi agents sync --check`
    and `chanchi agents link --user --check` (operational manifest) pass. Record the run (commands,
@@ -399,4 +410,5 @@ migration 006) are not part of it.
 | The refactor of `skills_link` or `agents_sync` changes current behaviour | refactor first with the existing tests unchanged; `agents sync --check` and `agents link --user --check` in the gate (step 7) |
 | A cloud placeholder or conflict copy changes the hash | D8: excluded from the hash, reported by `items check` |
 | The gate leaves files in the real home | scratch manifest kept until step 6; step 6 is read-only, compares entry names with the baseline and searches for leftovers |
+| A gate run fails because a harness does not discover the mirrored skill, not because of the mirror | the fix session starts from the adapter row and the target paths (`harnesses.py`, `skills_link.skill_targets`), re-checked against the harness's current skill folders |
 | A test global name breaks the references check | S1 teaches the check to skip global names and runs first; before that only `<item>-chanchi-global-<name>` is safe |
