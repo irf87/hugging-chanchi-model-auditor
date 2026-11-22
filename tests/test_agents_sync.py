@@ -392,3 +392,28 @@ def test_link_user_worktree_normalization_and_cli_default_root(tmp_path, monkeyp
     out = json.loads(capsys.readouterr().out)
     assert "agent-chanchi-wt" not in out["agents"]
     assert out["root"] == str(agents_sync._normalize_root(ROOT))
+
+
+def test_optional_version_and_status_are_parsed_and_never_rendered(tmp_path):
+    repo = make_repo(tmp_path)
+    path = repo / "agents" / "agent-chanchi-demo" / "AGENT.md"
+    (plain,) = agents_sync.load_sources(repo / "agents")
+    assert (plain.version, plain.status) == (None, None)
+    path.write_text(path.read_text().replace("skills:", 'version: "1.2.3"\nstatus: published\nskills:', 1))
+    (versioned,) = agents_sync.load_sources(repo / "agents")
+    assert (versioned.version, versioned.status) == ("1.2.3", "published")
+    assert agents_sync.render(versioned) == agents_sync.render(plain)
+    assert "1.2.3" not in "".join(agents_sync.render(versioned).values())
+
+
+@pytest.mark.parametrize(
+    "line,field",
+    [("version: 1.0", "version"), ("version: v1.0.0", "version"), ("status: live", "status"), ("status:", "status")],
+)
+def test_bad_version_or_status_is_invalid_value(tmp_path, line, field):
+    repo = make_repo(tmp_path)
+    path = repo / "agents" / "agent-chanchi-demo" / "AGENT.md"
+    path.write_text(path.read_text().replace("skills:", f"{line}\nskills:", 1))
+    with pytest.raises(ChanchiError) as exc:
+        agents_sync.load_sources(repo / "agents")
+    assert exc.value.code == "invalid_value" and exc.value.field == field

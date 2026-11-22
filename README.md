@@ -180,6 +180,22 @@ chanchi sync init --link <dir>   # create those folders in <dir> and symlink SYN
 chanchi sync status              # show SYNC path, symlink target, reachability and folders
 ```
 
+## Global items
+
+Global agents and skills live in `SYNC/ITEMS/agents/<item>-chanchi-global-<name>/` and
+`SYNC/ITEMS/skills/...`, never in this repository. Each carries a `version` and a `status`
+(`draft`, `published`, `retired`) and a `CHANGELOG.md` section per version. An `item` audit records
+`<version>@<content hash>`; `items publish` sets `status: published` only after an accepted audit of
+exactly that version and content, and any later edit shows up as `edited_after_publish`.
+
+```bash
+chanchi items check                                 # validate SYNC/ITEMS; one failure lists every problem
+chanchi items list                                  # name, kind, version, status, hashes, retired
+chanchi audit open --kind item --ref <item> --author <agent:model[:effort]> --version <x.y.z>
+chanchi items publish <item> --audit <audit-id>     # after `audit close` returned accepted
+chanchi items retire <item> [--replaced-by <item>] --reason "<why>"
+```
+
 ## Exploration
 
 At `low` and `medium` complexity, `chanchi recommend` also returns an `explore` list of up to 3 models where no listed effort has 3 or more audited sessions of the requested task type (excluding the `recommendation` model and models red-flagged on 3 or more sessions). This lets planners gather initial audits for untested models without changing the evidence-based `recommendation`.
