@@ -69,6 +69,7 @@ chanchi agents link --user --remove  # remove user wrappers owned by this reposi
 - `agent-chanchi-orchestrator` — plans, assigns executors, audits, records, merges.
 - `agent-chanchi-executor` — implements one brief in a worktree and reports; never commits.
 - `agent-chanchi-researcher` — read-only research with VERIFIED/UNVERIFIED claims.
+- `agent-chanchi-auditor` — read-only user-installed auditor that checks one subject against a brief and writes a verdict report.
 
 Launch one with `claude --agent <name>`, `opencode run --agent <name>` or
 `agy --agent <name>` (headless: `agy --agent <name> -p="<prompt>"`). `FEATURE_MAP.md` tells an
@@ -142,10 +143,12 @@ check the harness are planned for a later release.
 ## Audits
 
 An audit has three auditors of different model families examine one subject (a design, an item,
-an adoption or a replication plan) in separate conversations. `chanchi audit open` seats them from
-the roster and prints, per seat, the model, its family and a headless launch line to run; chanchi
-itself never launches a harness. The roster is `SYNC/config/auditors.toml` when that file exists,
-else a built-in list of four auditors (`SYNC` is `CHANCHI_SYNC`, else `<main checkout>/SYNC`).
+an adoption or a replication plan) in separate conversations (`agent-chanchi-auditor`, installed
+with `chanchi agents link --user`; orchestrator procedure in `skill-chanchi-audit-rounds`).
+`chanchi audit open` seats them from the roster and prints, per seat, the model, its family and
+a headless launch line to run; chanchi itself never launches a harness. The roster is
+`SYNC/config/auditors.toml` when that file exists, else a built-in list of four auditors (`SYNC`
+is `CHANCHI_SYNC`, else `<main checkout>/SYNC`).
 
 ```bash
 chanchi audit open --kind design --ref docs/designs/<topic>.md --author claude:opus:high --commit <sha>

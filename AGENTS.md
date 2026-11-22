@@ -112,7 +112,7 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   different model family when available (otherwise the next one in the user's roster, and the
   round is recorded as degraded), accepted when at least two of three approve (a pass, or a pass with only minor fixes), at most three
   rounds, then the human decides with the disagreement report. Procedure:
-  `docs/designs/global-items.md`.
+  `skill-chanchi-audit-rounds` and `docs/designs/global-items.md`.
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one.

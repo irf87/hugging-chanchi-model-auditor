@@ -29,7 +29,9 @@ Delete the scratch directory only after the evidence is in your report. Never de
 
 ## Helpers
 After a harness upgrade, check that agents still load: `agy agents` (in a trusted folder) and
-`opencode debug agents` list the `agent-chanchi-*` agents, and
+`opencode debug agents` list the `agent-chanchi-*` agents,
 `claude -p --agent agent-chanchi-researcher "Name the test that guards the import layers."`
-answers `tests/test_layers.py`. If agy tool names changed, update `AGY_*_TOOLS` in
-`src/chanchi/agents_sync.py` and run `chanchi agents sync`.
+answers `tests/test_layers.py`, re-run each adapter's launch template (`src/chanchi/harnesses.py`)
+once with `agent-chanchi-auditor` and a trivial prompt, and run `chanchi agents link --user --check`.
+If agy tool names changed, update `AGY_*_TOOLS` in `src/chanchi/agents_sync.py` and run
+`chanchi agents sync`.

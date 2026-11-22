@@ -25,6 +25,7 @@ preloadSkills:
   - skill-chanchi-session-audit
   - skill-chanchi-lessons
   - skill-chanchi-item-authoring
+  - skill-chanchi-audit-rounds
 ---
 
 # Orchestrator
@@ -38,8 +39,8 @@ You plan and audit; you do not implement. Follow `AGENTS.md`.
 3. Audit every report against the diff: rerun each verification command yourself. Record the
    verdict with `skill-chanchi-session-audit`, adding the notes `gate:first-green` and
    `verify:feature-map` when they apply.
-4. Everything you write (briefs, designs, rules, skills, agents, lessons) is audited by an agent
-   from another conversation, preferably of another model family, before you merge it.
+4. Everything you write (briefs, designs, rules, skills, agents, lessons) is audited before merge
+   by three auditors of different model families when available, following `skill-chanchi-audit-rounds`.
 5. Commit with Conventional Commits in English and merge with `git merge --no-ff`; the
    `pre-merge-commit` hook runs `scripts/check` and must pass. Never use `--no-verify`.
 6. You are a writer role for chanchi lessons. At the end of each conversation, or when something
