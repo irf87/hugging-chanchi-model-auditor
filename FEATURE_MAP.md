@@ -310,7 +310,7 @@ Covered by: tests/test_lessons.py, tests/test_cli_integration.py
 ## audit
 
 ### Sub-features
-`audit open`, `audit unavailable`, `audit show`, `audit list`
+`audit open`, `audit unavailable`, `audit vote`, `audit dissent`, `audit close`, `audit round`, `audit show`, `audit list`
 
 ### How to get to it
     export CHANCHI_DB="$(mktemp -d)/chanchi.db"
@@ -318,24 +318,35 @@ Covered by: tests/test_lessons.py, tests/test_cli_integration.py
     chanchi models add --agent claude --model sonnet --cost 2 --efforts low,medium,high
     chanchi models add --agent agy --model gemini-4-neon-high --cost 2 --efforts high
     chanchi models add --agent opencode --model opencode-go/minimax-m3 --cost 1
+    chanchi models add --agent agy --model gemini-4-hydrogen-high --cost 1 --efforts high
 
 ### Driving it
     chanchi audit open --kind design --ref docs/designs/example.md --author claude:opus:high --commit abc1234
     chanchi audit unavailable 1 --round 1 --seat 2 --reason "quota exceeded"
+    chanchi audit vote 1 --round 1 --seat 1 --verdict pass_with_fixes --blocking 0 --major 1 --minor 2 --report round1-s1.md
+    chanchi audit vote 1 --round 1 --seat 2 --verdict pass --blocking 0 --major 0 --minor 1 --report round1-s2.md
+    chanchi audit vote 1 --round 1 --seat 3 --verdict pass_with_fixes --blocking 0 --major 0 --minor 3 --report round1-s3.md
+    chanchi audit dissent 1 --round 1 --seat 1 --finding "F1: missing edge case" --severity major --decision confirmed --evidence "verified in code"
+    chanchi audit close 1 --round 1
+    chanchi audit round 1 --commit def5678
     chanchi audit show 1
     chanchi audit list --kind design
 
 ### Evidence
 `audit open` prints `audit_id` `1`, `round` `1`, `degraded` and a `seats` list of three entries
-`{seat, spec, family, effort, status, launch}`: with the three models above and all three binaries on
-`PATH` the families are `anthropic`, `google` and `minimax`, `degraded` is `false` and `outcome` is
-`null`. A binary that is not on `PATH`, or a roster model that is not in the catalog, appears in
+`{seat, spec, family, effort, status, launch}`: with the roster models above and all three binaries
+on `PATH` the families are `anthropic`, `google` and `minimax`, `degraded` is `false` and `outcome`
+is `null`. A binary that is not on `PATH`, or a roster model that is not in the catalog, appears in
 `skipped` with its reason and fix. With fewer than two seats filled the round closes at once:
 `outcome` `escalated`, `escalation` `quorum`. `audit unavailable` prints the refilled `seat` (`null`
-when the roster is exhausted) and the recomputed `degraded`; `audit show 1` then lists the
-unavailable row and its replacement under the same seat number; `audit list` shows the audit with
-its round count and last outcome. The roster is `SYNC/config/auditors.toml` when it exists, else the
-built-in one.
+when the roster is exhausted) and the recomputed `degraded`; `audit vote` marks each seat `voted`
+and records its verdict, counts and report path; `audit dissent` records a confirmed or rejected
+decision on a lone finding; `audit close` computes the round outcome (`fix` here because seat 1 has
+a confirmed lone major dissent; on `accepted`, `minor_fixes` lists approving minor counts and
+confirmed lone minors); `audit round` opens round `2` with the same seats when still available;
+`audit show 1` then lists round 1 (including the unavailable row, replacement, votes, dissent and
+outcome) and round 2; `audit list` shows the audit with its round count and last outcome. The roster
+is `SYNC/config/auditors.toml` when it exists, else the built-in one.
 Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py
 
 ### Gotchas
@@ -344,8 +355,11 @@ Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py
   `chanchi models set <agent:model> --family <name>`.
 - `--change <ref>` needs a project: pass `--project <slug>` or run inside a project that has recorded
   a change (`chanchi change open`); otherwise `missing_prerequisite`.
-- An audit is `unknown_audit` when its id does not exist; a closed round or a seat that is not
-  `assigned` refuses `audit unavailable` with `invalid_transition`.
+- `audit vote` refuses `pass` when `blocking > 0` or `major > 0` (vote `pass_with_fixes`).
+- `audit close` refuses while any seat is still `assigned`; `audit vote`, `audit dissent` and
+  `audit unavailable` refuse on a closed round (`invalid_transition`).
+- `audit round` refuses unless the last round is closed with `fix` or `rework` and is below round 3.
+- An audit is `unknown_audit` when its id does not exist.
 
 ## scoring
 

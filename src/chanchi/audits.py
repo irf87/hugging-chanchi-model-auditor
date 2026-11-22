@@ -21,6 +21,7 @@ AUDITOR_AGENT = "agent-chanchi-auditor"
 PROMPT = "<prompt>"
 MIN_VOTERS = 2
 DISTINCT_FAMILIES = 3
+MAX_ROUNDS = 3
 
 Which = Callable[[str], str | None]
 
@@ -106,7 +107,7 @@ def _author_model_id(conn: sqlite3.Connection, author: str) -> int | None:
 
 def _active_seats(conn: sqlite3.Connection, round_id: int) -> list[sqlite3.Row]:
     return conn.execute(
-        "SELECT s.*, m.agent, m.model, m.family FROM audit_seats s JOIN models m ON m.id = s.model_id "
+        "SELECT s.*, m.agent, m.model, m.family, m.active FROM audit_seats s JOIN models m ON m.id = s.model_id "
         "WHERE s.round_id = ? AND s.status != 'unavailable' ORDER BY s.seat",
         (round_id,),
     ).fetchall()
@@ -248,6 +249,126 @@ def _seat_view(row: sqlite3.Row, *, launch: bool) -> dict:
     return view
 
 
+# --- helpers -----------------------------------------------------------------
+
+
+def _subject_at(commit: str | None, version: str | None) -> str:
+    if (commit is None) == (version is None):
+        raise ChanchiError(
+            "invalid_value",
+            "pass exactly one of --commit and --version",
+            field="commit",
+            hint="--commit <sha> for a repository subject, --version <x.y.z> for an item",
+        )
+    return _text("commit" if commit is not None else "version", commit if commit is not None else version)
+
+
+def _round_row(conn: sqlite3.Connection, audit_id: int, round_no: int) -> sqlite3.Row:
+    rnd = conn.execute(
+        "SELECT * FROM audit_rounds WHERE audit_id = ? AND round = ?", (audit_id, round_no)
+    ).fetchone()
+    if rnd is None:
+        known = [
+            r["round"]
+            for r in conn.execute(
+                "SELECT round FROM audit_rounds WHERE audit_id = ? ORDER BY round", (audit_id,)
+            )
+        ]
+        raise ChanchiError(
+            "invalid_value", f"audit {audit_id} has no round {round_no}", field="round", valid_values=known
+        )
+    return rnd
+
+
+def _open_round(conn: sqlite3.Connection, audit_id: int, round_no: int) -> sqlite3.Row:
+    rnd = _round_row(conn, audit_id, round_no)
+    if rnd["closed_at"] is not None:
+        raise ChanchiError(
+            "invalid_transition",
+            f"round {round_no} of audit {audit_id} is closed",
+            field="round",
+            hint="open the next round with `chanchi audit round`, or ask the human when it is escalated",
+        )
+    return rnd
+
+
+def _require_seat(
+    conn: sqlite3.Connection, round_id: int, round_no: int, seat: int, *, status: str, action: str
+) -> sqlite3.Row:
+    current = next((r for r in _active_seats(conn, round_id) if r["seat"] == seat), None)
+    if current is None:
+        raise ChanchiError(
+            "invalid_transition",
+            f"seat {seat} of round {round_no} is empty",
+            field="seat",
+            hint="the roster had no auditor left for it",
+        )
+    if current["status"] != status:
+        article = "an" if status == "assigned" else "a"
+        raise ChanchiError(
+            "invalid_transition",
+            f"seat {seat} is {current['status']}, only {article} {status} seat can {action}",
+            field="seat",
+        )
+    return current
+
+
+def _finalize_round_open(
+    conn: sqlite3.Connection,
+    audit_id: int,
+    round_no: int,
+    round_id: int,
+    skipped: list[dict],
+    stamp: str,
+) -> dict:
+    """Recompute degraded, apply the quorum escalation rule, and return the round-open payload."""
+    degraded = refresh_degraded(conn, round_id)
+    active = _active_seats(conn, round_id)
+    outcome_val = escalation = None
+    if len(active) < MIN_VOTERS:
+        outcome_val, escalation = "escalated", "quorum"
+        conn.execute(
+            "UPDATE audit_rounds SET outcome = ?, escalation = ?, closed_at = ? WHERE id = ?",
+            (outcome_val, escalation, stamp, round_id),
+        )
+        conn.execute(
+            "UPDATE audits SET outcome = ?, closed_at = ? WHERE id = ?", (outcome_val, stamp, audit_id)
+        )
+    seats = [_seat_view(r, launch=outcome_val is None) for r in active]
+    return {
+        "audit_id": audit_id,
+        "round": round_no,
+        "degraded": degraded,
+        "outcome": outcome_val,
+        "escalation": escalation,
+        "skipped": skipped,
+        "seats": seats,
+    }
+
+
+def _non_negative(field: str, value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ChanchiError("invalid_value", f"{field} must be a non-negative integer, got {value!r}", field=field)
+    return value
+
+
+def _field(row, key: str, default=None):
+    try:
+        val = row[key]
+    except (KeyError, IndexError):
+        return default
+    return default if val is None else val
+
+
+def _is_approval(vote_row) -> bool:
+    verdict = _field(vote_row, "verdict")
+    if verdict == "pass":
+        return True
+    if verdict == "pass_with_fixes":
+        return _field(vote_row, "blocking", 0) == 0 and _field(vote_row, "major", 0) == 0
+    return False
+
+
 # --- open --------------------------------------------------------------------
 
 
@@ -269,14 +390,7 @@ def open_audit(
     taxonomy.validate_choice("kind", kind, taxonomy.AUDIT_SUBJECT_KINDS)
     ref = _text("ref", ref)
     author = _text("author", author)
-    if (commit is None) == (version is None):
-        raise ChanchiError(
-            "invalid_value",
-            "pass exactly one of --commit and --version",
-            field="commit",
-            hint="--commit <sha> for a repository subject, --version <x.y.z> for an item",
-        )
-    subject_at = _text("commit" if commit is not None else "version", commit if commit is not None else version)
+    subject_at = _subject_at(commit, version)
     stamp = now or utc_now()
     with transaction(conn):
         change_id = _change_id(conn, project_id, change) if change is not None else None
@@ -289,30 +403,10 @@ def open_audit(
             "INSERT INTO audit_rounds (audit_id, round, subject_at, opened_at) VALUES (?, 1, ?, ?)",
             (audit_id, subject_at, stamp),
         ).lastrowid
-        seated, skipped = _fill(
+        _, skipped = _fill(
             conn, round_id, list(SEATS), roster, audit_id=audit_id, which=which, now=stamp
         )
-        degraded = refresh_degraded(conn, round_id)
-        outcome = escalation = None
-        if len(seated) < MIN_VOTERS:
-            outcome, escalation = "escalated", "quorum"
-            conn.execute(
-                "UPDATE audit_rounds SET outcome = ?, escalation = ?, closed_at = ? WHERE id = ?",
-                (outcome, escalation, stamp, round_id),
-            )
-            conn.execute(
-                "UPDATE audits SET outcome = ?, closed_at = ? WHERE id = ?", (outcome, stamp, audit_id)
-            )
-        seats = [_seat_view(r, launch=outcome is None) for r in _active_seats(conn, round_id)]
-    return {
-        "audit_id": audit_id,
-        "round": 1,
-        "degraded": degraded,
-        "outcome": outcome,
-        "escalation": escalation,
-        "skipped": skipped,
-        "seats": seats,
-    }
+        return _finalize_round_open(conn, audit_id, 1, round_id, skipped, stamp)
 
 
 # --- unavailable ---------------------------------------------------------------
@@ -335,36 +429,8 @@ def mark_unavailable(
     taxonomy.validate_choice("seat", seat, SEATS)
     stamp = now or utc_now()
     with transaction(conn):
-        rnd = conn.execute(
-            "SELECT * FROM audit_rounds WHERE audit_id = ? AND round = ?", (audit_id, round)
-        ).fetchone()
-        if rnd is None:
-            known = [r["round"] for r in conn.execute(
-                "SELECT round FROM audit_rounds WHERE audit_id = ? ORDER BY round", (audit_id,))]
-            raise ChanchiError(
-                "invalid_value", f"audit {audit_id} has no round {round}", field="round", valid_values=known
-            )
-        if rnd["closed_at"] is not None:
-            raise ChanchiError(
-                "invalid_transition",
-                f"round {round} of audit {audit_id} is closed",
-                field="round",
-                hint="open the next round with `chanchi audit round`, or ask the human when it is escalated",
-            )
-        current = next((r for r in _active_seats(conn, rnd["id"]) if r["seat"] == seat), None)
-        if current is None:
-            raise ChanchiError(
-                "invalid_transition",
-                f"seat {seat} of round {round} is empty",
-                field="seat",
-                hint="the roster had no auditor left for it",
-            )
-        if current["status"] != "assigned":
-            raise ChanchiError(
-                "invalid_transition",
-                f"seat {seat} is {current['status']}, only an assigned seat can become unavailable",
-                field="seat",
-            )
+        rnd = _open_round(conn, audit_id, round)
+        current = _require_seat(conn, rnd["id"], round, seat, status="assigned", action="become unavailable")
         conn.execute(
             "UPDATE audit_seats SET status = 'unavailable', reason = ?, updated_at = ? WHERE id = ?",
             (reason, stamp, current["id"]),
@@ -383,6 +449,266 @@ def mark_unavailable(
         "degraded": degraded,
         "skipped": skipped,
     }
+
+
+# --- vote, dissent, outcome, close, round ------------------------------------
+
+
+def vote(
+    conn: sqlite3.Connection,
+    audit_id: int,
+    *,
+    round: int,  # noqa: A002 - the CLI flag is --round
+    seat: int,
+    verdict: str,
+    blocking: int,
+    major: int,
+    minor: int,
+    report: str,
+    now: str | None = None,
+) -> dict:
+    """Record an auditor seat's verdict, severity counts and report path."""
+    _audit_row(conn, audit_id)
+    taxonomy.validate_choice("seat", seat, SEATS)
+    taxonomy.validate_choice("verdict", verdict, taxonomy.AUDIT_VERDICTS)
+    blocking = _non_negative("blocking", blocking)
+    major = _non_negative("major", major)
+    minor = _non_negative("minor", minor)
+    report = _text("report", report)
+    if verdict == "pass" and (blocking > 0 or major > 0):
+        raise ChanchiError(
+            "invalid_value",
+            "a pass verdict cannot carry blocking or major findings",
+            field="verdict",
+            hint="vote pass_with_fixes",
+        )
+    stamp = now or utc_now()
+    with transaction(conn):
+        rnd = _open_round(conn, audit_id, round)
+        current = _require_seat(conn, rnd["id"], round, seat, status="assigned", action="vote")
+        conn.execute(
+            "UPDATE audit_seats SET status = 'voted', verdict = ?, blocking = ?, major = ?, "
+            "minor = ?, report = ?, updated_at = ? WHERE id = ?",
+            (verdict, blocking, major, minor, report, stamp, current["id"]),
+        )
+    return {
+        "audit_id": audit_id,
+        "round": round,
+        "seat": {
+            "seat": seat,
+            "spec": _spec(current["agent"], current["model"], current["effort"]),
+            "family": current["family"],
+            "effort": current["effort"],
+            "status": "voted",
+            "verdict": verdict,
+            "blocking": blocking,
+            "major": major,
+            "minor": minor,
+            "report": report,
+        },
+    }
+
+
+def dissent(
+    conn: sqlite3.Connection,
+    audit_id: int,
+    *,
+    round: int,  # noqa: A002 - the CLI flag is --round
+    seat: int,
+    finding: str,
+    severity: str,
+    decision: str,
+    evidence: str,
+    now: str | None = None,
+) -> dict:
+    """Record the orchestrator's confirmed/rejected decision on a lone finding of a voted seat."""
+    _audit_row(conn, audit_id)
+    taxonomy.validate_choice("seat", seat, SEATS)
+    taxonomy.validate_choice("severity", severity, taxonomy.AUDIT_SEVERITIES)
+    taxonomy.validate_choice("decision", decision, taxonomy.DISSENT_DECISIONS)
+    finding = _text("finding", finding)
+    evidence = _text("evidence", evidence)
+    stamp = now or utc_now()
+    with transaction(conn):
+        rnd = _open_round(conn, audit_id, round)
+        current = _require_seat(conn, rnd["id"], round, seat, status="voted", action="record a dissent")
+        dissent_id = conn.execute(
+            "INSERT INTO audit_dissents (seat_id, finding, severity, decision, evidence, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (current["id"], finding, severity, decision, evidence, stamp),
+        ).lastrowid
+    return {
+        "audit_id": audit_id,
+        "round": round,
+        "seat": seat,
+        "dissent": {
+            "id": dissent_id,
+            "finding": finding,
+            "severity": severity,
+            "decision": decision,
+            "evidence": evidence,
+        },
+    }
+
+
+def outcome(votes: list, dissents: list, round_no: int) -> tuple[str, str | None]:
+    """Compute (outcome, escalation) for a round from its voted seats, dissents and round number."""
+    if len(votes) < MIN_VOTERS:
+        return ("escalated", "quorum")
+    fails = sum(1 for v in votes if _field(v, "verdict") == "fail")
+    if fails >= 2:
+        raw = "rework"
+    else:
+        approvals = sum(1 for v in votes if _is_approval(v))
+        blocking_dissent = any(
+            _field(d, "decision") == "confirmed" and _field(d, "severity") in ("blocking", "major")
+            for d in dissents
+        )
+        raw = "accepted" if approvals >= 2 and not blocking_dissent else "fix"
+    if raw in ("rework", "fix") and round_no == MAX_ROUNDS:
+        return ("escalated", "round_cap")
+    return (raw, None)
+
+
+def close_round(
+    conn: sqlite3.Connection,
+    audit_id: int,
+    *,
+    round: int,  # noqa: A002 - the CLI flag is --round
+    now: str | None = None,
+) -> dict:
+    """Close an open round once no seat is assigned, computing its outcome and escalation."""
+    _audit_row(conn, audit_id)
+    stamp = now or utc_now()
+    with transaction(conn):
+        rnd = _open_round(conn, audit_id, round)
+        active = _active_seats(conn, rnd["id"])
+        assigned = [r["seat"] for r in active if r["status"] == "assigned"]
+        if assigned:
+            raise ChanchiError(
+                "invalid_transition",
+                f"round {round} still has assigned seats: {assigned}",
+                field="seat",
+                hint="record each seat's vote with `chanchi audit vote` or mark it unavailable first",
+            )
+        votes = [r for r in active if r["status"] == "voted"]
+        dissents = conn.execute(
+            "SELECT d.*, s.seat, m.agent, m.model, s.effort FROM audit_dissents d "
+            "JOIN audit_seats s ON s.id = d.seat_id JOIN models m ON m.id = s.model_id "
+            "WHERE s.round_id = ? ORDER BY s.seat, d.id",
+            (rnd["id"],),
+        ).fetchall()
+        round_outcome, escalation = outcome(votes, dissents, round)
+        audit_closed_at = stamp if round_outcome in ("accepted", "escalated") else None
+        conn.execute(
+            "UPDATE audit_rounds SET outcome = ?, escalation = ?, closed_at = ? WHERE id = ?",
+            (round_outcome, escalation, stamp, rnd["id"]),
+        )
+        conn.execute(
+            "UPDATE audits SET outcome = ?, closed_at = ? WHERE id = ?",
+            (round_outcome, audit_closed_at, audit_id),
+        )
+    result: dict = {
+        "audit_id": audit_id,
+        "round": round,
+        "outcome": round_outcome,
+        "escalation": escalation,
+        "closed_at": stamp,
+        "audit_closed_at": audit_closed_at,
+    }
+    if round_outcome == "accepted":
+        minor_fixes: list[dict] = []
+        for row in votes:
+            if _is_approval(row) and (row["minor"] or 0) > 0:
+                minor_fixes.append(
+                    {
+                        "kind": "seat",
+                        "seat": row["seat"],
+                        "spec": _spec(row["agent"], row["model"], row["effort"]),
+                        "minor": row["minor"],
+                        "report": row["report"],
+                    }
+                )
+        for d in dissents:
+            if d["decision"] == "confirmed" and d["severity"] == "minor":
+                minor_fixes.append(
+                    {
+                        "kind": "dissent",
+                        "seat": d["seat"],
+                        "spec": _spec(d["agent"], d["model"], d["effort"]),
+                        "finding": d["finding"],
+                        "evidence": d["evidence"],
+                    }
+                )
+        result["minor_fixes"] = minor_fixes
+    return result
+
+
+def next_round(
+    conn: sqlite3.Connection,
+    audit_id: int,
+    *,
+    commit: str | None = None,
+    version: str | None = None,
+    roster: list[dict],
+    which: Which = shutil.which,
+    now: str | None = None,
+) -> dict:
+    """Open the next round with the same seats when still available, refilling any gaps."""
+    _audit_row(conn, audit_id)
+    subject_at = _subject_at(commit, version)
+    stamp = now or utc_now()
+    with transaction(conn):
+        last = conn.execute(
+            "SELECT * FROM audit_rounds WHERE audit_id = ? ORDER BY round DESC LIMIT 1", (audit_id,)
+        ).fetchone()
+        if last is None or last["closed_at"] is None:
+            round_label = last["round"] if last is not None else 1
+            raise ChanchiError(
+                "invalid_transition",
+                f"round {round_label} of audit {audit_id} is not closed yet",
+                field="round",
+                hint="close it with `chanchi audit close` first",
+            )
+        if last["outcome"] not in ("fix", "rework"):
+            raise ChanchiError(
+                "invalid_transition",
+                f"audit {audit_id} ended with {last['outcome']}; no next round is allowed",
+                field="outcome",
+            )
+        if last["round"] >= MAX_ROUNDS:
+            raise ChanchiError(
+                "invalid_transition",
+                f"audit {audit_id} is already at round {MAX_ROUNDS}",
+                field="round",
+            )
+        next_no = last["round"] + 1
+        round_id = conn.execute(
+            "INSERT INTO audit_rounds (audit_id, round, subject_at, opened_at) VALUES (?, ?, ?, ?)",
+            (audit_id, next_no, subject_at, stamp),
+        ).lastrowid
+        blocked = _unavailable_specs(conn, audit_id)
+        by_seat = {r["seat"]: r for r in _active_seats(conn, last["id"])}
+        to_fill: list[int] = []
+        for seat in SEATS:
+            prev = by_seat.get(seat)
+            if (
+                prev is not None
+                and harnesses.available(prev["agent"], which)
+                and prev["active"]
+                and _spec(prev["agent"], prev["model"], prev["effort"]) not in blocked
+            ):
+                conn.execute(
+                    "INSERT INTO audit_seats (round_id, seat, model_id, effort, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, 'assigned', ?, ?)",
+                    (round_id, seat, prev["model_id"], prev["effort"], stamp, stamp),
+                )
+            else:
+                to_fill.append(seat)
+        skipped: list[dict] = []
+        if to_fill:
+            _, skipped = _fill(conn, round_id, to_fill, roster, audit_id=audit_id, which=which, now=stamp)
+        return _finalize_round_open(conn, audit_id, next_no, round_id, skipped, stamp)
 
 
 # --- read ----------------------------------------------------------------------
