@@ -167,6 +167,19 @@ Rounds run up to three times; `accepted` (at least two approvals and no confirme
 major finding) or `escalated` (`quorum` or `round_cap`) closes the audit. Design:
 `docs/designs/global-items.md`.
 
+## SYNC
+
+User configuration (`config/`) and global items (`ITEMS/`) live in `SYNC` (`CHANCHI_SYNC`, else
+`<main checkout>/SYNC`, shared across worktrees and ignored by `.gitignore`). Point `--link` at a
+folder a cloud service synchronizes (Google Drive, iCloud Drive, Dropbox) or at a clone of a
+private git repository; keep the SQLite database out of `SYNC`.
+
+```bash
+chanchi sync init                # create SYNC/config, SYNC/ITEMS/agents, SYNC/ITEMS/skills
+chanchi sync init --link <dir>   # create those folders in <dir> and symlink SYNC to it
+chanchi sync status              # show SYNC path, symlink target, reachability and folders
+```
+
 ## Exploration
 
 At `low` and `medium` complexity, `chanchi recommend` also returns an `explore` list of up to 3 models where no listed effort has 3 or more audited sessions of the requested task type (excluding the `recommendation` model and models red-flagged on 3 or more sessions). This lets planners gather initial audits for untested models without changing the evidence-based `recommendation`.
