@@ -222,3 +222,68 @@ def test_unlink_removes_new_legacy_and_compat_links(tmp_path, skills_dir):
     skills_link.unlink(home, global_=True, skills_dir=skills_dir)
     for directory in (home / ".agents" / "skills", home / ".claude" / "skills"):
         assert [p.name for p in directory.iterdir()] == []
+
+
+# --- skill_targets (shared by `chanchi items mirror`) and the separation from global items -------------
+
+
+def installed_all(key):
+    return True
+
+
+def test_skill_targets_primary_absolute_and_relative_secondaries(tmp_path):
+    home = tmp_path / "home"
+    (home / ".gemini" / "antigravity-cli").mkdir(parents=True)
+    source = tmp_path / "SYNC" / "ITEMS" / "skills"
+    targets = skills_link.skill_targets(home, ["skill-chanchi-global-a"], source, installed=installed_all)
+    name = "skill-chanchi-global-a"
+    assert targets == [
+        (home / ".agents" / "skills" / name, str(source / name), "skill-primary"),
+        (home / ".claude" / "skills" / name, os.path.join("..", "..", ".agents", "skills", name), "skill-secondary"),
+        (
+            home / ".gemini" / "antigravity-cli" / "skills" / name,
+            os.path.join("..", "..", "..", ".agents", "skills", name),
+            "skill-secondary",
+        ),
+    ]
+
+
+def test_skill_targets_follow_the_installed_harnesses(tmp_path):
+    home = tmp_path / "home"
+    source = tmp_path / "src"
+    only = lambda *keys: (lambda key: key in keys)  # noqa: E731
+    assert skills_link.skill_targets(home, ["x"], source, installed=only()) == []
+    opencode = skills_link.skill_targets(home, ["x"], source, installed=only("opencode"))
+    assert [kind for _, _, kind in opencode] == ["skill-primary"]
+    claude = skills_link.skill_targets(home, ["x"], source, installed=only("claude"))
+    assert [p.parent.parent.name for p, _, _ in claude] == [".agents", ".claude"]
+    # agy needs its CLI folder too, the rule plan_targets applies today
+    agy = skills_link.skill_targets(home, ["x"], source, installed=only("agy"))
+    assert [kind for _, _, kind in agy] == ["skill-primary"]
+    (home / ".gemini" / "antigravity-cli").mkdir(parents=True)
+    agy = skills_link.skill_targets(home, ["x"], source, installed=only("agy"))
+    assert [kind for _, _, kind in agy] == ["skill-primary", "skill-secondary"]
+
+
+def test_chanchi_skills_never_claim_a_global_name(tmp_path, skills_dir):
+    home = tmp_path / "home"
+    primary = home / ".agents" / "skills"
+    secondary = home / ".claude" / "skills"
+    primary.mkdir(parents=True)
+    secondary.mkdir(parents=True)
+    rel = lambda n: os.path.join("..", "..", ".agents", "skills", n)  # noqa: E731
+    dangling = secondary / "skill-chanchi-global-x"  # a mirror secondary whose primary is gone
+    dangling.symlink_to(rel("skill-chanchi-global-x"))
+    legacy_shaped = secondary / "chanchi-global-x"
+    legacy_shaped.symlink_to(rel("chanchi-global-x"))
+    compat_shaped = secondary / "chanchi-global-y"
+    compat_shaped.symlink_to("skill-chanchi-global-y")
+    in_repo = primary / "skill-chanchi-global-z"
+    in_repo.symlink_to(skills_dir / "skill-chanchi-a")
+    for entry in (dangling, legacy_shaped, compat_shaped, in_repo):
+        assert not skills_link._is_own(entry, primary, skills_dir.resolve())
+    assert not skills_link._is_legacy(legacy_shaped, skills_dir.resolve(), primary)
+    assert not skills_link._is_compat(compat_shaped)
+    assert skills_link.unlink(home, global_=True, skills_dir=skills_dir)["removed"] == []
+    skills_link.link(home, global_=True, skills_dir=skills_dir)
+    assert all(os.path.lexists(e) for e in (dangling, legacy_shaped, compat_shaped, in_repo))

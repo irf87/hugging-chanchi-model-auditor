@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sqlite3
 import sys
@@ -531,6 +532,15 @@ def cmd_items_retire(args):
     return items.retire(sync.require(), args.name, reason=args.reason, replaced_by=args.replaced_by)
 
 
+def cmd_items_mirror(args):
+    if args.check and args.remove:
+        raise ChanchiError("invalid_value", "--check and --remove are mutually exclusive", field="check",
+                           hint="pass either --check or --remove, not both")
+    root = None if args.remove else sync.require()  # --remove works without SYNC
+    return items.mirror(root, env=os.environ, home=Path.home(), db_dir=db.operational_path().parent,
+                        own_names=items.own_names(), check=args.check, remove=args.remove)
+
+
 # --- parser ----------------------------------------------------------------
 
 
@@ -835,6 +845,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name", help="the item: <agent|skill>-chanchi-global-<name>")
     p.add_argument("--replaced-by", dest="replaced_by", help="the item that replaces it (same kind, not retired)")
     p.add_argument("--reason", required=True, help="why the item is retired")
+    p = leaf(g, "mirror", cmd_items_mirror, "expose published items to the installed harnesses", project=False)
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="write nothing; fail if the mirror is stale")
+    mode.add_argument("--remove", action="store_true", help="remove every entry the mirror made")
     return parser
 
 
