@@ -177,6 +177,40 @@ LESSON_SITE_STATES = ("applied", "declined", "not_applicable", "retired")
 LOCATOR_KINDS = ("path",)
 DEFAULT_WRITER_ROLES = ("planner",)
 
+# Redundant audits (global items, phase 1). Enum sets live here, not in SQL CHECK constraints.
+AUDIT_SUBJECT_KINDS = ("design", "item", "adoption", "replication", "other")
+AUDIT_VERDICTS = ("pass", "pass_with_fixes", "fail")
+AUDIT_SEVERITIES = ("blocking", "major", "minor")
+DISSENT_DECISIONS = ("confirmed", "rejected")
+AUDIT_OUTCOMES = ("accepted", "fix", "rework", "escalated")
+AUDIT_ESCALATIONS = ("quorum", "round_cap")
+SEAT_STATUSES = ("assigned", "voted", "unavailable")
+
+# Model families (decision D7): the last `/`-separated segment of a model id, lowercased, matched
+# by prefix. Migration 005 seeds models.family with the same rule in SQL; a test holds both equal.
+FAMILY_PREFIXES = (
+    (("claude", "opus", "sonnet", "haiku", "fable"), "anthropic"),
+    (("gemini",), "google"),
+    (("gpt",), "openai"),
+    (("minimax",), "minimax"),
+    (("deepseek",), "deepseek"),
+    (("glm",), "zhipu"),
+    (("kimi",), "moonshot"),
+    (("qwen",), "alibaba"),
+    (("grok",), "xai"),
+    (("mimo",), "xiaomi"),
+)
+FAMILY_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def family_for(model: str) -> str | None:
+    """Vendor family of a model id, or None when unknown (an unknown family never counts as distinct)."""
+    segment = model.rsplit("/", 1)[-1].lower()
+    for prefixes, family in FAMILY_PREFIXES:
+        if segment.startswith(prefixes):
+            return family
+    return None
+
 
 def validate_choice(field: str, value, allowed: Iterable):
     """Return value if it is allowed; otherwise raise an invalid_value error listing the options."""
@@ -270,5 +304,14 @@ def describe() -> dict:
             "site_states": list(LESSON_SITE_STATES),
             "locator_kinds": list(LOCATOR_KINDS),
             "default_writer_roles": list(DEFAULT_WRITER_ROLES),
+        },
+        "audits": {
+            "subject_kinds": list(AUDIT_SUBJECT_KINDS),
+            "verdicts": list(AUDIT_VERDICTS),
+            "severities": list(AUDIT_SEVERITIES),
+            "dissent_decisions": list(DISSENT_DECISIONS),
+            "outcomes": list(AUDIT_OUTCOMES),
+            "escalations": list(AUDIT_ESCALATIONS),
+            "seat_statuses": list(SEAT_STATUSES),
         },
     }

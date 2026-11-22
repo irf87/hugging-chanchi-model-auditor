@@ -207,3 +207,42 @@ def test_model_capabilities_lifecycle(conn):
     with pytest.raises(ChanchiError) as info:
         catalog.set_model(conn, spec="claude:sonnet", capabilities={"vision": "maybe"})
     assert info.value.field == "capability"
+
+
+def test_add_model_infers_the_family(conn):
+    gemini = catalog.add_model(conn, agent="agy", model="gemini-4-neon-high", cost_tier=2)
+    assert gemini["family"] == "google"
+    unknown = catalog.add_model(conn, agent="opencode", model="opencode-go/hy4", cost_tier=1)
+    assert unknown["family"] is None
+    listed = {m["spec"]: m["family"] for m in catalog.list_models(conn)}
+    assert listed["agy:gemini-4-neon-high"] == "google"
+    assert listed["human:human"] is None
+
+
+def test_add_model_family_overrides_inference(conn):
+    model = catalog.add_model(
+        conn, agent="agy", model="gemini-4-neon-high", cost_tier=2, family="custom-lab"
+    )
+    assert model["family"] == "custom-lab"
+    other = catalog.add_model(conn, agent="opencode", model="opencode-go/hy4", cost_tier=1, family="tencent")
+    assert other["family"] == "tencent"
+
+
+def test_set_model_family(conn):
+    catalog.add_model(conn, agent="opencode", model="opencode-go/hy4", cost_tier=1)
+    updated = catalog.set_model(conn, spec="opencode:opencode-go/hy4", family="tencent")
+    assert updated["family"] == "tencent"
+    again = catalog.set_model(conn, spec="opencode:opencode-go/hy4", family="tencent-hy")
+    assert again["family"] == "tencent-hy"
+
+
+@pytest.mark.parametrize("bad", ["", "Google", "a b", "-x", "x-", "a--b", "a_b"])
+def test_family_must_be_a_kebab_case_slug(conn, bad):
+    with pytest.raises(ChanchiError) as info:
+        catalog.add_model(conn, agent="claude", model="x", cost_tier=1, family=bad)
+    assert (info.value.code, info.value.field) == ("invalid_value", "family")
+    catalog.add_model(conn, agent="claude", model="y", cost_tier=1)
+    with pytest.raises(ChanchiError) as info:
+        catalog.set_model(conn, spec="claude:y", family=bad)
+    assert (info.value.code, info.value.field) == ("invalid_value", "family")
+    assert conn.execute("SELECT COUNT(*) FROM models WHERE model = 'x'").fetchone()[0] == 0

@@ -84,6 +84,7 @@ def _model_dict(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "efforts": row["efforts"].split(",") if row["efforts"] else None,
         "active": bool(row["active"]),
         "notes": row["notes"],
+        "family": row["family"],
         "created_at": row["created_at"],
         "capabilities": ",".join(f"{name}={caps[name]}" for name in sorted(caps)),
     }
@@ -103,6 +104,17 @@ def _efforts_csv(efforts: list[str] | None) -> str | None:
     return ",".join(cleaned) or None
 
 
+def _validate_family(family: str) -> str:
+    if not taxonomy.FAMILY_PATTERN.match(family):
+        raise ChanchiError(
+            "invalid_value",
+            f"family {family!r} must be a kebab-case slug",
+            field="family",
+            hint="lowercase letters and digits separated by single hyphens, e.g. google",
+        )
+    return family
+
+
 def _model_row(conn: sqlite3.Connection, agent: str, model: str) -> sqlite3.Row | None:
     return conn.execute(
         "SELECT * FROM models WHERE agent = ? AND model = ?", (agent, model)
@@ -118,6 +130,7 @@ def add_model(
     efforts: list[str] | None = None,
     notes: str | None = None,
     capabilities: dict[str, str] | None = None,
+    family: str | None = None,
     now: str | None = None,
 ) -> dict:
     taxonomy.validate_choice("agent", agent, taxonomy.AGENTS)
@@ -135,6 +148,7 @@ def add_model(
     efforts_csv = _efforts_csv(efforts)
     if capabilities is not None:
         _validate_capabilities(capabilities)
+    family = _validate_family(family) if family is not None else taxonomy.family_for(model)
     timestamp = now or utc_now()
     with transaction(conn):
         if _model_row(conn, agent, model) is not None:
@@ -145,9 +159,9 @@ def add_model(
                 hint="use `chanchi models set` to change it",
             )
         cursor = conn.execute(
-            "INSERT INTO models (agent, model, cost_tier, efforts, active, notes, created_at) "
-            "VALUES (?, ?, ?, ?, 1, ?, ?)",
-            (agent, model, cost_tier, efforts_csv, notes, timestamp),
+            "INSERT INTO models (agent, model, cost_tier, efforts, active, notes, family, created_at) "
+            "VALUES (?, ?, ?, ?, 1, ?, ?, ?)",
+            (agent, model, cost_tier, efforts_csv, notes, family, timestamp),
         )
         if capabilities:
             _apply_capabilities(conn, cursor.lastrowid, capabilities, timestamp)
@@ -170,6 +184,7 @@ def set_model(
     efforts: list[str] | None = None,
     notes: str | None = None,
     capabilities: dict[str, str] | None = None,
+    family: str | None = None,
     now: str | None = None,
 ) -> dict:
     parsed = modelspec.parse(spec, field="spec")
@@ -190,13 +205,15 @@ def set_model(
         updates["efforts"] = _efforts_csv(efforts)
     if notes is not None:
         updates["notes"] = notes
+    if family is not None:
+        updates["family"] = _validate_family(family)
     if capabilities is not None:
         _validate_capabilities(capabilities)
     if not updates and not capabilities:
         raise ChanchiError(
             "invalid_value",
             "nothing to update",
-            hint="pass at least one of --cost, --active, --efforts, --notes, --capability",
+            hint="pass at least one of --cost, --active, --efforts, --notes, --family, --capability",
         )
     with transaction(conn):
         row = _model_row(conn, parsed.agent, parsed.model)

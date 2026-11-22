@@ -1,4 +1,5 @@
 import pytest
+from helpers import FAMILY_CASES
 
 from chanchi import taxonomy as tx
 from chanchi.errors import ERROR_CODES, EXIT_INTERNAL, EXIT_VALIDATION, ChanchiError
@@ -316,3 +317,28 @@ def test_new_error_codes_are_registered():
         assert code in ERROR_CODES
         ChanchiError(code, "x")
 
+
+
+@pytest.mark.parametrize("model,expected", FAMILY_CASES)
+def test_family_for(model, expected):
+    assert tx.family_for(model) == expected
+
+
+def test_audit_sets_are_listed_and_unchanged_elsewhere():
+    assert tx.AUDIT_SUBJECT_KINDS == ("design", "item", "adoption", "replication", "other")
+    assert tx.AUDIT_VERDICTS == ("pass", "pass_with_fixes", "fail")
+    assert tx.AUDIT_SEVERITIES == ("blocking", "major", "minor")
+    assert tx.DISSENT_DECISIONS == ("confirmed", "rejected")
+    assert tx.AUDIT_OUTCOMES == ("accepted", "fix", "rework", "escalated")
+    assert tx.AUDIT_ESCALATIONS == ("quorum", "round_cap")
+    assert tx.SEAT_STATUSES == ("assigned", "voted", "unavailable")
+    audits = tx.describe()["audits"]
+    assert audits == {
+        "subject_kinds": list(tx.AUDIT_SUBJECT_KINDS),
+        "verdicts": list(tx.AUDIT_VERDICTS),
+        "severities": list(tx.AUDIT_SEVERITIES),
+        "dissent_decisions": list(tx.DISSENT_DECISIONS),
+        "outcomes": list(tx.AUDIT_OUTCOMES),
+        "escalations": list(tx.AUDIT_ESCALATIONS),
+        "seat_statuses": list(tx.SEAT_STATUSES),
+    }

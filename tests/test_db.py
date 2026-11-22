@@ -2,6 +2,7 @@ import shutil
 import sqlite3
 
 import pytest
+from helpers import FAMILY_CASES
 
 from chanchi import db, taxonomy
 from chanchi.errors import ChanchiError
@@ -19,6 +20,10 @@ OPERATIONAL_TABLES = (
     "lesson_replaces",
     "lesson_incidents",
     "lesson_events",
+    "audits",
+    "audit_rounds",
+    "audit_seats",
+    "audit_dissents",
 )
 
 
@@ -250,11 +255,11 @@ def test_migration_v1_to_v2_preserves_data(tmp_path):
 
         synthetic_migrations = [
             *db.migrations(),
-            (5, "005_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
+            (6, "006_add_probe.sql", "ALTER TABLE sessions ADD COLUMN probe TEXT;"),
         ]
         new_applied = db.apply_migrations(conn, migrations_list=synthetic_migrations)
-        assert new_applied == [2, 3, 4, 5]
-        assert db.user_version(conn) == 5
+        assert new_applied == [2, 3, 4, 5, 6]
+        assert db.user_version(conn) == 6
 
         assert conn.execute("SELECT slug FROM projects WHERE id = 1").fetchone()[0] == "demo"
         assert conn.execute("SELECT ref FROM changes WHERE id = 1").fetchone()[0] == "c1"
@@ -282,8 +287,8 @@ def test_migration_v2_keeps_user_task_types(tmp_path):
         )
 
         new_applied = db.apply_migrations(conn)
-        assert new_applied == [2, 3, 4]
-        assert db.user_version(conn) == 4
+        assert new_applied == [2, 3, 4, 5]
+        assert db.user_version(conn) == 5
 
         rows = {
             row["code"]: row["description"]
@@ -310,11 +315,52 @@ def test_migration_v3_to_v4_keeps_projects_and_adds_registered_at(tmp_path):
         before = tuple(conn.execute("SELECT id, slug FROM projects").fetchone())
 
         new_applied = db.apply_migrations(conn)
-        assert new_applied == [4]
-        assert db.user_version(conn) == 4
+        assert new_applied == [4, 5]
+        assert db.user_version(conn) == 5
 
         row = conn.execute("SELECT id, slug, registered_at FROM projects").fetchone()
         assert (row["id"], row["slug"]) == before
         assert row["registered_at"] is None
+    finally:
+        conn.close()
+
+
+def test_migration_005_creates_the_audit_tables_and_index(tmp_path):
+    conn = _fresh(tmp_path)
+    try:
+        names = {row["name"] for row in _schema(conn)}
+        for table in ("audits", "audit_rounds", "audit_seats", "audit_dissents"):
+            assert table in names
+        assert "audit_seats_active" in names
+        index_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'audit_seats_active'"
+        ).fetchone()[0]
+        assert "UNIQUE" in index_sql and "status != 'unavailable'" in index_sql
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(models)")]
+        assert "family" in columns
+    finally:
+        conn.close()
+
+
+def test_migration_005_seeds_the_same_families_as_family_for(tmp_path):
+    conn = db.connect(tmp_path / "v4.db", wal=False)
+    try:
+        assert db.apply_migrations(conn, db.migrations()[:4]) == [1, 2, 3, 4]
+        for model, _expected in FAMILY_CASES:
+            conn.execute(
+                "INSERT INTO models (agent, model, cost_tier, created_at) VALUES (?, ?, 1, ?)",
+                ("claude", model, "2026-11-21T00:00:00Z"),
+            )
+        assert db.apply_migrations(conn) == [5]
+        rows = {
+            row["model"]: row["family"]
+            for row in conn.execute("SELECT model, family FROM models WHERE agent = 'claude'")
+        }
+        assert set(rows) == {model for model, _ in FAMILY_CASES}
+        for model, expected in FAMILY_CASES:
+            assert rows[model] == expected, model
+            assert rows[model] == taxonomy.family_for(model), model
+        human = conn.execute("SELECT family FROM models WHERE agent = 'human'").fetchone()
+        assert human["family"] is None
     finally:
         conn.close()
