@@ -1,6 +1,6 @@
 """Project item inventory: the item folders of registered projects, scanned read-only.
 
-Design: docs/designs/global-items.md, "B. Capture" and "Data model (migration 006)". This module is a
+Design: docs/designs/global-items.md, "B. Capture", "C. Propose" and "Data model (migration 006)". This module is a
 domain module: it may import `db`, `items`, `projects`, `sync`, `taxonomy`, `errors` and `timeutil`;
 `items` never imports it (the CLI passes scanned names into `items.check` and `items.mirror`). It opens
 project files only for reading, never follows a symbolic link and never renders output.
@@ -8,11 +8,16 @@ project files only for reading, never follows a symbolic link and never renders 
 An item is stored by its path relative to the project root, in POSIX form. A directory item (skill, or an
 agent kept in `AGENT.md` or agy's `agent.md`) is stored as the directory; a single-file agent
 (`.claude/agents/<name>.md`, `.opencode/agents/<name>.md`) as the file.
+
+`propose` turns the scanned items and the lessons into stored candidates (`item_proposals`), counting
+independent uses: copies that share most of their lines (vendored upstream text) count once.
 """
 
 from __future__ import annotations
 
+import difflib
 import hashlib
+import json
 import os
 import posixpath
 import re
@@ -22,7 +27,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from chanchi import db, items, projects
+from chanchi import db, items, projects, taxonomy
 from chanchi.errors import ChanchiError
 from chanchi.timeutil import utc_now
 
@@ -416,3 +421,468 @@ def scan(conn: sqlite3.Connection, *, project: str | None = None, now: str | Non
 def project_item_names(conn: sqlite3.Connection) -> list[str]:
     """Distinct names of every scanned project item, sorted."""
     return [row["name"] for row in conn.execute("SELECT DISTINCT name FROM project_items ORDER BY name")]
+
+
+# --- propose --------------------------------------------------------------------------------
+
+LESSON_TARGET = re.compile(r"^(skill|role|agent)\s+([a-z0-9][a-z0-9._-]*)(\s+\(new\))?$", re.IGNORECASE)
+LESSON_KIND = {"skill": "skill", "role": "agent", "agent": "agent"}
+RULE_ORDER = ("same_name", "description_overlap", "lessons")
+TOKEN = re.compile(r"[a-z0-9]+")
+MIN_TOKENS = 5
+MIN_TOKEN_LENGTH = 4
+MIN_JACCARD = 0.5
+PROPOSAL_FIELDS = ("id", "kind", "name", "status", "uses", "owner_promoted", "eligible", "global_item",
+                   "created_at", "updated_at", "evidence")
+
+
+def slug_of(name: str) -> str:
+    """The name lowercased, every run of characters outside `[a-z0-9]` replaced by `-`, `-` stripped."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def _chanchi_name(name: str, slug: str, own: set[str]) -> bool:
+    """Chanchi's own items, global items and items of the `<item>-chanchi-<project>-<name>` form."""
+    if name in own or slug in own:
+        return True
+    for form in (name.lower(), slug):
+        if "-chanchi-global-" in form or form.startswith(("skill-chanchi-", "agent-chanchi-")):
+            return True
+    return False
+
+
+def longest_shared_block(a: list[str], b: list[str]) -> tuple[int, int, int]:
+    """`(a_start, b_start, size)`, 0-based starts, of the longest run of identical consecutive lines."""
+    match = difflib.SequenceMatcher(None, a, b, autojunk=False).find_longest_match(0, len(a), 0, len(b))
+    return match.a, match.b, match.size
+
+
+def _tokens(text: str | None) -> frozenset[str]:
+    return frozenset(t for t in TOKEN.findall((text or "").lower()) if len(t) >= MIN_TOKEN_LENGTH)
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    return len(a & b) / len(a | b)
+
+
+class _Groups:
+    """Union-find over hashable keys."""
+
+    def __init__(self) -> None:
+        self.parent: dict = {}
+
+    def find(self, key):
+        self.parent.setdefault(key, key)
+        while self.parent[key] != key:
+            self.parent[key] = self.parent[self.parent[key]]
+            key = self.parent[key]
+        return key
+
+    def union(self, a, b) -> None:
+        self.parent[self.find(a)] = self.find(b)
+
+    def groups(self, keys) -> list[list]:
+        found: dict = {}
+        for key in keys:
+            found.setdefault(self.find(key), []).append(key)
+        return list(found.values())
+
+
+def _copy_key(copy: dict) -> str:
+    return f"{copy['project']}:{copy['path']}"
+
+
+def _copy_order(row) -> tuple:
+    """Canonical copy first: most lines, then shortest path, then alphabetical."""
+    return (-row["lines"], len(row["path"]), row["path"])
+
+
+def _inventory(conn: sqlite3.Connection, own: set[str]) -> tuple[dict, list[str], list[dict]]:
+    """Canonical copies by `(kind, slug)` and project, the projects with no root, and the names with no slug.
+
+    Chanchi's own names, global names and project-own `<item>-chanchi-...` names are left out first.
+    """
+    canonical: dict[tuple[str, str], dict[str, dict]] = {}
+    missing: list[str] = []
+    skipped: list[dict] = []
+    for project in conn.execute("SELECT id, slug FROM projects WHERE registered_at IS NOT NULL ORDER BY slug"):
+        if project_root(conn, project["id"]) is None:
+            missing.append(project["slug"])
+            continue
+        rows = conn.execute(
+            "SELECT * FROM project_items WHERE project_id = ? AND kind IN ('skill', 'agent') ORDER BY path",
+            (project["id"],),
+        ).fetchall()
+        grouped: dict[tuple[str, str], list] = {}
+        for row in rows:
+            slug = slug_of(row["name"])
+            if _chanchi_name(row["name"], slug, own):
+                continue
+            if not slug:
+                skipped.append({"project": project["slug"], "kind": row["kind"], "name": row["name"]})
+                continue
+            grouped.setdefault((row["kind"], slug), []).append(row)
+        for key, copies in grouped.items():
+            copies.sort(key=_copy_order)
+            first = copies[0]
+            canonical.setdefault(key, {})[project["slug"]] = {
+                "project": project["slug"], "project_id": project["id"], "kind": first["kind"],
+                "name": first["name"], "path": first["path"], "sha256": first["sha256"],
+                "lines": first["lines"], "description": first["description"],
+                "aliases": sorted(row["path"] for row in copies[1:]),
+            }
+    return canonical, missing, sorted(skipped, key=lambda s: (s["project"], s["kind"], s["name"]))
+
+
+def _lesson_groups(conn: sqlite3.Connection, own: set[str]) -> dict[tuple[str, str], list[dict]]:
+    """Agnostic lessons that name one item, grouped by `(kind, slug)`; at least two distinct projects."""
+    rows = conn.execute(
+        "SELECT l.id, l.target, l.status, l.origin_project_id, p.slug AS project FROM lessons l "
+        "JOIN projects p ON p.id = l.origin_project_id "
+        "WHERE l.generality = 'agnostic' AND l.target_kind IN ('skill', 'role') "
+        "AND l.status IN ('pending', 'approved') ORDER BY l.id"
+    ).fetchall()
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for row in rows:
+        match = LESSON_TARGET.match(row["target"].strip())
+        if match is None:
+            continue
+        name = match.group(2)
+        slug = slug_of(name)
+        if not slug or _chanchi_name(name, slug, own):
+            continue
+        groups.setdefault((LESSON_KIND[match.group(1).lower()], slug), []).append(
+            {"id": row["id"], "project": row["project"], "status": row["status"], "project_id": row["origin_project_id"]}
+        )
+    return {key: found for key, found in groups.items() if len({x["project_id"] for x in found}) >= 2}
+
+
+def _candidates(conn: sqlite3.Connection, own: set[str]) -> tuple[dict, list[str], list[dict]]:
+    """`{(kind, slug): {kind, slug, rules, copies, lessons}}` plus the projects with no root and skipped names."""
+    canonical, missing, skipped = _inventory(conn, own)
+    found: dict[tuple[str, str], dict] = {}
+
+    def add(kind: str, slug: str, rule: str, copies: list[dict], lessons: list[dict] = ()) -> None:
+        entry = found.setdefault((kind, slug), {"kind": kind, "slug": slug, "rules": [], "copies": [], "lessons": []})
+        entry["rules"].append(rule)
+        entry["copies"] += copies
+        entry["lessons"] += list(lessons)
+
+    for (kind, slug), by_project in sorted(canonical.items()):
+        if len(by_project) >= 2:
+            add(kind, slug, "same_name", [by_project[p] for p in sorted(by_project)])
+    pool = [
+        copy for (kind, slug), by_project in sorted(canonical.items()) if (kind, slug) not in found
+        for copy in by_project.values()
+    ]
+    pool.sort(key=lambda c: (c["kind"], c["project"], c["path"]))
+    groups = _Groups()
+    for index, left in enumerate(pool):
+        left_tokens = _tokens(left["description"])
+        if len(left_tokens) < MIN_TOKENS:
+            continue
+        for right in pool[index + 1:]:
+            right_tokens = _tokens(right["description"])
+            if (right["kind"] == left["kind"] and right["project"] != left["project"]
+                    and len(right_tokens) >= MIN_TOKENS and _jaccard(left_tokens, right_tokens) >= MIN_JACCARD):
+                groups.union(_copy_key(left), _copy_key(right))
+    by_key = {_copy_key(copy): copy for copy in pool}
+    for members in groups.groups([k for k in by_key if k in groups.parent]):
+        copies = sorted((by_key[k] for k in members), key=lambda c: (c["project"], c["path"]))
+        if len({c["project"] for c in copies}) < 2:
+            continue
+        longest = min(copies, key=lambda c: (-c["lines"], slug_of(c["name"]), c["project"], c["path"]))
+        add(longest["kind"], slug_of(longest["name"]), "description_overlap", copies)
+    for (kind, slug), lessons in sorted(_lesson_groups(conn, own).items()):
+        add(kind, slug, "lessons", [], lessons)
+    for entry in found.values():
+        entry["rules"].sort(key=RULE_ORDER.index)
+    return found, missing, skipped
+
+
+def _fresh(root: Path, copy: dict) -> tuple[str, list[str]] | str:
+    """`(sha256, main file lines)` of the item stored at `copy["path"]`, or the reason it is stale.
+
+    Reads without following any link along the path: `missing`, `symlink`, `unreadable` or `changed`.
+    """
+    current = root
+    mode = stat.S_IFDIR
+    for part in copy["path"].split("/"):
+        current = current / part
+        try:
+            mode = os.lstat(current).st_mode
+        except OSError:
+            return "missing"
+        if stat.S_ISLNK(mode):
+            return "symlink"
+    try:
+        if stat.S_ISDIR(mode):
+            with os.scandir(current) as scanned:
+                entries = sorted(scanned, key=lambda e: e.name)
+            main = _Walk._main_file(entries, copy["path"])
+            if main is None:
+                return "missing"
+            _, main_name, linked = main
+            if linked:
+                return "symlink"
+            text = (current / main_name).read_bytes().decode("utf-8")
+            try:
+                digest = items.content_hash(current)
+            except ChanchiError:
+                return "symlink"
+        elif stat.S_ISREG(mode):
+            data = current.read_bytes()
+            text = data.decode("utf-8")
+            digest = hashlib.sha256(data).hexdigest()
+        else:
+            return "missing"
+    except (OSError, UnicodeDecodeError):
+        return "unreadable"
+    return (digest, text.splitlines()) if digest == copy["sha256"] else "changed"
+
+
+def _check_fresh(conn: sqlite3.Connection, candidates: dict) -> dict[str, list[str]]:
+    """Lines of every counted copy, or `missing_prerequisite` listing every stale one."""
+    roots: dict[int, Path | None] = {}
+    lines: dict[str, list[str]] = {}
+    stale: list[dict] = []
+    copies = {_copy_key(c): c for entry in candidates.values() for c in entry["copies"]}
+    for key in sorted(copies):
+        copy = copies[key]
+        root = roots.setdefault(copy["project_id"], project_root(conn, copy["project_id"]))
+        result = "missing" if root is None else _fresh(root, copy)
+        if isinstance(result, str):
+            stale.append({"project": copy["project"], "path": copy["path"], "reason": result})
+        else:
+            lines[key] = result[1]
+    if stale:
+        raise ChanchiError(
+            "missing_prerequisite",
+            f"{len(stale)} counted copy(ies) changed since the last scan",
+            field="items",
+            hint="chanchi items scan",
+            details={"stale": sorted(stale, key=lambda s: (s["project"], s["path"]))},
+        )
+    return lines
+
+
+def _evidence(entry: dict, lines: dict[str, list[str]], config: dict) -> tuple[dict, int]:
+    """The stored evidence of one candidate and its independent uses."""
+    copies = sorted(entry["copies"], key=lambda c: (c["project"], c["path"]))
+    groups = _Groups()
+    pairs = []
+    for index, left in enumerate(copies):
+        groups.find(_copy_key(left))
+        for right in copies[index + 1:]:
+            a, b = lines[_copy_key(left)], lines[_copy_key(right)]
+            a_start, b_start, size = longest_shared_block(a, b)
+            share = size / min(len(a), len(b)) if a and b else 0.0
+            pairs.append({"a": _copy_key(left), "b": _copy_key(right), "block_lines": size,
+                          "a_start": a_start + 1, "b_start": b_start + 1, "share": share})
+            if share >= config["vendored_share"]:
+                groups.union(_copy_key(left), _copy_key(right))
+    clusters = sorted(sorted(group) for group in groups.groups([_copy_key(c) for c in copies]))
+    lessons = [{"id": x["id"], "project": x["project"], "status": x["status"]} for x in entry["lessons"]]
+    uses = len(clusters) + sum(1 for x in lessons if x["status"] == "approved")
+    evidence = {
+        "rules": entry["rules"],
+        "copies": [
+            {"project": c["project"], "kind": c["kind"], "name": c["name"], "path": c["path"],
+             "sha256": c["sha256"], "lines": c["lines"], "aliases": c["aliases"]}
+            for c in copies
+        ],
+        "pairs": pairs,
+        "clusters": clusters,
+        "lessons": lessons,
+        "min_uses": config["min_uses"],
+        "vendored_share": config["vendored_share"],
+    }
+    return evidence, uses
+
+
+def _printed(row: sqlite3.Row, config: dict) -> dict:
+    return {
+        "id": row["id"], "kind": row["kind"], "name": row["name"], "status": row["status"], "uses": row["uses"],
+        "owner_promoted": bool(row["owner_promoted"]),
+        "eligible": bool(row["owner_promoted"]) or row["uses"] >= config["min_uses"],
+        "global_item": row["global_item"], "created_at": row["created_at"], "updated_at": row["updated_at"],
+        "evidence": json.loads(row["evidence"]),
+    }
+
+
+def _proposal_name(kind: str, slug: str) -> str:
+    return f"{kind}-chanchi-global-{slug}"
+
+
+def propose(
+    conn: sqlite3.Connection, *, own_names, config: dict, owner_promote: str | None = None, now: str | None = None
+) -> dict:
+    """Detect candidates from the scanned items and the lessons, count independent uses and store them.
+
+    Three rules: the same name in two projects, overlapping descriptions, agnostic lessons naming one item.
+    Copies of a project with no folder on this machine are left out (`missing`); any other copy that changed
+    since the scan fails the run with `missing_prerequisite` and nothing is stored. An open proposal keeps
+    its id across runs and its `owner_promoted` flag; a built or rejected one is listed under `closed`.
+    """
+    stamp = now or utc_now()
+    candidates, missing, skipped = _candidates(conn, set(own_names))
+    lines = _check_fresh(conn, candidates)
+    produced = {_proposal_name(kind, slug): entry for (kind, slug), entry in candidates.items()}
+    plan: list[tuple[str, dict, sqlite3.Row | None]] = []
+    closed: list[dict] = []
+    for name in sorted(produced):
+        entry = produced[name]
+        row = conn.execute(
+            "SELECT * FROM item_proposals WHERE kind = ? AND name = ? ORDER BY (status = 'open') DESC, id DESC",
+            (entry["kind"], name),
+        ).fetchone()
+        if row is not None and row["status"] != "open":
+            closed.append({"id": row["id"], "kind": row["kind"], "name": row["name"],
+                           "status": row["status"], "global_item": row["global_item"]})
+        else:
+            plan.append((name, entry, row))
+    if owner_promote is not None and owner_promote not in {name for name, _, _ in plan}:
+        if owner_promote in {c["name"] for c in closed}:
+            raise ChanchiError(
+                "invalid_value",
+                f"{owner_promote!r} is already built or rejected and cannot be promoted",
+                field="owner_promote",
+                hint="`chanchi items proposals` lists every proposal with its status",
+            )
+        raise ChanchiError(
+            "invalid_value",
+            f"this run produces no candidate named {owner_promote!r}",
+            field="owner_promote",
+            valid_values=[name for name, _, _ in plan],
+            hint="run `chanchi items scan`, then `chanchi items propose` to list the candidates",
+        )
+    stored: list[int] = []
+    with _write(conn):
+        for name, entry, row in plan:
+            evidence, uses = _evidence(entry, lines, config)
+            payload = json.dumps(evidence, ensure_ascii=False)
+            promoted = 1 if name == owner_promote else 0
+            if row is None:
+                cursor = conn.execute(
+                    "INSERT INTO item_proposals (kind, name, evidence, uses, owner_promoted, status, "
+                    "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'open', ?, ?)",
+                    (entry["kind"], name, payload, uses, promoted, stamp, stamp),
+                )
+                stored.append(cursor.lastrowid)
+            else:
+                conn.execute(
+                    "UPDATE item_proposals SET evidence = ?, uses = ?, owner_promoted = MAX(owner_promoted, ?), "
+                    "updated_at = ? WHERE id = ?",
+                    (payload, uses, promoted, stamp, row["id"]),
+                )
+                stored.append(row["id"])
+        not_found = [
+            {"id": row["id"], "kind": row["kind"], "name": row["name"]}
+            for row in conn.execute("SELECT * FROM item_proposals WHERE status = 'open' ORDER BY id")
+            if row["id"] not in stored
+        ]
+        printed = [
+            _printed(conn.execute("SELECT * FROM item_proposals WHERE id = ?", (proposal_id,)).fetchone(), config)
+            for proposal_id in stored
+        ]
+    return {
+        "proposals": printed,
+        "closed": closed,
+        "not_found": not_found,
+        "missing": missing,
+        "skipped_names": skipped,
+        "min_uses": config["min_uses"],
+        "vendored_share": config["vendored_share"],
+    }
+
+
+# --- proposals ------------------------------------------------------------------------------
+
+
+def _invalid(message: str, field: str, **kwargs) -> ChanchiError:
+    return ChanchiError("invalid_value", message, field=field, **kwargs)
+
+
+def _with_paths(conn: sqlite3.Connection, printed: dict) -> dict:
+    """Add `abs_path` and `alias_abs_paths` to each copy, resolved now; `None` when the root is missing."""
+    roots: dict[str, Path | None] = {}
+    for copy in printed["evidence"]["copies"]:
+        if copy["project"] not in roots:
+            row = conn.execute("SELECT id FROM projects WHERE slug = ?", (copy["project"],)).fetchone()
+            roots[copy["project"]] = project_root(conn, row["id"]) if row is not None else None
+        root = roots[copy["project"]]
+        copy["abs_path"] = None if root is None else str(root / copy["path"])
+        copy["alias_abs_paths"] = [None if root is None else str(root / alias) for alias in copy["aliases"]]
+    return printed
+
+
+def proposals(
+    conn: sqlite3.Connection, *, config: dict, status: str | None = None, proposal_id: int | None = None
+) -> list[dict]:
+    """Stored proposals in the printed shape, ordered by id. `proposal_id` and `status` are exclusive.
+
+    With `proposal_id` each copy also carries its absolute path, resolved at print time.
+    """
+    if proposal_id is not None and status is not None:
+        raise _invalid("--id and --status cannot be combined", "status", hint="pass one of them")
+    if proposal_id is not None:
+        row = conn.execute("SELECT * FROM item_proposals WHERE id = ?", (proposal_id,)).fetchone()
+        if row is None:
+            raise _invalid(f"no proposal with id {proposal_id}", "id", hint="run `chanchi items proposals`")
+        return [_with_paths(conn, _printed(row, config))]
+    if status is not None and status not in taxonomy.PROPOSAL_STATUSES:
+        raise _invalid(f"unknown proposal status {status!r}", "status", valid_values=taxonomy.PROPOSAL_STATUSES)
+    if status is None:
+        rows = conn.execute("SELECT * FROM item_proposals ORDER BY id").fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM item_proposals WHERE status = ? ORDER BY id", (status,)).fetchall()
+    return [_printed(row, config) for row in rows]
+
+
+def set_proposal_status(
+    conn: sqlite3.Connection, sync_root: Path | None, proposal_id: int, *, status: str | None,
+    global_item: str | None = None,
+) -> dict:
+    """Close an open proposal as `built` (linked to an existing global item of its kind) or `rejected`."""
+    row = conn.execute("SELECT * FROM item_proposals WHERE id = ?", (proposal_id,)).fetchone()
+    if row is None:
+        raise _invalid(f"no proposal with id {proposal_id}", "id", hint="run `chanchi items proposals`")
+    if status not in ("built", "rejected"):
+        raise _invalid(f"a proposal can only become built or rejected, got {status!r}", "status",
+                       valid_values=["built", "rejected"])
+    if row["status"] != "open":
+        raise ChanchiError(
+            "invalid_transition",
+            f"proposal {proposal_id} is already {row['status']}",
+            field="status",
+            hint="only open proposals change; a later `items propose` run never reopens one",
+        )
+    if status == "rejected":
+        if global_item is not None:
+            raise _invalid("--global-item belongs to `--status built`", "global_item",
+                           hint="a rejected proposal has no global item")
+    else:
+        if global_item is None:
+            raise _invalid("`--status built` needs --global-item", "global_item",
+                           hint="pass the draft item built from this proposal; see `chanchi items list`")
+        match = items.GLOBAL_NAME.match(global_item)
+        if match is None:
+            raise _invalid(f"{global_item!r} is not a global item name", "global_item",
+                           hint="global items are <agent|skill>-chanchi-global-<name>; run `chanchi items list`")
+        if match.group(1) != row["kind"]:
+            raise _invalid(f"{global_item!r} is a {match.group(1)} but proposal {proposal_id} is a {row['kind']}",
+                           "global_item")
+        if sync_root is None:
+            raise ChanchiError("missing_prerequisite", "SYNC is not initialized", field="sync",
+                               hint="chanchi sync init")
+        if not (Path(sync_root) / "ITEMS" / items.KIND_FOLDER[row["kind"]] / global_item).is_dir():
+            raise _invalid(f"no global item {global_item!r} in SYNC/ITEMS/{items.KIND_FOLDER[row['kind']]}/",
+                           "global_item", hint="run `chanchi items list`")
+    stamp = utc_now()
+    with _write(conn):
+        conn.execute(
+            "UPDATE item_proposals SET status = ?, global_item = ?, updated_at = ? WHERE id = ?",
+            (status, global_item if status == "built" else None, stamp, proposal_id),
+        )
+    return {"id": proposal_id, "kind": row["kind"], "name": row["name"], "status": status,
+            "global_item": global_item if status == "built" else None, "updated_at": stamp}

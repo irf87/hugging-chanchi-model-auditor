@@ -455,7 +455,8 @@ Covered by: tests/test_sync.py, tests/test_cli.py
 ## items
 
 ### Sub-features
-`items check`, `items list`, `items publish`, `items retire`, `items mirror`, `items scan`
+`items check`, `items list`, `items publish`, `items retire`, `items mirror`, `items scan`, `items propose`,
+`items proposals`, `items proposal-status`
 
 ### How to get to it
     export CHANCHI_DB="$(mktemp -d)/chanchi.db"
@@ -510,6 +511,23 @@ Covered by: tests/test_sync.py, tests/test_cli.py
     chanchi items scan --project project-a              # one changed row
     rm "$proj_b/.claude/agents/helper.md"
     chanchi items scan --project project-b              # one removed row
+    for proj in "$proj_a" "$proj_b"; do mkdir -p "$proj/.agents/skills/other-tool"; printf -- '---\nname: other-tool\ndescription: Another demo tool.\n---\n\n# other-tool\n' > "$proj/.agents/skills/other-tool/SKILL.md"; done
+    chanchi items scan                                  # one added row in each project
+    chanchi items propose                               # two open candidates: other-tool (id 1) and tool-x (id 2)
+    printf 'Late edit.\n' >> "$proj_a/.agents/skills/other-tool/SKILL.md"
+    chanchi items propose                               # fails: missing_prerequisite, details.stale
+    chanchi items scan --project project-a
+    chanchi items propose --owner-promote skill-chanchi-global-tool-x
+    chanchi items propose --owner-promote skill-chanchi-global-nope   # fails: invalid_value, field owner_promote
+    chanchi items proposals --status open
+    chanchi items proposals --id 2
+    chanchi items proposals --id 2 --status open        # fails: invalid_value
+    chanchi items proposal-status 2 --status rejected --global-item skill-chanchi-global-demo   # fails: invalid_value, field global_item
+    chanchi items proposal-status 2 --status rejected
+    chanchi items proposal-status 2 --status rejected   # fails: invalid_transition
+    chanchi items proposal-status 1 --status built      # fails: invalid_value, field global_item
+    chanchi items proposal-status 1 --status built --global-item skill-chanchi-global-demo
+    chanchi items propose                               # no proposals; closed lists both
     mkdir -p "$proj_a/.agents/skills/skill-chanchi-global-demo"
     printf -- '---\nname: skill-chanchi-global-demo\ndescription: Project copy.\n---\n' > "$proj_a/.agents/skills/skill-chanchi-global-demo/SKILL.md"
     chanchi items scan --project project-a
@@ -542,7 +560,25 @@ makes `--project project-a` print `changed` `1`, the `rm` makes `--project proje
 `project-a` holds a skill named `skill-chanchi-global-demo`, `items check` fails with `invalid_value`, `field`
 `items` and `details.problems` `[{item: skill-chanchi-global-demo, code: project_item_collision, ...}]`;
 `items mirror` refuses the same way and writes nothing.
-Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py, tests/test_inventory.py
+`items propose` prints `proposals` in the order of their names, then `closed`, `not_found`, `missing`,
+`skipped_names`, `min_uses` and `vendored_share`. The first run after the extra `other-tool` scan stores
+`skill-chanchi-global-other-tool` (id 1: two identical copies, one cluster, `uses` 1) and
+`skill-chanchi-global-tool-x` (id 2: the two copies share only a 3-line block, two clusters, `uses` 2); both are
+`status` `open`, `eligible` `false`, with `rules` `["same_name"]`, the copies' `project`, `path`, `sha256`, `lines`
+and `aliases`, and each pair's `block_lines`, 1-based `a_start` and `b_start` and `share`. After the late edit the
+next `propose` stores nothing and fails with `missing_prerequisite`, hint `chanchi items scan` and `details.stale`
+`[{project: project-a, path: .agents/skills/other-tool, reason: changed}]`; the rescan prints `changed` `1`.
+`--owner-promote skill-chanchi-global-tool-x` prints that proposal with `owner_promoted` `true` and `eligible`
+`true` although `uses` is 2 of 3 (a later run keeps both); a name that is not a candidate fails with
+`invalid_value`, `field` `owner_promote` and the candidate names in `valid_values`. `items proposals --status open`
+prints both rows in the same shape without a new run; `--id 2` adds `abs_path` and `alias_abs_paths` to each copy
+(`null` when the project's folder is gone), and `--id` with `--status` fails with `invalid_value`.
+`proposal-status` prints `{id, kind, name, status, global_item, updated_at}`: `rejected` with `--global-item`
+fails with `field` `global_item`, then `--status rejected` closes proposal 2; repeating it fails with
+`invalid_transition`; `--status built` without `--global-item` fails with `field` `global_item`, and with
+`skill-chanchi-global-demo` (any status, same kind) closes proposal 1 as `built`. The last `items propose` prints
+`proposals` `[]` and both ids under `closed` with their `status` and `global_item`.
+Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py, tests/test_inventory.py, tests/test_propose.py, tests/test_sync.py
 
 ### Gotchas
 - Every command needs `SYNC` (`missing_prerequisite`, hint `chanchi sync init`).
@@ -567,6 +603,22 @@ Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_
   fingerprint (`sha256`, `lines`) and the frontmatter `description` reach the database. A registered project whose
   folder is gone is listed under `missing` and keeps its rows. `--project <slug>` limits the scan to one registered
   project (`project_not_registered` otherwise).
+- `items propose` needs no `SYNC` (`SYNC/config/promotion.toml` is read when `SYNC` exists) and never writes into a
+  project. A candidate is a name in at least two registered projects (same slug: lowercase, runs outside `[a-z0-9]`
+  become `-`), skills or agents with overlapping descriptions in different projects (at least 5 distinct words of 4
+  or more letters, Jaccard 0.5), or agnostic lessons from two projects naming `skill <name>`, `role <name>` or
+  `agent <name>`. Chanchi's own names, `skill-chanchi-*`, `agent-chanchi-*` and `*-chanchi-global-*` are never
+  candidates; a name with an empty slug is listed under `skipped_names`. Copies whose largest shared block of
+  identical lines covers at least `vendored_share` of the shorter one count once; an approved lesson is one more
+  use, a pending one adds none. `promotion.toml` takes only `min_uses` (integer, at least 1, default 3) and
+  `vendored_share` (number above 0 and at most 1, default 0.5); anything else is `invalid_value`, `field`
+  `promotion`. A copy of a project whose folder is gone is left out and the project listed under `missing`; any
+  other counted copy that changed since the scan stops the run (`missing_prerequisite`, `details.stale`) before it
+  stores anything. One open row per proposed name keeps its id and `owner_promoted` across runs; a built or
+  rejected name is listed under `closed` and never stored again, and an open row the run did not produce is listed
+  under `not_found` and left unchanged.
+- `items proposal-status` changes only `open` rows (`invalid_transition` otherwise). `built` needs `SYNC` and an
+  existing global item of the proposal's kind in `SYNC/ITEMS` (any status); `rejected` works without `SYNC`.
 - `project_item_collision` is reported by `items check`, `items publish` and `items mirror` for a global item named
   like a scanned project item. `items check` and `items mirror --check` read the scan data only when the
   operational database file already exists, so they never create it; `items mirror --remove` ignores it.
