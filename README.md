@@ -70,6 +70,7 @@ chanchi agents link --user --remove  # remove user wrappers owned by this reposi
 - `agent-chanchi-executor` — implements one brief in a worktree and reports; never commits.
 - `agent-chanchi-researcher` — read-only research with VERIFIED/UNVERIFIED claims.
 - `agent-chanchi-auditor` — read-only user-installed auditor that checks one subject against a brief and writes a verdict report.
+- `agent-chanchi-item-builder` — user-installed builder that turns one stored item proposal into a global item draft in `SYNC/ITEMS`; never publishes and never writes chanchi records.
 
 Launch one with `claude --agent <name>`, `opencode run --agent <name>` or
 `agy --agent <name>` (headless: `agy --agent <name> -p="<prompt>"`). `FEATURE_MAP.md` tells an
