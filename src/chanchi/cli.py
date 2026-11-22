@@ -151,6 +151,17 @@ def cmd_agents_link(args):
     return agents_sync.link_user(root, check=args.check, remove=args.remove)
 
 
+def cmd_sync_init(args):
+    if args.link is not None and not args.link.strip():
+        raise ChanchiError("invalid_value", "link directory must not be empty", field="link")
+    link = Path(args.link) if args.link is not None else None
+    return sync.init(link=link)
+
+
+def cmd_sync_status(args):
+    return sync.status()
+
+
 def cmd_change_open(args):
     with _conn() as conn:
         slug, path = projects.identify(args.project, conn=conn)
@@ -776,6 +787,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     g = group("scoring", "scoring formulas")
     leaf(g, "explain", cmd_scoring_explain, "show current weights and formulas")
+
+    g = group("sync", "manage the user's SYNC folder for global items and configuration")
+    p = leaf(g, "init", cmd_sync_init, "initialize SYNC/config and SYNC/ITEMS", project=False)
+    p.add_argument("--link", metavar="DIR", help="symlink SYNC to an existing or new directory")
+    leaf(g, "status", cmd_sync_status, "show SYNC location, symlink target and reachability", project=False)
     return parser
 
 

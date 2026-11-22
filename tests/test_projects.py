@@ -441,3 +441,63 @@ def test_identify_explicit_folder_slug_keeps_path_in_an_unregistered_repository(
     assert path == str(git_repo.resolve())
     slug, path = projects.identify("other", conn=conn)
     assert (slug, path) == ("other", None)
+
+
+def test_reserved_slug_global_refused_in_register_ensure_and_change_open(
+    conn, tmp_path, db_env, capsys, monkeypatch
+):
+    import json
+    from chanchi import cli
+
+    assert "global" in projects.RESERVED_SLUGS
+    with pytest.raises(ChanchiError) as info:
+        projects.check_slug("global")
+    assert (info.value.code, info.value.field) == ("invalid_value", "slug")
+    assert "chanchi project register --name" in info.value.hint
+
+    global_repo = _init_repo(tmp_path / "global")
+    with pytest.raises(ChanchiError) as info:
+        projects.register(conn, global_repo)
+    assert (info.value.code, info.value.field) == ("invalid_value", "slug")
+    assert "chanchi project register --name" in info.value.hint
+
+    normal_repo = _init_repo(tmp_path / "normal")
+    with pytest.raises(ChanchiError) as info:
+        projects.register(conn, normal_repo, name="global")
+    assert (info.value.code, info.value.field) == ("invalid_value", "slug")
+
+    with pytest.raises(ChanchiError) as info:
+        with db.transaction(conn):
+            projects.ensure(conn, "global", str(global_repo))
+    assert (info.value.code, info.value.field) == ("invalid_value", "slug")
+
+    # Registering global/ with --name other succeeds; re-running without --name answers already_registered;
+    # re-running with --name global is refused before the locator lookup.
+    reg = projects.register(conn, global_repo, name="other")
+    assert reg["project"]["slug"] == "other"
+    again = projects.register(conn, global_repo)
+    assert again["already_registered"] is True and again["project"]["slug"] == "other"
+    with pytest.raises(ChanchiError) as info:
+        projects.register(conn, global_repo, name="global")
+    assert (info.value.code, info.value.field) == ("invalid_value", "slug")
+
+    # change open inside an unregistered folder named global and with --project global are both refused
+    other_global = _init_repo(tmp_path / "nested" / "global")
+    monkeypatch.chdir(other_global)
+    assert cli.main(["models", "add", "--agent", "claude", "--model", "opus", "--cost", "3"]) == 0
+    capsys.readouterr()
+
+    code = cli.main(["change", "open", "c1", "--kind", "adhoc", "--planner", "claude:opus"])
+    _, err = capsys.readouterr()
+    assert code == 2
+    err_obj = json.loads(err)["error"]
+    assert (err_obj["code"], err_obj["field"]) == ("invalid_value", "slug")
+    assert "chanchi project register --name" in err_obj["hint"]
+
+    monkeypatch.chdir(normal_repo)
+    code = cli.main(["change", "open", "c1", "--kind", "adhoc", "--planner", "claude:opus", "--project", "global"])
+    _, err = capsys.readouterr()
+    assert code == 2
+    err_obj = json.loads(err)["error"]
+    assert (err_obj["code"], err_obj["field"]) == ("invalid_value", "slug")
+    assert "chanchi project register --name" in err_obj["hint"]

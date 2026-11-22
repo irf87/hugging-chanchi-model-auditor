@@ -303,6 +303,9 @@ def review(capsys, lesson_id, decision="approve", conversation="conv-2", *extra)
 
 
 NEW_COMMANDS = [
+    ["sync", "init"],
+    ["sync", "init", "--link", "/tmp/example-sync"],
+    ["sync", "status"],
     ["project", "register"],
     ["project", "register", "--name", "x"],
     ["project", "relink", "demo-app"],
@@ -633,3 +636,27 @@ def test_models_family_flags(ready):
     assert (error["code"], error["field"]) == ("invalid_value", "family")
     error = fail(ready, "models", "add", "--agent", "claude", "--model", "x", "--cost", "1", "--family", "BAD")
     assert (error["code"], error["field"]) == ("invalid_value", "family")
+
+
+def test_sync_init_and_status_cli(capsys, tmp_path, monkeypatch):
+    sync_root = tmp_path / "SYNC"
+    cloud = tmp_path / "cloud"
+    monkeypatch.setenv("CHANCHI_SYNC", str(sync_root))
+
+    before = ok(capsys, "sync", "status")
+    assert before["exists"] is False and before["reachable"] is False
+
+    err = fail(capsys, "sync", "init", "--link", "   ")
+    assert (err["code"], err["field"]) == ("invalid_value", "link")
+
+    inited = ok(capsys, "sync", "init", "--link", str(cloud))
+    assert inited["link"] == str(cloud)
+    assert inited["created"] == ["config", "ITEMS/agents", "ITEMS/skills"]
+    assert "Google Drive" in inited["recommendation"]
+
+    after = ok(capsys, "sync", "status")
+    assert after["exists"] is True and after["is_link"] is True and after["reachable"] is True
+    assert after["config"] is True and after["items"] is True
+
+    # --project is rejected on sync commands (project=False)
+    assert fail(capsys, "sync", "status", "--project", "demo-app")["code"] == "invalid_value"

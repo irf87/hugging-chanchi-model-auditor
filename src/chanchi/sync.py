@@ -1,7 +1,6 @@
-"""Locating SYNC (the user's synchronized folder) and the auditor roster (phase 1 of global items).
+"""Locating, initializing and inspecting SYNC (the user's synchronized folder) and the auditor roster.
 
-`sync init` and `sync status` belong to phase 2. Design: docs/designs/global-items.md, "Locating SYNC"
-and "Roster, families and fallback".
+Design: docs/designs/global-items.md, "Locating SYNC" and "Roster, families and fallback".
 """
 
 from __future__ import annotations
@@ -22,6 +21,11 @@ BUILTIN_ROSTER: list[dict] = [
 ]
 
 _ENTRY_KEYS = {"harness", "model", "effort"}
+SYNC_SUBFOLDERS = ("config", "ITEMS/agents", "ITEMS/skills")
+RECOMMENDATION_TEMPLATE = (
+    "Point {target} at a folder a cloud service synchronizes "
+    "(Google Drive, iCloud Drive, Dropbox) or at a clone of a private git repository."
+)
 
 
 def _chanchi_checkout() -> Path | None:
@@ -30,21 +34,153 @@ def _chanchi_checkout() -> Path | None:
     return root if (root / "src" / "chanchi" / "sync.py").is_file() else None
 
 
-def sync_dir(env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> Path | None:
-    """`CHANCHI_SYNC`, else `<main checkout>/SYNC`; None when it does not resolve to a directory."""
+def sync_path(env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> Path | None:
+    """Where `SYNC` is or would be (`CHANCHI_SYNC`, else `<main checkout>/SYNC`), never resolved."""
     env = os.environ if env is None else env
-    explicit = env.get("CHANCHI_SYNC")
+    explicit = (env.get("CHANCHI_SYNC") or "").strip()
     if explicit:
-        path = Path(explicit).expanduser()
-        return path if path.is_dir() else None
+        return Path(os.path.abspath(Path(explicit).expanduser()))
     root = repo_root if repo_root is not None else _chanchi_checkout()
     if root is None:
         return None
     main = projects.main_worktree(root)
     if main is None:
         return None
-    path = main / "SYNC"
-    return path if path.is_dir() else None
+    return main / "SYNC"
+
+
+def sync_dir(env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> Path | None:
+    """`CHANCHI_SYNC`, else `<main checkout>/SYNC`; None when it does not resolve to a directory."""
+    path = sync_path(env, repo_root=repo_root)
+    return path if path is not None and path.is_dir() else None
+
+
+def require(env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> Path:
+    """The unresolved `SYNC` directory, or `missing_prerequisite` with hint `chanchi sync init`."""
+    path = sync_path(env, repo_root=repo_root)
+    if path is None or not path.is_dir():
+        raise ChanchiError(
+            "missing_prerequisite",
+            "SYNC is not initialized",
+            field="sync",
+            hint="chanchi sync init",
+        )
+    return path
+
+
+def _ensure_subfolders(root: Path) -> list[str]:
+    created: list[str] = []
+    for rel in SYNC_SUBFOLDERS:
+        sub = root / rel
+        if os.path.lexists(sub) and not sub.is_dir():
+            raise ChanchiError(
+                "link_conflict",
+                f"expected directory at {sub}, found non-directory",
+                field="sync",
+                hint="chanchi sync status",
+            )
+        if not sub.is_dir():
+            sub.mkdir(parents=True, exist_ok=True)
+            created.append(rel)
+    return created
+
+
+def init(
+    env: Mapping[str, str] | None = None,
+    *,
+    repo_root: Path | None = None,
+    link: Path | None = None,
+) -> dict:
+    """Initialize SYNC/config and SYNC/ITEMS, optionally symlinking SYNC to `link`."""
+    if link is not None and not str(link).strip():
+        raise ChanchiError("invalid_value", "link directory must not be empty", field="link")
+    path = sync_path(env, repo_root=repo_root)
+    if path is None:
+        raise ChanchiError(
+            "missing_prerequisite",
+            "cannot locate SYNC outside a chanchi checkout",
+            field="sync",
+            hint="set CHANCHI_SYNC=<dir>",
+        )
+    if link is not None:
+        if os.path.lexists(path):
+            raise ChanchiError(
+                "link_conflict",
+                f"SYNC already exists at {path}",
+                field="sync",
+                hint="chanchi sync status",
+            )
+        target = Path(os.path.abspath(Path(link).expanduser()))
+        if target == path:
+            raise ChanchiError(
+                "invalid_value",
+                f"link target {target} cannot be SYNC itself",
+                field="link",
+            )
+        if os.path.lexists(target) and not target.is_dir():
+            raise ChanchiError(
+                "invalid_value",
+                f"link target {target} exists and is not a directory",
+                field="link",
+                hint="pass a directory path (existing or to be created)",
+            )
+        if not target.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        created = _ensure_subfolders(target)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(target, target_is_directory=True)
+        return {
+            "path": str(path),
+            "created": created,
+            "link": str(target),
+            "recommendation": RECOMMENDATION_TEMPLATE.format(target=target),
+        }
+    if path.is_symlink() and not path.exists():
+        raise ChanchiError(
+            "missing_prerequisite",
+            f"SYNC symlink at {path} is dangling",
+            field="sync",
+            hint="chanchi sync status",
+        )
+    if os.path.lexists(path) and not path.is_dir():
+        raise ChanchiError(
+            "link_conflict",
+            f"SYNC path {path} exists and is not a directory",
+            field="sync",
+            hint="chanchi sync status",
+        )
+    if not path.is_dir():
+        path.mkdir(parents=True, exist_ok=True)
+    created = _ensure_subfolders(path)
+    return {"path": str(path), "created": created, "link": None}
+
+
+def status(env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> dict:
+    """Report SYNC location, symlink target, reachability and subfolders without creating anything."""
+    path = sync_path(env, repo_root=repo_root)
+    if path is None:
+        return {
+            "path": None,
+            "exists": False,
+            "is_link": False,
+            "target": None,
+            "reachable": False,
+            "config": False,
+            "items": False,
+        }
+    exists = os.path.lexists(path)
+    is_link = path.is_symlink()
+    target = os.readlink(path) if is_link else None
+    reachable = path.is_dir()
+    return {
+        "path": str(path),
+        "exists": exists,
+        "is_link": is_link,
+        "target": target,
+        "reachable": reachable,
+        "config": reachable and (path / "config").is_dir(),
+        "items": reachable and (path / "ITEMS").is_dir(),
+    }
 
 
 def _bad(path: Path, detail: str, **kwargs) -> ChanchiError:

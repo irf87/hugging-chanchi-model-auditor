@@ -163,6 +163,7 @@ Covered by: tests/test_record.py, tests/test_cli.py, tests/test_cli_integration.
 ### Gotchas
 - `--planner` must resolve to an active catalog model (`human:human` is pre-seeded; others require `models add`).
 - Closed changes reject new sessions (`change 'c1' is closed`).
+- `global` is a reserved project slug (`invalid_value`, `field: "slug"`): a directory named `global` must be registered with `chanchi project register --name <other>`, and `--project global` is refused.
 
 ## session
 
@@ -299,6 +300,7 @@ Covered by: tests/test_projects.py, tests/test_lessons.py, tests/test_cli.py, te
 ### Gotchas
 - `project register` registers the main worktree; use `project relink <slug>` to attach a linked worktree.
 - `project writers --set` requires `--as`, `--author` and `--conversation`.
+- `global` is a reserved slug: `project register` inside a directory named `global` requires `--name <other>`, and `--name global` is refused (`invalid_value`, `field: "slug"`).
 
 ## lesson
 
@@ -395,3 +397,31 @@ Covered by: tests/test_scoring.py, tests/test_cli.py
 
 ### Gotchas
 - Read-only; prints the configured scoring formulas and constants.
+
+## sync
+
+### Sub-features
+`sync init`, `sync status`
+
+### How to get to it
+    export CHANCHI_SYNC="$(mktemp -d)/SYNC"
+    sync_target="$(mktemp -d)/cloud-sync"
+
+### Driving it
+    chanchi sync status
+    chanchi sync init --link "$sync_target"
+    chanchi sync status
+
+### Evidence
+Before initialization, `sync status` reports `exists` `false`, `reachable` `false`, `config` `false`,
+`items` `false` (and creates nothing). `sync init --link` creates `config/`, `ITEMS/agents/` and
+`ITEMS/skills/` inside `$sync_target`, symlinks `CHANCHI_SYNC` to it, and returns `created`, `link`
+and `recommendation`. A follow-up `sync status` reports `exists` `true`, `is_link` `true`, `target`
+equal to `$sync_target`, `reachable` `true`, `config` `true` and `items` `true`. Without `--link`,
+`chanchi sync init` creates the three folders directly at `SYNC` and returns `link: null`.
+Covered by: tests/test_sync.py, tests/test_cli.py
+
+### Gotchas
+- Without `CHANCHI_SYNC`, `SYNC` resolves to `<main checkout>/SYNC` across every git worktree of this repository (ignored by `.gitignore`).
+- `sync init --link` refuses with `link_conflict` if anything already exists at `SYNC`; plain `sync init` is idempotent on an existing `SYNC` directory, refuses a file at `SYNC` (`link_conflict`), and refuses a dangling link (`missing_prerequisite`).
+- `sync init --link` to an existing non-directory raises `invalid_value` (`field: "link"`).

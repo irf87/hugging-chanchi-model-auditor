@@ -14,6 +14,20 @@ from chanchi.errors import ChanchiError
 from chanchi.taxonomy import DEFAULT_WRITER_ROLES, LESSON_STATUSES
 from chanchi.timeutil import utc_now
 
+RESERVED_SLUGS = ("global",)
+
+
+def check_slug(slug: str) -> str:
+    """Refuse reserved project slugs (`global`)."""
+    if slug in RESERVED_SLUGS:
+        raise ChanchiError(
+            "invalid_value",
+            f"project slug {slug!r} is reserved",
+            field="slug",
+            hint="chanchi project register --name <other>",
+        )
+    return slug
+
 
 @dataclass(frozen=True)
 class Scope:
@@ -134,6 +148,7 @@ def identify(
 
 def ensure(conn: sqlite3.Connection, slug: str, path: str | None, now: str | None = None) -> int:
     """Return the project id, inserting the row if needed. The caller holds the transaction."""
+    check_slug(slug)
     row = conn.execute("SELECT id FROM projects WHERE slug = ?", (slug,)).fetchone()
     if row is not None:
         return row["id"]
@@ -303,7 +318,7 @@ def register(conn: sqlite3.Connection, cwd: Path | None = None, name: str | None
         name = name.strip()
         if not name:
             raise ChanchiError("invalid_value", "project name must not be empty", field="name")
-    slug = name or main.name
+        check_slug(name)
     now = utc_now()
     with _write(conn):
         owner = conn.execute(
@@ -317,6 +332,7 @@ def register(conn: sqlite3.Connection, cwd: Path | None = None, name: str | None
                 "already_registered": True,
                 "adopted": False,
             }
+        slug = name or check_slug(main.name)
         row = conn.execute("SELECT * FROM projects WHERE slug = ?", (slug,)).fetchone()
         adopted = False
         if row is not None:
