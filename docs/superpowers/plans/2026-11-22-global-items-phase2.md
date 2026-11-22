@@ -1,8 +1,9 @@
 # Global Items — Phase 2 (SYNC and ITEMS) Implementation Plan
 
-- **Revision:** 3, after audit rounds 1 and 2 (both `fix`; chanchi audit 3,
+- **Revision:** 4, accepted in audit round 3 with its minor fixes applied (rounds 1 and 2 `fix`; chanchi audit 3,
   [round1-consolidation.md](../../designs/reviews/global-items-phase2-plan/round1-consolidation.md),
-  [round2-consolidation.md](../../designs/reviews/global-items-phase2-plan/round2-consolidation.md))
+  [round2-consolidation.md](../../designs/reviews/global-items-phase2-plan/round2-consolidation.md),
+  [round3-consolidation.md](../../designs/reviews/global-items-phase2-plan/round3-consolidation.md))
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor`. Steps use
 > checkbox (`- [ ]`) syntax. Write the failing test first, then the code.
@@ -66,7 +67,7 @@ and ruff (dev only), uv.
 |---|---|---|
 | D1 | `sync.sync_path(env, *, repo_root)` returns where `SYNC` is or would be (`CHANCHI_SYNC`, else `<main checkout>/SYNC`), **never resolved** (a `SYNC` link stays in the path), `None` only when neither resolves; `sync_dir()` keeps its phase-1 contract (an existing directory or `None`). `sync init` creates `config/`, `ITEMS/agents/` and `ITEMS/skills/`. The design's sentence "An existing `SYNC` is never replaced: the command fails with `link_conflict`" is read as belonging to `sync init --link`, the only form that would replace `SYNC`: with `--link <dir>`, any existing entry at the `SYNC` path (directory, file or link, dangling or not) is `link_conflict`, and an existing non-directory `<dir>` is `invalid_value`. A plain `sync init` on an existing `SYNC` directory only adds the missing subfolders and replaces nothing; on a file at `SYNC` it is `link_conflict`; on a dangling link it is `missing_prerequisite` (hint `chanchi sync status`) | Under the other reading a plain re-run would fail although it replaces nothing; this reading keeps the design's guarantee (never replaced) and keeps `init` idempotent. Executors follow this reading and do not stop on it |
 | D2 | The reserved slug is enforced in `projects.ensure` (every new `projects` row, which is how `change open` and an explicit `--project global` create one) and in `projects.register`; `projects.relink` only accepts a registered slug, so it inherits the guard. `register` checks an explicit `--name` before anything else, and the folder-derived slug only after the existing-locator lookup, so re-running `register` in a `global/` checkout already registered with `--name <other>` still answers `already_registered`. Error: `invalid_value`, `field: "slug"`, hint `chanchi project register --name <other>` | One choke point per row-creating path; the operational database holds no project named `global` (checked 2026-11-22) |
-| D3 | Frontmatter for items: `AGENT.md` keeps `agents_sync`'s flat `key: value` lines and gains optional `version` and `status` (validated when present; never emitted into repository or user wrappers, whose bytes stay identical); `items check` first checks, on every global item, the directory name (`bad_name`), the frontmatter `name` (`name_mismatch`), `version` (required, `bad_version`) and `status` (required, `bad_status`; a missing line is `bad_status` too), and only then parses an `AGENT.md` with `agents_sync._parse`, turning any remaining `ChanchiError` (syntax, `description`, `scope`, `profile`, `skills`, `install`) into `bad_frontmatter`. `SKILL.md` carries `name`, `description` (both required, single line) and the design's `metadata:` block, read by `items.read_frontmatter(text) -> dict` (flat keys plus `metadata` as a dict; any other nesting, a folded or multi-line value, is `bad_frontmatter`). Both readers strip one pair of matching surrounding quotes from a value. Writers (`publish`, `retire`) rewrite only the `status` value and keep the line's form: unquoted in `AGENT.md`, double-quoted in the skill's `metadata:` block; a writer that meets an item with no `status` line inserts one right after `version` in the same form (such an item already fails `items check`, so this only happens to a hand-made item) | Two documented shapes, one reader per shape that already exists or is needed; the round-trip keeps the design's quoting |
+| D3 | Frontmatter for items: `AGENT.md` keeps `agents_sync`'s flat `key: value` lines and gains optional `version` and `status` (validated when present; never emitted into repository or user wrappers, whose bytes stay identical); `items check` first checks, on every global item, the directory name (`bad_name`), the frontmatter `name` (`name_mismatch`), `version` (required, `bad_version`) and `status` (required, `bad_status`; a missing line is `bad_status` too), and only then parses an `AGENT.md` with `agents_sync._parse`, turning any remaining `ChanchiError` (syntax, `description`, `scope`, `profile`, `skills`, `install`) into `bad_frontmatter`. `SKILL.md` carries `name`, `description` (both required, single line) and the design's `metadata:` block, read by `items.read_frontmatter(text) -> dict` (flat keys plus `metadata` as a dict; any other nesting, a folded or multi-line value, is `bad_frontmatter`). Both readers strip one pair of matching surrounding quotes from a value. Writers (`publish`, `retire`) rewrite only the `status` value and keep the line's form: unquoted in `AGENT.md`, double-quoted in the skill's `metadata:` block; a writer that meets an item with no `status` line inserts one right after `version` in the same form (such an item already fails `items check`, so `publish` and `retire` refuse it first, D10; the clause only keeps the writer total) | Two documented shapes, one reader per shape that already exists or is needed; the round-trip keeps the design's quoting |
 | D4 | Valid version: `^\d+\.\d+\.\d+$`. Status: `draft`, `published`, `retired` (added to `taxonomy.py`). A global item name matches `^(agent|skill)-chanchi-global-[a-z0-9]+(-[a-z0-9]+)*$` | The design's `<x.y.z>`, its three statuses and its naming rule |
 | D5 | **Published hash.** Setting `status: published` changes the item's bytes, so its hash differs from the audited (draft) hash. `items publish` checks the audit against the draft hash, flips the status, then appends to the current version's `CHANGELOG.md` section the line `Published: <YYYY-MM-DD> · audit <id> · audited <draft-hash> · sha256 <published-hash>` (`CHANGELOG.md` is outside the hash). `published_hash` is read only from the current version's section. While an item's status is `published`, `items check` reports `edited_after_publish` when its hash differs from that line and `published_without_record` when the section has no such line (a status set by hand, or copied from another machine without its changelog); a `retired` or `draft` item is exempt | Keeps the design's hash definition, lets a second machine verify a published item without the local database, and makes "an edit after the audit needs a new round or a new version" enforceable after publishing; a hand-set `published` can never reach the mirror |
 | D6 | **Item audits get their subject from chanchi.** `audits.open_audit` and `audits.next_round` gain an optional keyword `sync_root: Path | None = None`; `cmd_audit_open` and `cmd_audit_round` pass `sync.sync_dir()`. For an audit of kind `item`, `audit open --kind item --ref <name> --version <x.y.z>` and `audit round <id> --version <x.y.z>` store `subject_at` as `items.subject_at(sync_root, name, version)` = `<x.y.z>@<content hash>`; refused when `sync_root` is `None` (`missing_prerequisite`, hint `chanchi sync init`), the ref is not a global item (`invalid_value`, `field: "ref"`), the version is not the item's current one (`invalid_value`, `field: "version"`), or `--commit` is given for an item (`invalid_value`). Other kinds ignore `sync_root` and work without `SYNC`. The existing tests in `tests/test_audits.py` that open `kind="item"` audits with a bare version (for example `subject_at == "1.2.0"`) switch to kind `other`, or build a `SYNC/ITEMS` fixture, keeping what they assert | The design requires `<version>@<content hash>`; a hash typed by hand could be wrong |
@@ -198,7 +199,8 @@ S2 starts from a `main` that has S1: the CLI gets the `SYNC` folder with `sync.r
   values with `invalid_value`, and `AgentSource` gains `version: str | None = None` and
   `status: str | None = None`; `render`/`render_by_kind` ignore both, so
   `uv run chanchi agents sync --check` stays green and existing wrappers are byte-identical.
-- `items.content_hash(item_dir) -> str`: the design's SHA-256 framing exactly (relative POSIX path
+- `items.content_hash(item_dir) -> str` (`items.check` catches its symlink error and reports a
+  `symlink` problem; it never lets it propagate): the design's SHA-256 framing exactly (relative POSIX path
   UTF-8, NUL, decimal byte length, NUL, bytes; files sorted by relative POSIX path; excluded
   `CHANGELOG.md`, any component starting with `.`, conflict copies). A symlink anywhere inside the
   item raises `invalid_value` (`field: "path"`). Bytes as stored.
@@ -226,7 +228,8 @@ S2 starts from a `main` that has S1: the CLI gets the `SYNC` folder with `sync.r
   frontmatter `name` different from the directory; `version: 1.0`; `status: live`; no changelog
   section for the current version; a conflict copy; a `retired.json` name whose status is not
   `retired`; malformed `retired.json`; an item named like one of `own_names`; a stray file in
-  `ITEMS/`; an `AGENT.md` with an unknown `profile` (`bad_frontmatter`); a `SKILL.md` without
+  `ITEMS/`; a symlink inside an item (`symlink` problem, `items.check` does not raise); an
+  `AGENT.md` with an unknown `profile` (`bad_frontmatter`); a `SKILL.md` without
   `description` or with a multi-line one. A valid agent and a valid skill (skill with the quoted
   `metadata:` block) pass, with `retired.json` and a `.DS_Store` present in `ITEMS/`. `list_items`
   on a tree with a broken item returns it with `null` fields. An item with no `status` line fails
@@ -263,7 +266,7 @@ entries), `README.md`.
   a `status: published` set by hand with no `Published:` line fails with
   `published_without_record`; publishing `0.2.0` above an existing `0.1.0` section writes its line
   into the `0.2.0` section and reads `published_hash` from there; publish keeps the skill's quoted
-  `metadata:` form and inserts a missing `status` line after `version`; retire sets `status:
+  `metadata:` form; publish of an item with no `status` line is refused (`bad_status`, D10); retire sets `status:
   retired`, appends an entry with the D9 fields, keeps earlier entries byte for byte, and the item
   then passes `items check` (a retired published item is exempt from the published checks);
   retire twice, a blank reason, `--replaced-by` itself, an unknown, retired or other-kind item
@@ -363,11 +366,14 @@ passes; if it is lost, remove the leftovers that step 6's `find` prints by hand.
    `FEATURE_MAP.md`. Record the baseline: for each of `~/.agents/skills`, `~/.claude/skills`,
    `~/.gemini/antigravity-cli/skills`, `~/.claude/agents`, `$OC/agents` and
    `~/.gemini/config/agents`, whether it exists and its sorted entry names.
-2. Write two drafts in `$CHANCHI_SYNC/ITEMS`, each with `version: 0.1.0`, `status: draft` (quoted
-   in the skill's `metadata:` block) and a changelog section:
+2. Write two drafts, `$CHANCHI_SYNC/ITEMS/skills/skill-chanchi-global-probe/` and
+   `$CHANCHI_SYNC/ITEMS/agents/agent-chanchi-global-probe/`, each with a frontmatter `name` equal
+   to its directory, a `description`, `version: 0.1.0`, `status: draft` (quoted in the skill's
+   `metadata:` block) and a changelog section:
    `skill-chanchi-global-probe` (description "Probe skill for the chanchi mirror gate"; body: "When
    asked for the probe token, answer exactly `PROBE-<random 8 hex>`.") and
-   `agent-chanchi-global-probe` (`scope: both`, `profile: read-only`, `skills:
+   `agent-chanchi-global-probe` (description "Probe agent for the chanchi mirror gate", `scope:
+   both`, `profile: read-only`, `skills:
    [skill-chanchi-global-probe]`; body: "State your agent name, then give the probe token from
    your skill."). `chanchi items check` passes; `chanchi items mirror` writes nothing for them
    (drafts never appear).
