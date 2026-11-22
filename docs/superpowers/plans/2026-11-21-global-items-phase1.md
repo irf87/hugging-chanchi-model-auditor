@@ -1,7 +1,8 @@
 # Global Items — Phase 1 (Redundant Audits) Implementation Plan
 
-- **Revision:** 2 (after audit round 1:
-  [round1-consolidation.md](../../designs/reviews/global-items-phase1-plan/round1-consolidation.md))
+- **Revision:** 3, accepted in audit round 2 with its minor fixes applied
+  ([round1-consolidation.md](../../designs/reviews/global-items-phase1-plan/round1-consolidation.md),
+  [round2-consolidation.md](../../designs/reviews/global-items-phase1-plan/round2-consolidation.md))
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor`. Steps use
 > checkbox (`- [ ]`) syntax. Write the failing test first, then the code.
@@ -26,11 +27,13 @@ and ruff (dev only), uv.
   in any committed file (`tests/test_privacy.py`).
 - **Run the worktree's code:** inside an executor worktree, always call `uv run chanchi ...`. A bare
   `chanchi` is the editable install of the main checkout and runs `main`'s code, not yours.
-- **Executor sessions (S1-S6)** use a scratch database (`export CHANCHI_DB="$(mktemp -d)/chanchi.db"`)
+- **Executor sessions (S1-S5)** use a scratch database (`export CHANCHI_DB="$(mktemp -d)/chanchi.db"`)
   and, for anything that writes user folders, a scratch home (`export HOME="$(mktemp -d)"`, and
   unset `OPENCODE_CONFIG_DIR` and `XDG_CONFIG_HOME` or point them inside it). They never touch the
-  operational database or the real `~/.claude`, `~/.config/opencode`, `~/.gemini`. Only the
-  orchestrator's steps (the S6 precondition and Task 8) act on the real home and the operational
+  operational database or the real `~/.claude`, `~/.config/opencode`, `~/.gemini`. S6 is
+  read-only against the real home and the real `mirror.json` (it keeps the default `CHANCHI_DB`
+  and writes nothing but its report and one throwaway file in a scratch folder). Only the
+  orchestrator's steps (the S6 precondition and Task 8) write to the real home and the operational
   database, and they say so.
 - Never launch a harness from chanchi code or tests: chanchi only checks `shutil.which`
   (Principle 5). Tests inject the lookup; they never depend on what is installed.
@@ -59,7 +62,7 @@ and ruff (dev only), uv.
 | D2 | Phase 1 adds `sync.sync_dir()` and `sync.roster()` only; `sync init/status` stay in phase 2. When chanchi is not installed from a git checkout (no main checkout), `sync_dir()` is `None` and the built-in roster applies | `chanchi audit` reads `SYNC/config/auditors.toml` when it exists and falls back to the built-in roster otherwise (design, *Locating SYNC*). |
 | D3 | `agents link --user` records its entries in `mirror.json` next to the database, each with `"owner": "agents-link"` and the source root it came from; phase 2's `items mirror` uses the same file with `"owner": "items-mirror"` and touches only its own entries | The design asks for "the same ... manifest ownership as the mirror"; one file per machine keeps one ownership rule. |
 | D4 | `chanchi agents link` requires `--user` in phase 1; `--check` and `--remove` are mutually exclusive; the source root defaults to chanchi's own repository (`Path(__file__).resolve().parents[2]`, like `skills_link.repo_skills_dir()`), never the current directory | Running it from another project must not read that project's `agents/` or drop chanchi's user agents. |
-| D5 | `audit open --project <slug>` resolves with `projects.resolve_project`; when omitted, the project detected from git if registered, else none. `--change <ref>` needs a project: with none, `missing_prerequisite` and the hint `--project <slug>`; an unknown ref is `unknown_change` | Design: "It may link a chanchi change and a project, both optional"; `changes` is unique per project. |
+| D5 | `audit open --project <slug>` resolves with `projects.resolve_project`; when omitted, the project detected from git when a `projects` row exists for it (created by `chanchi change open` or `chanchi project register`), else none, so the CLI never lets `resolve_project`'s "no recorded changes yet" error through. `--change <ref>` needs a project: with none, `missing_prerequisite` and the hint `--project <slug>`; an unknown ref is `unknown_change` | Design: "It may link a chanchi change and a project, both optional"; `changes` is unique per project. |
 | D6 | The author's spec is stored raw; `author_model_id` is set only when it resolves to an active catalog row, never an error | Design: `author_model_id ... NULL when not in the catalog`. |
 | D7 | Families: the last `/`-separated segment, lowercased, matched by **prefix** (`opus`, `sonnet`, `haiku`, `fable` are prefixes like the others, so `fable-5.1` is `anthropic`; a `#variant` suffix does not affect a prefix match). Implemented twice: a recursive-CTE `UPDATE` in migration 005 and `taxonomy.family_for()`; a test asserts both agree on a fixed list including multi-segment ids | One rule, two implementations, held equal by a check instead of text. |
 | D8 | A round's `degraded` is recomputed whenever its seats change (open, unavailable refill, next round) | The design records degraded per round; refills can change it. |
@@ -350,11 +353,14 @@ the `audit` entry of `FEATURE_MAP.md` driven with `uv run chanchi` on a scratch 
   `harnesses.user_agent_path(...)`, creating parent folders (`mkdir(parents=True,
   exist_ok=True)`). Reports `written`, `unchanged`, `removed`, `conflicts`, `skipped_harnesses`.
 - **Manifest** `db_dir / "mirror.json"` (decision D3; `db_dir` is the folder of
-  `db.operational_path()`, created if missing): `{"version": 1, "entries": [{"owner":
-  "agents-link", "root", "path", "kind", "sha256"}]}`. The command writes or updates only paths
-  listed with owner `agents-link`; a file at a target path that is not in the manifest is a
-  conflict, and when any conflict exists nothing is written (`link_conflict`, the paths in
-  `details`). Entries of another owner are preserved byte for byte. An `agents-link` entry with the
+  `db.operational_path()`, created only by a normal `link`, never by `--check` or `--remove`; a
+  missing manifest means no owned entries): `{"version": 1, "entries": [{"owner":
+  "agents-link", "root", "path", "kind", "sha256"}]}`, where `root` is normalized with
+  `projects.main_worktree(root)` (falling back to the resolved path) so a worktree run and the
+  editable install record the same root. The command writes or updates only paths listed with
+  owner `agents-link` and the same `root`; a file at a target path that is not in the manifest, or
+  owned by another root or owner, is a conflict, and when any conflict exists nothing is written
+  (`link_conflict`, the paths in `details`). Entries of another owner are preserved byte for byte. An `agents-link` entry with the
   same `root` whose source no longer has `install: user` is removed; entries of another `root` are
   left alone.
 - `--check` writes nothing and fails with `stale_wrappers` when an owned file is missing or its
@@ -452,8 +458,11 @@ The researcher, from a scratch folder outside any repository, writes nothing but
    skill-chanchi-audit-rounds available to you? Answer yes or no and quote the first words of its
    description." and quotes the answers; also lists `agy agents` and `opencode debug agents` output
    lines naming `agent-chanchi-auditor`.
-3. Runs `chanchi agents link --user --check` (expected `ok: true`).
-4. Reports VERIFIED/UNVERIFIED per item.
+3. Runs `chanchi agents link --user --check` with the default `CHANCHI_DB` (expected `ok: true`).
+4. Proves the opencode auditor can write a report despite its read-only profile:
+   `opencode run --agent agent-chanchi-auditor -m opencode-go/minimax-m3 "Write the single line VERDICT: PASS to <scratch>/probe-report.md, then stop." < /dev/null`
+   and shows the file's content.
+5. Reports VERIFIED/UNVERIFIED per item.
 
 ### Task 8 (orchestrator): Backfill and acceptance signal
 
@@ -478,12 +487,14 @@ On the **operational database**, after S5 merges (independent of S6):
 4. Backfill this plan's own hand-run rounds the same way (kind `other`, ref
    `docs/superpowers/plans/2026-11-21-global-items-phase1.md`), from
    `docs/designs/reviews/global-items-phase1-plan/`.
-5. `chanchi audit show <id>` must reproduce each round's outcome (the phase-1 signal). Then
-   `chanchi change close global-items-phase1` and `chanchi show global-items-phase1`.
+5. `chanchi audit show <id>` must reproduce each round's outcome (the phase-1 signal).
+6. Only after S6 is audited (closed changes reject new sessions): `chanchi change close
+   global-items-phase1` and `chanchi show global-items-phase1`.
 
 **Out of this plan:** the design's second phase-1 signal ("the next design is audited with the
 commands") is met by the next design, which runs `skill-chanchi-audit-rounds` end to end. Lessons
-#1-#4 stay pending on purpose (owner's request); this plan neither reviews nor applies them.
+#1-#3 stay pending on purpose (owner's request), and so does #4 (kept as test data with them);
+this plan neither reviews nor applies any of them.
 
 ## Risks
 
@@ -492,6 +503,7 @@ commands") is met by the next design, which runs `skill-chanchi-audit-rounds` en
 | The SQL seeding and `family_for` drift | D7 test compares them on fixed and multi-segment ids |
 | A refactor of `agents_sync` changes committed wrappers | `render` wrapper unchanged; `agents sync --check` in the gate |
 | `agents link --user` overwrites a user's own agent, or drops chanchi's when run elsewhere | manifest ownership with `root`; foreign files are conflicts; root defaults to chanchi's repository |
+| opencode's read-only profile denies the auditor's report write | the auditor writes with the shell; Task 7 step 4 proves it |
 | agy's "read-only" tool list includes `write_to_file` and `run_command` | accepted: the auditor must write its report; the brief and the auditor body forbid editing the subject; a hook-based guard is out of scope |
 | Parallel S3 and S4 edit `cli.py`, `FEATURE_MAP.md`, `README.md` | different sections; the orchestrator merges S3 first and resolves S4 |
 | Backfill seats differ from history | Task 8 step 2: a scratch roster in history's order; stop rather than invent rows |
