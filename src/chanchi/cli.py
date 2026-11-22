@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sqlite3
 import sys
 from contextlib import closing
@@ -12,6 +13,7 @@ from pathlib import Path
 from chanchi import (
     __version__,
     agents_sync,
+    audits,
     catalog,
     db,
     lessons,
@@ -19,6 +21,7 @@ from chanchi import (
     record,
     scoring,
     skills_link,
+    sync,
     taxonomy,
 )
 from chanchi.errors import EXIT_OK, ChanchiError
@@ -415,6 +418,39 @@ def cmd_lesson_export(args):
     return payload
 
 
+# --- audit handlers ---------------------------------------------------------
+
+
+def cmd_audit_open(args):
+    roster = sync.roster()
+    with _conn() as conn:
+        return audits.open_audit(
+            conn, kind=args.kind, ref=args.ref, author=args.author, commit=args.commit,
+            version=args.version, change=args.change,
+            project_id=audits.resolve_project_id(conn, args.project),
+            roster=roster, which=shutil.which,
+        )
+
+
+def cmd_audit_unavailable(args):
+    roster = sync.roster()
+    with _conn() as conn:
+        return audits.mark_unavailable(
+            conn, args.id, round=args.round, seat=args.seat, reason=args.reason,
+            roster=roster, which=shutil.which,
+        )
+
+
+def cmd_audit_show(args):
+    with _conn() as conn:
+        return audits.show(conn, args.id)
+
+
+def cmd_audit_list(args):
+    with _conn() as conn:
+        return {"audits": audits.list_audits(conn, kind=args.kind, ref=args.ref)}
+
+
 # --- parser ----------------------------------------------------------------
 
 
@@ -650,6 +686,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--since", help="YYYY-MM-DD")
     p.add_argument("--limit", type=_int("limit"), default=20)
     read_scope(p)
+
+    g = group("audit", "redundant audits: three auditors of different model families")
+    p = leaf(g, "open", cmd_audit_open, "open an audit and seat three auditors from the roster")
+    p.add_argument("--kind", required=True, help=" | ".join(taxonomy.AUDIT_SUBJECT_KINDS))
+    p.add_argument("--ref", required=True, help="the subject: a path, an item name, <project>:<item>")
+    p.add_argument("--author", required=True, help="agent:model[:effort] that made the subject")
+    subject = p.add_mutually_exclusive_group(required=True)
+    subject.add_argument("--commit", help="the commit the first round audits")
+    subject.add_argument("--version", help="the item version the first round audits")
+    p.add_argument("--change", help="a chanchi change ref of the project (needs a project)")
+    p = leaf(g, "unavailable", cmd_audit_unavailable, "mark a seat's auditor unavailable and refill the seat", project=False)
+    p.add_argument("id", type=_int("id"))
+    p.add_argument("--round", required=True, type=_int("round"))
+    p.add_argument("--seat", required=True, type=_int("seat"))
+    p.add_argument("--reason", required=True, help="the error that stopped the auditor")
+    p = leaf(g, "show", cmd_audit_show, "every round, seat, vote, dissent and outcome of one audit", project=False)
+    p.add_argument("id", type=_int("id"))
+    p = leaf(g, "list", cmd_audit_list, "list audits with their last outcome", project=False)
+    p.add_argument("--kind")
+    p.add_argument("--ref")
 
     g = group("scoring", "scoring formulas")
     leaf(g, "explain", cmd_scoring_explain, "show current weights and formulas")

@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "chanchi"
-LEAVES = {"errors", "timeutil", "dedup", "hfsignals"}
+LEAVES = {"errors", "timeutil", "dedup", "hfsignals", "harnesses"}
 LEAF_MAY_IMPORT = {"errors"}
 
 

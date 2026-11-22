@@ -14,6 +14,7 @@ ERROR_CODES = frozenset(
         "unknown_model",
         "unknown_change",
         "unknown_session",
+        "unknown_audit",
         "duplicate",
         "missing_prerequisite",
         "project_not_detected",

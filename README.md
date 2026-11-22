@@ -136,6 +136,25 @@ Threat model in this version: `--as`, `--author` and `--conversation` are what t
 The checks stop an agent that declares its real role, not an agent that lies about it. Hooks that
 check the harness are planned for a later release.
 
+## Audits
+
+An audit has three auditors of different model families examine one subject (a design, an item,
+an adoption or a replication plan) in separate conversations. `chanchi audit open` seats them from
+the roster and prints, per seat, the model, its family and a headless launch line to run; chanchi
+itself never launches a harness. The roster is `SYNC/config/auditors.toml` when that file exists,
+else a built-in list of four auditors (`SYNC` is `CHANCHI_SYNC`, else `<main checkout>/SYNC`).
+
+```bash
+chanchi audit open --kind design --ref docs/designs/<topic>.md --author claude:opus:high --commit <sha>
+chanchi audit unavailable <audit-id> --round 1 --seat <n> --reason "<error>"   # refill a seat
+chanchi audit show <audit-id>
+chanchi audit list [--kind <k>] [--ref <ref>]
+```
+
+A round with fewer than three distinct known families is recorded as degraded; a model whose
+family is unknown never counts as distinct (`chanchi models set <agent:model> --family <name>`).
+Design: `docs/designs/global-items.md`.
+
 ## Exploration
 
 At `low` and `medium` complexity, `chanchi recommend` also returns an `explore` list of up to 3 models where no listed effort has 3 or more audited sessions of the requested task type (excluding the `recommendation` model and models red-flagged on 3 or more sessions). This lets planners gather initial audits for untested models without changing the evidence-based `recommendation`.
