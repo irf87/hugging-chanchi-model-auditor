@@ -94,7 +94,8 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   `docs/designs/global-items.md`.
 - How other projects use chanchi today: they get skills through `chanchi skills link`, are
   identified from git and `chanchi project register` (chanchi writes nothing into their
-  repository except skill links), and only their orchestrating role writes chanchi records, into
+  repository except skill links, and `chanchi items scan` reads their item folders without
+  writing), and only their orchestrating role writes chanchi records, into
   one shared database. Helping them build their own items is a later phase (TODO list in the
   design).
 

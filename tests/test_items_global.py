@@ -75,8 +75,8 @@ def codes(result):
     return sorted((p["item"], p["code"]) for p in result["problems"])
 
 
-def problems_for(root, *, own=()):
-    return items.check(root, own_names=list(own))
+def problems_for(root, *, own=(), project=()):
+    return items.check(root, own_names=list(own), project_names=list(project))
 
 
 def frame(rel: str, data: bytes) -> bytes:
@@ -296,6 +296,15 @@ def test_own_item_collision(root):
     assert codes(problems_for(root, own=[NAME_SKILL])) == [(NAME_SKILL, "own_item_collision")]
 
 
+def test_project_item_collision(root):
+    make_skill(root)
+    make_agent(root)
+    assert codes(problems_for(root, project=[NAME_SKILL, "other"])) == [(NAME_SKILL, "project_item_collision")]
+    assert codes(problems_for(root, project=[NAME_SKILL, NAME_AGENT])) == [
+        (NAME_AGENT, "project_item_collision"), (NAME_SKILL, "project_item_collision")]
+    assert problems_for(root)["problems"] == []
+
+
 def test_stray_entries_in_items_and_in_kind_folders(root):
     make_skill(root)
     (root / "ITEMS" / "notes.txt").write_text("x")
@@ -512,6 +521,17 @@ def test_next_round_of_an_item_audit_records_the_new_hash(cat, root):
 
 def publish(conn, root, name=NAME_SKILL, audit_id=1, today="2026-11-23", own=()):
     return items.publish(conn, root, name, audit_id=audit_id, own_names=list(own), today=today)
+
+
+def test_publish_refuses_an_item_named_like_a_project_item(cat, root):
+    make_skill(root)
+    aid = accepted_audit(cat, root)
+    with pytest.raises(ChanchiError) as exc:
+        items.publish(cat, root, NAME_SKILL, audit_id=aid, own_names=[], project_names=[NAME_SKILL])
+    assert exc.value.code == "invalid_value"
+    assert [p["code"] for p in exc.value.details["problems"]] == ["project_item_collision"]
+    assert "status: \"draft\"" in (root / "ITEMS" / "skills" / NAME_SKILL / "SKILL.md").read_text()
+    assert items.publish(cat, root, NAME_SKILL, audit_id=aid, own_names=[], today="2026-11-23")["status"] == "published"
 
 
 def refused(conn, root, code, **kw):
@@ -848,3 +868,79 @@ def test_taxonomy_lists_item_statuses_and_kinds():
 def test_layers_items_never_imports_audits():
     imports = Path(items.__file__).read_text(encoding="utf-8")
     assert "import audits" not in imports and "from chanchi.audits" not in imports
+
+
+# --- project item collisions (CLI) ---------------------------------------------------
+
+
+@pytest.fixture
+def collision_env(cli_env, tmp_path, monkeypatch):
+    """SYNC with a draft skill, and a registered project that holds a skill of the same name."""
+    import subprocess
+
+    from chanchi import db as chanchi_db
+
+    root = tmp_path / "SYNC"
+    (root / "ITEMS" / "agents").mkdir(parents=True)
+    make_skill(root)
+    repo = tmp_path / "project-a"
+    folder = repo / ".agents" / "skills" / NAME_SKILL
+    folder.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (folder / "SKILL.md").write_text(f"---\nname: {NAME_SKILL}\ndescription: Project copy.\n---\n")
+    monkeypatch.chdir(repo)
+    run(cli_env, "project", "register")
+    scan = run(cli_env, "items", "scan")
+    assert scan["projects"][0]["added"] == 1
+    assert chanchi_db.operational_path().exists()
+    return cli_env, root
+
+
+def test_cli_check_and_publish_report_the_collision(collision_env):
+    capsys, root = collision_env
+    error = run(capsys, "items", "check", expect=2)["error"]
+    assert error["code"] == "invalid_value" and error["field"] == "items"
+    assert [(p["item"], p["code"]) for p in error["details"]["problems"]] == [(NAME_SKILL, "project_item_collision")]
+    aid = run(capsys, "audit", "open", "--kind", "item", "--ref", NAME_SKILL, "--author", "claude:opus:unknown",
+              "--version", "0.1.0")["audit_id"]
+    for seat in (1, 2, 3):
+        run(capsys, "audit", "vote", str(aid), "--round", "1", "--seat", str(seat), "--verdict", "pass",
+            "--blocking", "0", "--major", "0", "--minor", "0", "--report", "fixture")
+    run(capsys, "audit", "close", str(aid), "--round", "1")
+    refused = run(capsys, "items", "publish", NAME_SKILL, "--audit", str(aid), expect=2)["error"]
+    assert refused["code"] == "invalid_value"
+    assert [p["code"] for p in refused["details"]["problems"]] == ["project_item_collision"]
+
+
+def test_cli_mirror_refuses_the_collision_and_remove_ignores_it(collision_env, tmp_path, monkeypatch):
+    capsys, root = collision_env
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("OPENCODE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    error = run(capsys, "items", "mirror", expect=2)["error"]
+    assert error["code"] == "invalid_value"
+    assert [p["code"] for p in error["details"]["problems"]] == ["project_item_collision"]
+    checked = run(capsys, "items", "mirror", "--check", expect=2)["error"]
+    assert checked["code"] == "stale_wrappers"
+    assert [p["code"] for p in checked["details"]["problems"]] == ["project_item_collision"]
+    assert not (home / ".agents").exists()
+    assert run(capsys, "items", "mirror", "--remove")["removed"] == []
+
+
+def test_cli_read_only_item_commands_never_create_the_database(db_env, tmp_path, monkeypatch, capsys):
+    root = tmp_path / "SYNC"
+    (root / "ITEMS" / "agents").mkdir(parents=True)
+    make_skill(root)
+    monkeypatch.setenv("CHANCHI_SYNC", str(root))
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("OPENCODE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    assert not db_env.exists()
+    assert run(capsys, "items", "check")["problems"] == []
+    assert run(capsys, "items", "mirror", "--check")["written"] == []
+    assert run(capsys, "items", "mirror", "--remove")["removed"] == []
+    assert not db_env.exists()

@@ -17,6 +17,7 @@ from chanchi import (
     audits,
     catalog,
     db,
+    inventory,
     items,
     lessons,
     projects,
@@ -337,6 +338,20 @@ def cmd_project_show(args):
         return projects.show(conn, slug)
 
 
+def cmd_project_items_dirs(args):
+    with _conn() as conn:
+        scope = projects.resolve_scope(conn, project=args.project)
+        result: dict = {"project": scope.slug, "defaults": list(inventory.DEFAULT_ROOTS)}
+        if args.add is not None:
+            root = inventory.require_root(conn, scope.project_id, scope.slug)
+            result.update(inventory.add_item_dir(conn, scope.project_id, root, args.add))
+        elif args.remove is not None:
+            result.update(inventory.remove_item_dir(conn, scope.project_id, args.remove))
+        # `dirs` last so it shows the state after the change
+        result["dirs"] = inventory.item_dirs(conn, scope.project_id)
+        return result
+
+
 def cmd_project_writers(args):
     with _conn() as conn:
         slug = _project_arg(args)
@@ -505,8 +520,21 @@ def cmd_audit_round(args):
 # --- items handlers ---------------------------------------------------------
 
 
+def _project_names(*, wanted: bool = True) -> list[str]:
+    """Names of scanned project items, only when the operational database already exists.
+
+    Read-only commands (`items check`, `items mirror --check`) must never create it; without a database
+    there is no scan data and no collision to report.
+    """
+    if not wanted or not db.operational_path().exists():
+        return []
+    with _conn() as conn:
+        return inventory.project_item_names(conn)
+
+
 def cmd_items_check(args):
-    result = items.check(sync.require(), own_names=items.own_names())
+    root = sync.require()
+    result = items.check(root, own_names=items.own_names(), project_names=_project_names())
     if result["problems"]:
         raise ChanchiError(
             "invalid_value",
@@ -525,7 +553,8 @@ def cmd_items_list(args):
 def cmd_items_publish(args):
     root = sync.require()
     with _conn() as conn:
-        return items.publish(conn, root, args.name, audit_id=args.audit, own_names=items.own_names())
+        return items.publish(conn, root, args.name, audit_id=args.audit, own_names=items.own_names(),
+                             project_names=inventory.project_item_names(conn))
 
 
 def cmd_items_retire(args):
@@ -538,7 +567,13 @@ def cmd_items_mirror(args):
                            hint="pass either --check or --remove, not both")
     root = None if args.remove else sync.require()  # --remove works without SYNC
     return items.mirror(root, env=os.environ, home=Path.home(), db_dir=db.operational_path().parent,
-                        own_names=items.own_names(), check=args.check, remove=args.remove)
+                        own_names=items.own_names(), project_names=_project_names(wanted=not args.remove),
+                        check=args.check, remove=args.remove)
+
+
+def cmd_items_scan(args):
+    with _conn() as conn:
+        return inventory.scan(conn, project=args.project)
 
 
 # --- parser ----------------------------------------------------------------
@@ -719,6 +754,10 @@ def build_parser() -> argparse.ArgumentParser:
     leaf(g, "list", cmd_project_list, "list registered projects", project=False)
     p = leaf(g, "show", cmd_project_show, "show one project: locations, writer roles, lesson counts")
     p.add_argument("slug", nargs="?", help="default: the registered project for this directory")
+    p = leaf(g, "items-dirs", cmd_project_items_dirs, "list, add or remove the extra folders `items scan` reads")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--add", metavar="PATH", help="a folder below the project root (no links, no '..')")
+    mode.add_argument("--remove", metavar="PATH", help="stop scanning a folder added with --add")
     p = leaf(g, "writers", cmd_project_writers, "show or set the roles that may write lessons")
     p.add_argument("slug", nargs="?", help="default: the registered project for this directory")
     p.add_argument("--global", dest="global_", action="store_true", help="the global writer roles")
@@ -845,6 +884,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name", help="the item: <agent|skill>-chanchi-global-<name>")
     p.add_argument("--replaced-by", dest="replaced_by", help="the item that replaces it (same kind, not retired)")
     p.add_argument("--reason", required=True, help="why the item is retired")
+    p = leaf(g, "scan", cmd_items_scan, "fingerprint the item folders of registered projects (read-only on projects)", project=False)
+    p.add_argument("--project", default=None, metavar="SLUG", help="scan only this registered project (default: all)")
     p = leaf(g, "mirror", cmd_items_mirror, "expose published items to the installed harnesses", project=False)
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="write nothing; fail if the mirror is stale")
