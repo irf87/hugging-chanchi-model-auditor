@@ -59,8 +59,11 @@ committed wrappers for Claude Code (`.claude/agents/`), opencode (`.opencode/age
 (`.agents/agents/`). Never edit a wrapper by hand:
 
 ```bash
-chanchi agents sync            # regenerate the wrappers after editing a source
-chanchi agents sync --check    # fail if any wrapper is stale (part of scripts/check)
+chanchi agents sync                  # regenerate the wrappers after editing a source
+chanchi agents sync --check          # fail if any wrapper is stale (part of scripts/check)
+chanchi agents link --user           # compile install: user agents into installed user harness folders
+chanchi agents link --user --check   # fail if user wrappers or manifest are stale
+chanchi agents link --user --remove  # remove user wrappers owned by this repository
 ```
 
 - `agent-chanchi-orchestrator` — plans, assigns executors, audits, records, merges.
