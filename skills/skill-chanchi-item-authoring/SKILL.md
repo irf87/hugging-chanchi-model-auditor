@@ -26,11 +26,12 @@ this and fails when an operational file names an item that does not exist.
 
 Frontmatter: `name`, `description` (what it does and what it never does), `scope`
 (`main`, `subagent`, `both`), `profile` (`read-only`, `workspace-write`, `orchestrator`),
+`install` (optional: `repo` default, or `user` to also compile into installed user harness folders),
 `skills: [a, b]`. One `key: value` per line, no comments. The body is the role, harness neutral.
 Never put a model in it: the orchestrator picks models with `chanchi recommend`.
 
-After editing a source, run `chanchi agents sync` (inside this repository: `uv run chanchi agents sync`), then commit
-the source and the wrappers.
+After editing a source, run `chanchi agents sync` (inside this repository: `uv run chanchi agents sync`),
+and `chanchi agents link --user` when `install: user`, then commit the source and the wrappers.
 
 ## Rule or check?
 

@@ -25,6 +25,7 @@ def frontmatter(path: Path) -> dict:
 
 def test_all_skills_exist():
     assert [p.parent.name for p in SKILL_FILES] == [
+        "skill-chanchi-audit-rounds",
         "skill-chanchi-item-authoring",
         "skill-chanchi-lessons",
         "skill-chanchi-model-selection",
