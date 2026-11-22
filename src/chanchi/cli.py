@@ -143,6 +143,14 @@ def cmd_agents_sync(args):
     return agents_sync.sync(root, check=args.check)
 
 
+def cmd_agents_link(args):
+    if not args.user:
+        raise ChanchiError("invalid_value", "`chanchi agents link` requires --user in this version", field="user",
+                           hint="chanchi agents link --user")
+    root = Path(args.root) if args.root else agents_sync.repo_root()
+    return agents_sync.link_user(root, check=args.check, remove=args.remove)
+
+
 def cmd_change_open(args):
     with _conn() as conn:
         slug, path = projects.identify(args.project, conn=conn)
@@ -569,6 +577,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = leaf(g, "sync", cmd_agents_sync, "write the generated agent wrappers", project=False)
     p.add_argument("path", nargs="?", help="repository root (default: git top level)")
     p.add_argument("--check", action="store_true", help="write nothing; fail if any wrapper is stale")
+    p = leaf(g, "link", cmd_agents_link, "compile install: user agents into user harness folders", project=False)
+    p.add_argument("root", nargs="?", help="repository root (default: chanchi's repository)")
+    p.add_argument("--user", action="store_true", help="link agents with install: user into user harness folders")
+    p.add_argument("--check", action="store_true", help="write nothing; fail if user agent wrappers are stale")
+    p.add_argument("--remove", action="store_true", help="remove user agent wrappers owned by this root")
 
     g = group("change", "OpenSpec or adhoc changes")
     p = leaf(g, "open", cmd_change_open, "open a change (creates the project on first use)")

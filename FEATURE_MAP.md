@@ -110,23 +110,38 @@ Covered by: tests/test_skills_link.py, tests/test_cli.py
 ## agents
 
 ### Sub-features
-`agents sync`
+`agents sync`, `agents link`
 
 ### How to get to it
-Run from `<repo>` (the chanchi repository root) or pass `<repo>` as the path argument.
+For `agents sync`, run from `<repo>` (the chanchi repository root) or pass `<repo>` as the path argument.
+For `agents link --user`, set a scratch `HOME` and scratch `CHANCHI_DB` (never the real home):
+
+    export CHANCHI_DB="$(mktemp -d)/chanchi.db"
+    scratch_home="$(mktemp -d)"
+    mkdir -p "$scratch_home/.claude" "$scratch_home/.gemini"
 
 ### Driving it
     chanchi agents sync --check <repo>
+    HOME="$scratch_home" OPENCODE_CONFIG_DIR="" XDG_CONFIG_HOME="" chanchi agents link --user
+    HOME="$scratch_home" OPENCODE_CONFIG_DIR="" XDG_CONFIG_HOME="" chanchi agents link --user --check
+    HOME="$scratch_home" OPENCODE_CONFIG_DIR="" XDG_CONFIG_HOME="" chanchi agents link --user --remove
 
 ### Evidence
-Returns `ok: true` with `agents` listing each compiled `agent-chanchi-*`, empty `written` and
-`removed`, and all generated `.claude/agents/`, `.opencode/agents/` and `.agents/agents/` wrappers
-listed in `unchanged`.
+`agents sync --check` returns `ok: true` with `agents` listing each compiled `agent-chanchi-*`, empty
+`written` and `removed`, and all generated `.claude/agents/`, `.opencode/agents/` and
+`.agents/agents/` wrappers listed in `unchanged`.
+`agents link --user` compiles sources with `install: user` into installed user harness folders
+(reporting `written`, `unchanged`, `removed`, `conflicts`, and missing harnesses in `skipped_harnesses`)
+and records ownership in `mirror.json` next to `CHANCHI_DB`; `--check` verifies without writing;
+`--remove` deletes entries owned by that root.
 Covered by: tests/test_agents_sync.py, tests/test_cli.py
 
 ### Gotchas
 - Edit `agents/<name>/AGENT.md`, never the generated wrappers; run `chanchi agents sync` to regenerate.
-- `--check` fails with `stale_wrappers` if any wrapper is out of date or orphaned.
+- `--check` fails with `stale_wrappers` if any wrapper is out of date, missing, orphaned, or conflicts.
+- `agents link` requires `--user` (`--check` and `--remove` are mutually exclusive); never target the
+  real home during automated verification.
+- Existing or foreign-owned files at target paths raise `link_conflict` without writing anything.
 
 ## change
 
