@@ -10,8 +10,9 @@ from __future__ import annotations
 import shutil
 import sqlite3
 from collections.abc import Callable
+from pathlib import Path
 
-from chanchi import harnesses, modelspec, projects, taxonomy
+from chanchi import harnesses, items, modelspec, projects, taxonomy
 from chanchi.db import transaction
 from chanchi.errors import ChanchiError
 from chanchi.timeutil import utc_now
@@ -263,6 +264,27 @@ def _subject_at(commit: str | None, version: str | None) -> str:
     return _text("commit" if commit is not None else "version", commit if commit is not None else version)
 
 
+def _round_subject(
+    kind: str, ref: str, commit: str | None, version: str | None, sync_root: Path | None
+) -> str:
+    """`subject_at` of a round: `<version>@<content hash>` for an item (decision D6), else commit or version."""
+    if kind != "item":
+        return _subject_at(commit, version)
+    if commit is not None:
+        raise ChanchiError(
+            "invalid_value",
+            "an item audit takes --version, not --commit",
+            field="commit",
+            hint="--version <x.y.z> of the item; chanchi records the content hash",
+        )
+    if version is None:
+        raise ChanchiError(
+            "invalid_value", "an item audit needs --version <x.y.z>", field="version",
+            hint="the item's current version: `chanchi items list`",
+        )
+    return items.subject_at(sync_root, ref, _text("version", version))
+
+
 def _round_row(conn: sqlite3.Connection, audit_id: int, round_no: int) -> sqlite3.Row:
     rnd = conn.execute(
         "SELECT * FROM audit_rounds WHERE audit_id = ? AND round = ?", (audit_id, round_no)
@@ -385,12 +407,13 @@ def open_audit(
     roster: list[dict],
     which: Which = shutil.which,
     now: str | None = None,
+    sync_root: Path | None = None,
 ) -> dict:
     """Create an audit and its round 1, then fill the three seats from the roster."""
     taxonomy.validate_choice("kind", kind, taxonomy.AUDIT_SUBJECT_KINDS)
     ref = _text("ref", ref)
     author = _text("author", author)
-    subject_at = _subject_at(commit, version)
+    subject_at = _round_subject(kind, ref, commit, version, sync_root)
     stamp = now or utc_now()
     with transaction(conn):
         change_id = _change_id(conn, project_id, change) if change is not None else None
@@ -653,10 +676,11 @@ def next_round(
     roster: list[dict],
     which: Which = shutil.which,
     now: str | None = None,
+    sync_root: Path | None = None,
 ) -> dict:
     """Open the next round with the same seats when still available, refilling any gaps."""
-    _audit_row(conn, audit_id)
-    subject_at = _subject_at(commit, version)
+    audit = _audit_row(conn, audit_id)
+    subject_at = _round_subject(audit["subject_kind"], audit["subject_ref"], commit, version, sync_root)
     stamp = now or utc_now()
     with transaction(conn):
         last = conn.execute(

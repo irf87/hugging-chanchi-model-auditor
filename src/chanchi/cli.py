@@ -16,6 +16,7 @@ from chanchi import (
     audits,
     catalog,
     db,
+    items,
     lessons,
     projects,
     record,
@@ -447,7 +448,7 @@ def cmd_audit_open(args):
             conn, kind=args.kind, ref=args.ref, author=args.author, commit=args.commit,
             version=args.version, change=args.change,
             project_id=audits.resolve_project_id(conn, args.project),
-            roster=roster, which=shutil.which,
+            roster=roster, which=shutil.which, sync_root=sync.sync_dir(),
         )
 
 
@@ -496,7 +497,38 @@ def cmd_audit_round(args):
     with _conn() as conn:
         return audits.next_round(
             conn, args.id, commit=args.commit, version=args.version, roster=roster, which=shutil.which,
+            sync_root=sync.sync_dir(),
         )
+
+
+# --- items handlers ---------------------------------------------------------
+
+
+def cmd_items_check(args):
+    result = items.check(sync.require(), own_names=items.own_names())
+    if result["problems"]:
+        raise ChanchiError(
+            "invalid_value",
+            f"{len(result['problems'])} problem(s) in SYNC/ITEMS",
+            field="items",
+            hint="fix every listed problem, then run `chanchi items check` again",
+            details={"problems": result["problems"]},
+        )
+    return {"items": [item.to_dict() for item in result["items"]], "problems": []}
+
+
+def cmd_items_list(args):
+    return {"items": items.list_items(sync.require())}
+
+
+def cmd_items_publish(args):
+    root = sync.require()
+    with _conn() as conn:
+        return items.publish(conn, root, args.name, audit_id=args.audit, own_names=items.own_names())
+
+
+def cmd_items_retire(args):
+    return items.retire(sync.require(), args.name, reason=args.reason, replaced_by=args.replaced_by)
 
 
 # --- parser ----------------------------------------------------------------
@@ -792,6 +824,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = leaf(g, "init", cmd_sync_init, "initialize SYNC/config and SYNC/ITEMS", project=False)
     p.add_argument("--link", metavar="DIR", help="symlink SYNC to an existing or new directory")
     leaf(g, "status", cmd_sync_status, "show SYNC location, symlink target and reachability", project=False)
+
+    g = group("items", "global agents and skills in SYNC/ITEMS")
+    leaf(g, "check", cmd_items_check, "validate SYNC/ITEMS: names, frontmatter, versions, hashes, retirements", project=False)
+    leaf(g, "list", cmd_items_list, "list global items with version, status and hashes", project=False)
+    p = leaf(g, "publish", cmd_items_publish, "publish a draft item after an accepted item audit", project=False)
+    p.add_argument("name", help="the item: <agent|skill>-chanchi-global-<name>")
+    p.add_argument("--audit", required=True, type=_int("audit"), help="the id of the accepted `item` audit")
+    p = leaf(g, "retire", cmd_items_retire, "retire an item and record it in retired.json", project=False)
+    p.add_argument("name", help="the item: <agent|skill>-chanchi-global-<name>")
+    p.add_argument("--replaced-by", dest="replaced_by", help="the item that replaces it (same kind, not retired)")
+    p.add_argument("--reason", required=True, help="why the item is retired")
     return parser
 
 

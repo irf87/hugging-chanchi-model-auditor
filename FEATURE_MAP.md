@@ -348,6 +348,9 @@ Covered by: tests/test_lessons.py, tests/test_cli_integration.py
     chanchi audit round 1 --commit def5678
     chanchi audit show 1
     chanchi audit list --kind design
+    # the item form (needs SYNC and an item in it; see the `items` entry for the fixture):
+    chanchi audit open --kind item --ref skill-chanchi-global-demo --author claude:opus:unknown --version 0.1.0
+    chanchi audit round <id> --version 0.1.0
 
 ### Evidence
 `audit open` prints `audit_id` `1`, `round` `1`, `degraded` and a `seats` list of three entries
@@ -363,8 +366,10 @@ a confirmed lone major dissent; on `accepted`, `minor_fixes` lists approving min
 confirmed lone minors); `audit round` opens round `2` with the same seats when still available;
 `audit show 1` then lists round 1 (including the unavailable row, replacement, votes, dissent and
 outcome) and round 2; `audit list` shows the audit with its round count and last outcome. The roster
-is `SYNC/config/auditors.toml` when it exists, else the built-in one.
-Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py
+is `SYNC/config/auditors.toml` when it exists, else the built-in one. An `item` audit takes
+`--version` (never `--commit`) and records each round's `subject_at` as `<version>@<content hash>`,
+computed from the item in `SYNC/ITEMS`; `audit show` prints it.
+Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py, tests/test_items_global.py
 
 ### Gotchas
 - `chanchi` never launches a harness: `launch` is a line the orchestrator runs, one conversation per seat.
@@ -377,6 +382,10 @@ Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py
   `audit unavailable` refuse on a closed round (`invalid_transition`).
 - `audit round` refuses unless the last round is closed with `fix` or `rework` and is below round 3.
 - An audit is `unknown_audit` when its id does not exist.
+- `audit open --kind item` and `audit round` on an item audit need `SYNC` (`missing_prerequisite`, hint
+  `chanchi sync init`), an existing global item as `--ref` and that item's current version
+  (`invalid_value`, `field` `ref` or `version`); `--commit` on an item audit is `invalid_value`.
+  Every other kind works without `SYNC`.
 
 ## scoring
 
@@ -425,3 +434,63 @@ Covered by: tests/test_sync.py, tests/test_cli.py
 - Without `CHANCHI_SYNC`, `SYNC` resolves to `<main checkout>/SYNC` across every git worktree of this repository (ignored by `.gitignore`).
 - `sync init --link` refuses with `link_conflict` if anything already exists at `SYNC`; plain `sync init` is idempotent on an existing `SYNC` directory, refuses a file at `SYNC` (`link_conflict`), and refuses a dangling link (`missing_prerequisite`).
 - `sync init --link` to an existing non-directory raises `invalid_value` (`field: "link"`).
+
+## items
+
+### Sub-features
+`items check`, `items list`, `items publish`, `items retire`
+
+### How to get to it
+    export CHANCHI_DB="$(mktemp -d)/chanchi.db"
+    export CHANCHI_SYNC="$(mktemp -d)/SYNC"
+    chanchi sync init
+    chanchi models add --agent claude --model sonnet --cost 2 --efforts low,medium,high
+    chanchi models add --agent agy --model gemini-4-neon-high --cost 2 --efforts high
+    chanchi models add --agent opencode --model opencode-go/minimax-m3 --cost 1
+    item="$CHANCHI_SYNC/ITEMS/skills/skill-chanchi-global-demo" && mkdir -p "$item"
+    printf -- '---\nname: skill-chanchi-global-demo\ndescription: Demo skill.\nmetadata:\n  version: "0.1.0"\n  status: "draft"\n---\n\n# Demo\n' > "$item/SKILL.md"
+    printf -- '# Changelog\n\n## 0.1.0 — 2026-11-22\n\n- First draft.\n' > "$item/CHANGELOG.md"
+
+### Driving it
+    chanchi items check
+    chanchi items list
+    chanchi audit open --kind item --ref skill-chanchi-global-demo --author claude:opus:unknown --version 0.1.0
+    chanchi audit vote 1 --round 1 --seat 1 --verdict pass --blocking 0 --major 0 --minor 0 --report fixture   # seats 2 and 3 too
+    chanchi audit close 1 --round 1
+    chanchi items publish skill-chanchi-global-demo --audit 1
+    chanchi items list
+    chanchi items check
+    chanchi items retire skill-chanchi-global-demo --reason "demo is over"
+
+### Evidence
+`items check` prints `problems` `[]` and one entry per item (`name`, `kind`, `version`, `status`, `hash`,
+`published_hash`); with problems it fails once with `invalid_value`, `field` `items` and every problem in
+`details.problems` (`{item, code, detail}`). `items list` prints every item with `retired` and never fails
+on a broken item (unreadable fields are `null`). After `audit close` returns `accepted`, `items publish`
+prints `{name, version, status: published, audit_id, audited_hash, hash}`: `hash` differs from
+`audited_hash` because the status line changed, and `CHANGELOG.md` gains the line
+`Published: <date> · audit <id> · audited <hash> · sha256 <hash>` inside the current version's section.
+The next `items list` shows `status` `published` and `published_hash` equal to `hash`; `items check` still
+passes. `items retire` rewrites the status to `retired` and appends `{name, version, replaced_by, date,
+reason}` to `ITEMS/retired.json` (created when missing); `items list` then shows `retired` `true`.
+Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py
+
+### Gotchas
+- Every command needs `SYNC` (`missing_prerequisite`, hint `chanchi sync init`).
+- A global item is `<agent|skill>-chanchi-global-<name>` under `ITEMS/agents/` or `ITEMS/skills/`. An
+  `AGENT.md` keeps flat `key: value` lines and gains `version: <x.y.z>` and `status: draft|published|retired`
+  (never copied into wrappers); a `SKILL.md` carries them in a `metadata:` block of two-space-indented lines.
+- The content hash covers every regular file except `CHANGELOG.md`, paths with a component starting with `.`
+  and cloud conflict copies; a symlink inside an item is a `symlink` problem.
+- `items publish` refusals, in order: unknown item or name (`invalid_value`), retired or listed in
+  `retired.json` (`invalid_transition`), already published (`invalid_transition`: write the next version as
+  `draft`), `items check` problems for the item or a malformed `retired.json` (`invalid_value`), unknown audit
+  (`unknown_audit`), an audit that is not an `item` audit of this name (`invalid_value`, `field` `audit`), a last
+  round that is not `accepted` at the item's current `<version>@<draft hash>` (`invalid_transition`: any edit
+  after the audit needs a new round or a new version).
+- A published item that is edited reports `edited_after_publish`; `status: published` set by hand, with no
+  `Published:` line, reports `published_without_record`. Retired and draft items are exempt.
+- `items retire` refuses a blank reason, a retired item (`invalid_transition`), `--replaced-by` that is the item
+  itself, does not exist, is retired or is of another kind (`invalid_value`), and an item whose name,
+  frontmatter, version or status cannot be read; a draft may be retired. A retired name set back to another
+  status fails `items check` (`retired_not_retired`).

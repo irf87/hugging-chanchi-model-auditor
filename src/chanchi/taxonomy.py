@@ -186,6 +186,11 @@ AUDIT_OUTCOMES = ("accepted", "fix", "rework", "escalated")
 AUDIT_ESCALATIONS = ("quorum", "round_cap")
 SEAT_STATUSES = ("assigned", "voted", "unavailable")
 
+# Global items (phase 2): statuses, the folder of each kind under SYNC/ITEMS, and the version form.
+ITEM_STATUSES = ("draft", "published", "retired")
+ITEM_KINDS = {"agents": "agent", "skills": "skill"}
+ITEM_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+
 # Model families (decision D7): the last `/`-separated segment of a model id, lowercased, matched
 # by prefix. Migration 005 seeds models.family with the same rule in SQL; a test holds both equal.
 FAMILY_PREFIXES = (
@@ -313,5 +318,9 @@ def describe() -> dict:
             "outcomes": list(AUDIT_OUTCOMES),
             "escalations": list(AUDIT_ESCALATIONS),
             "seat_statuses": list(SEAT_STATUSES),
+        },
+        "items": {
+            "statuses": list(ITEM_STATUSES),
+            "kinds": dict(ITEM_KINDS),
         },
     }

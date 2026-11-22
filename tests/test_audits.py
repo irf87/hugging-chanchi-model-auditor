@@ -63,7 +63,7 @@ def test_three_families_seat_three_distinct_families(cat):
 
 def test_version_subject_and_author_resolution(cat):
     cat.execute("INSERT INTO models (agent, model, cost_tier, active, created_at) VALUES ('claude','opus',3,1,'t')")
-    result = open_(cat, commit=None, version="1.2.0", kind="item", ref="skill-chanchi-global-x")
+    result = open_(cat, commit=None, version="1.2.0", kind="other", ref="skill-chanchi-global-x")
     audit = cat.execute("SELECT * FROM audits WHERE id = ?", (result["audit_id"],)).fetchone()
     assert audit["author_raw"] == "claude:opus:high" and audit["author_model_id"] is not None
     rnd = cat.execute("SELECT subject_at FROM audit_rounds WHERE audit_id = ?", (audit["id"],)).fetchone()
@@ -270,9 +270,9 @@ def test_show_unknown_audit(cat):
 
 def test_list_filters(cat):
     a = open_(cat)
-    b = open_(cat, kind="item", ref="skill-chanchi-global-x", commit=None, version="0.1.0")
+    b = open_(cat, kind="other", ref="skill-chanchi-global-x", commit=None, version="0.1.0")
     assert [r["id"] for r in audits.list_audits(cat)] == [a["audit_id"], b["audit_id"]]
-    only = audits.list_audits(cat, kind="item")
+    only = audits.list_audits(cat, kind="other")
     assert [(r["id"], r["rounds"], r["outcome"]) for r in only] == [(b["audit_id"], 1, None)]
     assert [r["id"] for r in audits.list_audits(cat, ref="docs/designs/x.md")] == [a["audit_id"]]
     with pytest.raises(ChanchiError):
@@ -342,7 +342,7 @@ def test_cli_roster_comes_from_sync_when_present(cli_env, tmp_path, monkeypatch)
     )
     monkeypatch.setenv("CHANCHI_SYNC", str(sync_dir))
     opened = ok(
-        cli_env, "audit", "open", "--kind", "item", "--ref", "x", "--author", "human", "--version", "0.1.0"
+        cli_env, "audit", "open", "--kind", "other", "--ref", "x", "--author", "human", "--version", "0.1.0"
     )
     assert [s["spec"] for s in opened["seats"]] == ["agy:gemini-4-hydrogen-high:high", "claude:sonnet:low"]
     assert opened["outcome"] is None and opened["degraded"] is True
@@ -591,7 +591,7 @@ def test_next_round_quorum_escalation(cat):
 
 
 def test_next_round_version_and_deactivated_model_refill(cat):
-    aid = open_(cat, kind="item", ref="skill-chanchi-global-x", commit=None, version="0.1.0")["audit_id"]
+    aid = open_(cat, kind="other", ref="skill-chanchi-global-x", commit=None, version="0.1.0")["audit_id"]
     _vote_all(cat, aid, round=1, specs_votes={
         1: ("pass_with_fixes", 0, 1, 0, "/tmp/1.md"),
         2: ("pass_with_fixes", 0, 1, 0, "/tmp/2.md"),

@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from chanchi import db, harnesses, projects
+from chanchi import db, harnesses, projects, taxonomy
 from chanchi.errors import ChanchiError
 
 SCOPES = ("main", "subagent", "both")
@@ -49,6 +49,15 @@ class AgentSource:
     skills: list[str]
     body: str
     install: str = "repo"
+    version: str | None = None
+    status: str | None = None
+
+
+def unquote(value: str) -> str:
+    """Strip one pair of matching surrounding quotes."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
 
 
 def _parse(path: Path) -> AgentSource:
@@ -79,12 +88,22 @@ def _parse(path: Path) -> AgentSource:
     install = fields.get("install", "repo")
     if install not in INSTALLS:
         raise ChanchiError("invalid_value", f"{path}: unknown install", field="install", valid_values=INSTALLS)
+    version = status = None
+    if "version" in fields:
+        version = unquote(fields["version"])
+        if not taxonomy.ITEM_VERSION.match(version):
+            raise ChanchiError("invalid_value", f"{path}: version must be <major>.<minor>.<patch>", field="version")
+    if "status" in fields:
+        status = unquote(fields["status"])
+        if status not in taxonomy.ITEM_STATUSES:
+            raise ChanchiError("invalid_value", f"{path}: unknown status", field="status",
+                               valid_values=taxonomy.ITEM_STATUSES)
     raw_skills = fields.get("skills", "[]")
     if not (raw_skills.startswith("[") and raw_skills.endswith("]")):
         raise ChanchiError("invalid_value", f"{path}: skills must be [a, b]", field="skills")
     skills = [s.strip() for s in raw_skills[1:-1].split(",") if s.strip()]
     return AgentSource(fields["name"], fields["description"], fields["scope"], fields["profile"], skills,
-                       body.strip() + "\n", install=install)
+                       body.strip() + "\n", install=install, version=version, status=status)
 
 
 def load_sources(agents_dir: Path) -> list[AgentSource]:
