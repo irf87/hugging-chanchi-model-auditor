@@ -307,6 +307,46 @@ Covered by: tests/test_lessons.py, tests/test_cli_integration.py
 - `--global` requires `generality: agnostic`.
 - The reviewing conversation must differ from the author's (`self_review` error).
 
+## audit
+
+### Sub-features
+`audit open`, `audit unavailable`, `audit show`, `audit list`
+
+### How to get to it
+    export CHANCHI_DB="$(mktemp -d)/chanchi.db"
+    export CHANCHI_SYNC="$(mktemp -d)"      # a scratch SYNC, so the machine's roster never leaks in
+    chanchi models add --agent claude --model sonnet --cost 2 --efforts low,medium,high
+    chanchi models add --agent agy --model gemini-4-neon-high --cost 2 --efforts high
+    chanchi models add --agent opencode --model opencode-go/minimax-m3 --cost 1
+
+### Driving it
+    chanchi audit open --kind design --ref docs/designs/example.md --author claude:opus:high --commit abc1234
+    chanchi audit unavailable 1 --round 1 --seat 2 --reason "quota exceeded"
+    chanchi audit show 1
+    chanchi audit list --kind design
+
+### Evidence
+`audit open` prints `audit_id` `1`, `round` `1`, `degraded` and a `seats` list of three entries
+`{seat, spec, family, effort, status, launch}`: with the three models above and all three binaries on
+`PATH` the families are `anthropic`, `google` and `minimax`, `degraded` is `false` and `outcome` is
+`null`. A binary that is not on `PATH`, or a roster model that is not in the catalog, appears in
+`skipped` with its reason and fix. With fewer than two seats filled the round closes at once:
+`outcome` `escalated`, `escalation` `quorum`. `audit unavailable` prints the refilled `seat` (`null`
+when the roster is exhausted) and the recomputed `degraded`; `audit show 1` then lists the
+unavailable row and its replacement under the same seat number; `audit list` shows the audit with
+its round count and last outcome. The roster is `SYNC/config/auditors.toml` when it exists, else the
+built-in one.
+Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py
+
+### Gotchas
+- `chanchi` never launches a harness: `launch` is a line the orchestrator runs, one conversation per seat.
+- A model with `family: null` never counts as a distinct family; the seat carries the hint
+  `chanchi models set <agent:model> --family <name>`.
+- `--change <ref>` needs a project: pass `--project <slug>` or run inside a project that has recorded
+  a change (`chanchi change open`); otherwise `missing_prerequisite`.
+- An audit is `unknown_audit` when its id does not exist; a closed round or a seat that is not
+  `assigned` refuses `audit unavailable` with `invalid_transition`.
+
 ## scoring
 
 ### Sub-features
