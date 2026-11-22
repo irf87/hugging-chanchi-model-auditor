@@ -75,6 +75,7 @@ agent how to reach and verify every command. Design: `docs/designs/chanchi-agent
 
 ```bash
 chanchi models add --agent agy --model gemini-3.8-flash-high --cost 1 --efforts low,medium,high
+chanchi models set <agent:model> --family <name>   # model family; inferred from the name on add
 chanchi recommend --task-type ui-component --complexity medium --available "agy:gemini-3.8-flash-high:high,claude:sonnet:medium"
 chanchi stats --by task-type
 chanchi stats --by dimension

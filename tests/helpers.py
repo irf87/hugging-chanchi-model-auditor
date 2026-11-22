@@ -70,3 +70,30 @@ class Recorder:
         if verdict is not None:
             record.audit_session(self.conn, project_id=pid, ref=ref, session_ref=session_ref, verdict=verdict)
         return created
+
+
+# Model ids and the family each must get (decision D7). The same list is held against both
+# implementations: taxonomy.family_for() and the SQL seeding of migration 005.
+FAMILY_CASES = (
+    ("claude", "anthropic"),
+    ("sonnet", "anthropic"),
+    ("opus", "anthropic"),
+    ("haiku", "anthropic"),
+    ("fable-5.1", "anthropic"),
+    ("gemini-4-neon-high", "google"),
+    ("claude-opus-5-5-high", "anthropic"),
+    ("opencode-go/minimax-m3#thinking", "minimax"),
+    ("opencode-go/glm-5.3", "zhipu"),
+    ("opencode-go/kimi-k3", "moonshot"),
+    ("opencode-go/qwen3.8-max", "alibaba"),
+    ("opencode-go/grok-4.7", "xai"),
+    ("opencode-go/mimo-v2.6-pro", "xiaomi"),
+    ("opencode-go/deepseek-v4-pro", "deepseek"),
+    ("gpt-oss-120b-medium", "openai"),
+    ("Claude-Sonnet", "anthropic"),
+    ("opencode-go/hy4", None),
+    ("human", None),
+    ("openrouter/qwen/other", None),
+    ("deepseek/r1", None),
+    ("claude/gemini-4", "google"),
+)

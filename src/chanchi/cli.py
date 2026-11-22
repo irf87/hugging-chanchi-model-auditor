@@ -87,6 +87,7 @@ def cmd_models_add(args):
             "model": catalog.add_model(
                 conn, agent=args.agent, model=args.model, cost_tier=args.cost,
                 efforts=_split(args.efforts), notes=args.notes, capabilities=capabilities,
+                family=args.family,
             )
         }
 
@@ -104,6 +105,7 @@ def cmd_models_set(args):
             "model": catalog.set_model(
                 conn, spec=args.spec, cost_tier=args.cost, active=active,
                 efforts=_split(args.efforts), notes=args.notes, capabilities=capabilities,
+                family=args.family,
             )
         }
 
@@ -462,6 +464,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cost", required=True, type=_int("cost"), help="1=$ 2=$$ 3=$$$")
     p.add_argument("--efforts", help="comma list of supported efforts, e.g. low,medium,high")
     p.add_argument("--notes")
+    p.add_argument("--family", help="model family slug (default: inferred from the model name)")
     p.add_argument(
         "--capability", action="append", metavar="NAME=VALUE",
         help="capability setting, e.g. vision=yes (repeatable)",
@@ -474,6 +477,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--active", type=_int("active"), help="0 or 1")
     p.add_argument("--efforts")
     p.add_argument("--notes")
+    p.add_argument("--family", help="model family slug, e.g. google")
     p.add_argument(
         "--capability", action="append", metavar="NAME=VALUE",
         help="capability setting, e.g. vision=yes (repeatable)",

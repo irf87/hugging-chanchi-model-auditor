@@ -43,15 +43,23 @@ Covered by: tests/test_db.py, tests/test_cli.py
     chanchi models add --agent claude --model opus --cost 3 --efforts low,medium,high
     chanchi models list
     chanchi models set claude:opus --notes "primary planner" --active 1
+    chanchi models add --agent agy --model gemini-4-neon-high --cost 2 --efforts high
+    chanchi models set agy:gemini-4-neon-high --family google
 
 ### Evidence
 `models add` returns `ok: true` with `model.spec` `claude:opus`; `models list` includes
 `claude:opus` (alongside seeded `human:human`); `models set` returns the updated `model.notes`.
+Every model carries `family`: `models add` infers it from the model name (`claude:opus` is
+`anthropic`, `agy:gemini-4-neon-high` is `google`; `null` when the name matches no known vendor),
+`--family <slug>` overrides it on `add` and `set`, and a bad slug is `invalid_value` with
+`field: "family"`.
 Covered by: tests/test_catalog.py, tests/test_cli.py, tests/test_cli_integration.py
 
 ### Gotchas
 - `models set` takes `agent:model` without an effort suffix.
 - `models list` omits inactive models unless `--all` is passed.
+- A model with `family: null` never counts as a distinct family in audits: set it with
+  `chanchi models set <agent:model> --family <slug>`.
 - Never pass `--capability` to `models add` or `models set`: capability values belong to the owner
   (`skill-chanchi-model-selection`).
 

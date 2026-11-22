@@ -611,3 +611,25 @@ def test_md_format_falls_back_to_text_elsewhere(registered_repo, capsys, monkeyp
 def test_project_help_text_names_the_registered_project(capsys):
     code, out, _ = run(capsys, "change", "close", "--help")
     assert code == 0 and "registered project for this directory" in " ".join(out.split())
+
+
+def test_models_family_flags(ready):
+    listed = {m["spec"]: m["family"] for m in ok(ready, "models", "list")["models"]}
+    assert listed["claude:opus"] == "anthropic"
+    assert listed["agy:gemini-3.8-flash-high"] == "google"
+    assert listed["human:human"] is None
+    added = ok(
+        ready, "models", "add", "--agent", "opencode", "--model", "opencode-go/hy4", "--cost", "1",
+        "--family", "tencent",
+    )["model"]
+    assert added["family"] == "tencent"
+    other = ok(
+        ready, "models", "add", "--agent", "opencode", "--model", "opencode-go/kimi-k3", "--cost", "1"
+    )["model"]
+    assert other["family"] == "moonshot"
+    changed = ok(ready, "models", "set", "opencode:opencode-go/kimi-k3", "--family", "moonshot-ai")["model"]
+    assert changed["family"] == "moonshot-ai"
+    error = fail(ready, "models", "set", "claude:opus", "--family", "Not A Slug")
+    assert (error["code"], error["field"]) == ("invalid_value", "family")
+    error = fail(ready, "models", "add", "--agent", "claude", "--model", "x", "--cost", "1", "--family", "BAD")
+    assert (error["code"], error["field"]) == ("invalid_value", "family")
