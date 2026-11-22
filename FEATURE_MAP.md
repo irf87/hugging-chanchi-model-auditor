@@ -106,6 +106,8 @@ Covered by: tests/test_skills_link.py, tests/test_cli.py
 - Existing non-chanchi entries at link paths raise `link_conflict` without overwriting.
 - `--global` targets `~` (and creates `chanchi-*` compatibility links unless `--no-compat` is passed);
   never pass `--global` during automated verification.
+- A link whose name contains `chanchi-global-` belongs to `items mirror`: `skills link` and `skills unlink`
+  never create, repair or remove it, even a dangling secondary.
 
 ## agents
 
@@ -438,7 +440,7 @@ Covered by: tests/test_sync.py, tests/test_cli.py
 ## items
 
 ### Sub-features
-`items check`, `items list`, `items publish`, `items retire`
+`items check`, `items list`, `items publish`, `items retire`, `items mirror`
 
 ### How to get to it
     export CHANCHI_DB="$(mktemp -d)/chanchi.db"
@@ -450,16 +452,34 @@ Covered by: tests/test_sync.py, tests/test_cli.py
     item="$CHANCHI_SYNC/ITEMS/skills/skill-chanchi-global-demo" && mkdir -p "$item"
     printf -- '---\nname: skill-chanchi-global-demo\ndescription: Demo skill.\nmetadata:\n  version: "0.1.0"\n  status: "draft"\n---\n\n# Demo\n' > "$item/SKILL.md"
     printf -- '# Changelog\n\n## 0.1.0 — 2026-11-22\n\n- First draft.\n' > "$item/CHANGELOG.md"
+    item="$CHANCHI_SYNC/ITEMS/agents/agent-chanchi-global-demo" && mkdir -p "$item"
+    printf -- '---\nname: agent-chanchi-global-demo\ndescription: Demo agent.\nscope: both\nprofile: read-only\nskills: [skill-chanchi-global-demo]\nversion: 0.1.0\nstatus: draft\n---\n\n# Demo\n\nState your agent name.\n' > "$item/AGENT.md"
+    printf -- '# Changelog\n\n## 0.1.0 — 2026-11-22\n\n- First draft.\n' > "$item/CHANGELOG.md"
+    scratch_home="$(mktemp -d)"   # `items mirror` writes user folders: never run it against the real home
+    mkdir -p "$scratch_home/.claude" "$scratch_home/.config/opencode" "$scratch_home/.gemini/antigravity-cli"
 
 ### Driving it
     chanchi items check
     chanchi items list
+    HOME="$scratch_home" OPENCODE_CONFIG_DIR= XDG_CONFIG_HOME= chanchi items mirror   # drafts: nothing written
     chanchi audit open --kind item --ref skill-chanchi-global-demo --author claude:opus:unknown --version 0.1.0
     chanchi audit vote 1 --round 1 --seat 1 --verdict pass --blocking 0 --major 0 --minor 0 --report fixture   # seats 2 and 3 too
     chanchi audit close 1 --round 1
     chanchi items publish skill-chanchi-global-demo --audit 1
+    chanchi audit open --kind item --ref agent-chanchi-global-demo --author claude:opus:unknown --version 0.1.0
+    chanchi audit vote 2 --round 1 --seat 1 --verdict pass --blocking 0 --major 0 --minor 0 --report fixture   # seats 2 and 3 too
+    chanchi audit close 2 --round 1
+    chanchi items publish agent-chanchi-global-demo --audit 2
     chanchi items list
     chanchi items check
+    mirror() { HOME="$scratch_home" OPENCODE_CONFIG_DIR= XDG_CONFIG_HOME= chanchi items mirror "$@"; }
+    mirror
+    printf 'hand edit\n' >> "$scratch_home/.claude/agents/agent-chanchi-global-demo.md"
+    mirror --check
+    mirror
+    mirror --check
+    mirror --remove
+    find "$scratch_home" -name '*-chanchi-global-*'
     chanchi items retire skill-chanchi-global-demo --reason "demo is over"
 
 ### Evidence
@@ -473,7 +493,15 @@ prints `{name, version, status: published, audit_id, audited_hash, hash}`: `hash
 The next `items list` shows `status` `published` and `published_hash` equal to `hash`; `items check` still
 passes. `items retire` rewrites the status to `retired` and appends `{name, version, replaced_by, date,
 reason}` to `ITEMS/retired.json` (created when missing); `items list` then shows `retired` `true`.
-Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py
+`items mirror` on drafts prints empty `written`, `unchanged` and `removed`, `conflicts` `[]` and `items` `[]`. After
+both items are published it prints `written` (the skill's primary `.agents/skills/<name>` link, its relative
+`.claude/skills` and `.gemini/antigravity-cli/skills` links, and the agent file for claude, opencode and agy at
+`.gemini/config/agents/<name>/agent.md`), `unchanged` `[]`, `skipped_harnesses` `[]` and both names in `items`;
+`mirror.json` next to `$CHANCHI_DB` then holds one `{owner: "items-mirror", item, kind, path, link|sha256}` entry
+per path. After the hand edit, `mirror --check` fails with `stale_wrappers` and the edited path in
+`details.stale`; `mirror` lists only that path in `written` and `mirror --check` then passes with every path in
+`unchanged`. `mirror --remove` lists every entry in `removed` and the final `find` prints nothing.
+Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py
 
 ### Gotchas
 - Every command needs `SYNC` (`missing_prerequisite`, hint `chanchi sync init`).
@@ -490,6 +518,17 @@ Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_
   after the audit needs a new round or a new version).
 - A published item that is edited reports `edited_after_publish`; `status: published` set by hand, with no
   `Published:` line, reports `published_without_record`. Retired and draft items are exempt.
+- `items mirror` exposes only `published` items and is all or nothing: an `items check` problem is refused
+  (`invalid_value`, `field` `items`; with `--check`, `stale_wrappers`), and a conflict on any wanted path
+  (`link_conflict`, paths in `details.conflicts`) writes nothing. A path that exists and is not an entry of the
+  mirror (a foreign file or link, or an entry `agents link --user` owns) is a conflict and is never overwritten;
+  a foreign `*chanchi-global-*` entry at a path the mirror does not want is left alone.
+- `items mirror` writes a harness's entries only when its user folder exists (`skipped_harnesses` names the
+  others) and the `.agents/skills` primaries whenever any harness is installed; skill links point at the
+  unresolved `SYNC` path, so re-pointing `SYNC` leaves them valid. `--check` writes nothing and fails with
+  `stale_wrappers` on a missing, changed or no-longer-wanted entry; `--remove` deletes every entry the mirror
+  made, dangling or not, and works without `SYNC`. Ownership is `mirror.json` (the folder of `CHANCHI_DB`); `skills
+  link/unlink` never touch a `*chanchi-global-*` name and the mirror never touches chanchi's own links.
 - `items retire` refuses a blank reason, a retired item (`invalid_transition`), `--replaced-by` that is the item
   itself, does not exist, is retired or is of another kind (`invalid_value`), and an item whose name,
   frontmatter, version or status cannot be read; a draft may be retired. A retired name set back to another

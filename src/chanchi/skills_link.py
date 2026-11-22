@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
+from chanchi import harnesses
 from chanchi.errors import ChanchiError
 
 SKILL_PREFIX = "skill-chanchi-"
 LEGACY_PREFIX = "chanchi-"
+GLOBAL_MARK = "chanchi-global-"  # names of global items (docs/designs/global-items.md); never chanchi's own
 COMPAT_DIRS = (Path(".agents") / "skills", Path(".claude") / "skills")
 SUGGESTED_CONFIG_LINE = (
     "When assigning sessions use the `skill-chanchi-model-selection` skill; when orchestrating and "
@@ -45,8 +48,35 @@ def plan_targets(base: Path, *, global_: bool) -> tuple[Path, list[Path]]:
     return primary, secondaries
 
 
-def _ensure(link_path: Path, target: Path, *, absolute: bool, created: list, existing: list, conflicts: list) -> None:
-    desired = str(target) if absolute else os.path.relpath(target, link_path.parent)
+def skill_targets(
+    base: Path, names: list[str], source_dir: Path, *, installed: Callable[[str], bool]
+) -> list[tuple[Path, str, str]]:
+    """`(path, link text, kind)` for each skill name: the primary `<base>/.agents/skills/<n>` linking
+    absolutely to `<source_dir>/<n>`, and relative secondaries to it in `<base>/.claude/skills/` when
+    `installed("claude")` and in `<base>/.gemini/antigravity-cli/skills/` when `installed("agy")` and that
+    CLI folder exists. Nothing at all when no harness is installed. `source_dir` is never resolved, so a link
+    through a symbolic link stays valid when that link is re-pointed."""
+    base = Path(base)
+    if not any(installed(key) for key in harnesses.KEYS):
+        return []
+    primary_dir = base / ".agents" / "skills"
+    secondary_dirs = []
+    if installed("claude"):
+        secondary_dirs.append(base / ".claude" / "skills")
+    if installed("agy") and (base / ".gemini" / "antigravity-cli").is_dir():
+        secondary_dirs.append(base / ".gemini" / "antigravity-cli" / "skills")
+    source = Path(os.path.abspath(source_dir))
+    out: list[tuple[Path, str, str]] = []
+    for name in names:
+        primary = primary_dir / name
+        out.append((primary, str(source / name), "skill-primary"))
+        for directory in secondary_dirs:
+            out.append((directory / name, os.path.relpath(primary, directory), "skill-secondary"))
+    return out
+
+
+def _ensure(link_path: Path, desired: str, *, created: list, existing: list, conflicts: list) -> None:
+    target = Path(os.path.normpath(os.path.join(link_path.parent, desired)))
     if link_path.is_symlink():
         if os.readlink(link_path) == desired or link_path.resolve() == target.resolve():
             existing.append(str(link_path))
@@ -73,9 +103,14 @@ def _points_into_repo(entry: Path, skills_dir: Path) -> bool:
         return False
 
 
+def _is_global(entry: Path) -> bool:
+    """A link named like a global item (`*chanchi-global-*`): the mirror's, never one `skills link` made."""
+    return GLOBAL_MARK in entry.name
+
+
 def _is_compat(entry: Path) -> bool:
     """A compatibility link chanchi-<n> -> skill-chanchi-<n> (relative, same directory)."""
-    if not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX):
+    if _is_global(entry) or not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX):
         return False
     return os.readlink(entry) == f"{SKILL_PREFIX}{entry.name[len(LEGACY_PREFIX):]}"
 
@@ -83,7 +118,7 @@ def _is_compat(entry: Path) -> bool:
 def _is_legacy(entry: Path, skills_dir: Path, primary: Path) -> bool:
     """A link an older chanchi created: chanchi-<n> pointing into skills/, or a secondary chaining to a
     primary chanchi-<n> that is itself chanchi's (or already gone). Never a foreign file."""
-    if not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX) or _is_compat(entry):
+    if _is_global(entry) or not entry.is_symlink() or not entry.name.startswith(LEGACY_PREFIX) or _is_compat(entry):
         return False
     if _points_into_repo(entry, skills_dir):
         return True
@@ -118,10 +153,9 @@ def link(base: Path, *, global_: bool = False, skills_dir: Path | None = None, c
                 entry.unlink()
                 repaired.append(str(entry))
 
-    for name in names:
-        _ensure(primary / name, skills_dir / name, absolute=True, created=created, existing=existing, conflicts=conflicts)
-        for secondary in secondaries:
-            _ensure(secondary / name, primary / name, absolute=False, created=created, existing=existing, conflicts=conflicts)
+    installed = lambda key: key == "claude" or (global_ and key == "agy")  # noqa: E731
+    for path, text, _kind in skill_targets(base, names, skills_dir, installed=installed):
+        _ensure(path, text, created=created, existing=existing, conflicts=conflicts)
 
     if global_:
         for rel_dir in COMPAT_DIRS:
@@ -130,14 +164,7 @@ def link(base: Path, *, global_: bool = False, skills_dir: Path | None = None, c
                 legacy_name = f"{LEGACY_PREFIX}{name.removeprefix(SKILL_PREFIX)}"
                 compat_path = directory / legacy_name
                 if compat:
-                    _ensure(
-                        compat_path,
-                        directory / name,
-                        absolute=False,
-                        created=created,
-                        existing=existing,
-                        conflicts=conflicts,
-                    )
+                    _ensure(compat_path, name, created=created, existing=existing, conflicts=conflicts)
                 elif _is_compat(compat_path):
                     compat_path.unlink()
                     removed.append(str(compat_path))
@@ -161,6 +188,8 @@ def link(base: Path, *, global_: bool = False, skills_dir: Path | None = None, c
 
 
 def _is_own(entry: Path, primary: Path, skills_dir: Path) -> bool:
+    if _is_global(entry):
+        return False
     if _is_legacy(entry, skills_dir, primary) or _is_compat(entry):
         return True
     if not entry.is_symlink() or not entry.name.startswith(SKILL_PREFIX):

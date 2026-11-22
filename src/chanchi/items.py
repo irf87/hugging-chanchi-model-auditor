@@ -11,12 +11,12 @@ import json
 import os
 import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from chanchi import agents_sync, taxonomy
+from chanchi import agents_sync, harnesses, skills_link, taxonomy
 from chanchi.errors import ChanchiError
 
 GLOBAL_NAME = re.compile(r"^(agent|skill)-chanchi-global-[a-z0-9]+(-[a-z0-9]+)*$")
@@ -28,6 +28,8 @@ SECTION = re.compile(r"^## (\d+\.\d+\.\d+) — (\d{4}-\d{2}-\d{2})\s*$")
 PUBLISHED_LINE = re.compile(
     r"^Published: (\d{4}-\d{2}-\d{2}) · audit (\d+) · audited ([0-9a-f]{64}) · sha256 ([0-9a-f]{64})\s*$"
 )
+MIRROR_OWNER = "items-mirror"
+SKILL_ENTRY_KINDS = ("skill-primary", "skill-secondary")
 BLOCK_SCALAR = re.compile(r"^[>|][+-]?\d*$")
 # Problems that stop `retire` because the item's version or status cannot be trusted.
 STRUCTURAL = ("bad_name", "wrong_folder", "name_mismatch", "bad_frontmatter", "bad_version", "bad_status")
@@ -672,3 +674,159 @@ def retire(
         raise
     return {"name": name, "version": item.version, "status": "retired", "replaced_by": replaced_by,
             "reason": reason, "date": entry["date"]}
+
+
+_check_items = check  # `mirror` has a `check` flag of its own
+
+
+# --- mirror -------------------------------------------------------------------------------
+
+
+def _remove_entry(entry: dict) -> bool:
+    """Delete one entry the mirror made, dangling or not; a path that is no longer a link is not ours."""
+    path = Path(entry["path"])
+    if entry.get("kind") in SKILL_ENTRY_KINDS:
+        if path.is_symlink():
+            path.unlink()
+            return True
+        return False
+    return agents_sync.remove_target(path, is_agy=entry.get("kind") == "agy")
+
+
+def _mirror_problems(problems: list[dict], *, check: bool) -> ChanchiError:
+    codes = sorted({problem["code"] for problem in problems})
+    if check:
+        return ChanchiError(
+            "stale_wrappers",
+            f"SYNC/ITEMS fails `chanchi items check`: {codes}",
+            field="items",
+            hint="run `chanchi items check` and fix every problem",
+            details={"stale": [], "conflicts": [], "problems": problems},
+        )
+    return ChanchiError(
+        "invalid_value",
+        f"SYNC/ITEMS fails `chanchi items check`: {codes}; nothing was mirrored",
+        field="items",
+        hint="run `chanchi items check` and fix every problem, then run `chanchi items mirror` again",
+        details={"problems": problems},
+    )
+
+
+def mirror(
+    sync_root: Path | None,
+    *,
+    env: Mapping[str, str] | None,
+    home: Path,
+    db_dir: Path,
+    own_names: Iterable[str],
+    check: bool = False,
+    remove: bool = False,
+) -> dict:
+    """Expose the `published` items of SYNC/ITEMS to the harnesses installed for this user.
+
+    Skills become links (`skills_link.skill_targets`), agents become per-harness files (`agents_sync`
+    primitives). Every entry is recorded in `mirror.json` with owner `items-mirror`; only recorded entries are
+    updated or removed. All or nothing: a problem in `check` or a conflict on any wanted path writes nothing.
+    `sync_root` may be None only with `remove=True`.
+    """
+    if check and remove:
+        raise ChanchiError("invalid_value", "--check and --remove are mutually exclusive", field="check",
+                           hint="pass either --check or --remove, not both")
+    env = os.environ if env is None else env
+    home = Path(home).expanduser().resolve()
+    manifest_path = Path(db_dir) / agents_sync.MANIFEST_NAME
+    entries = agents_sync.read_manifest(manifest_path)
+    owned = [e for e in entries if e.get("owner") == MIRROR_OWNER]
+    other = [e for e in entries if e.get("owner") != MIRROR_OWNER]
+    owned_by_path = {agents_sync.norm_path(e["path"]): e for e in owned}
+    all_by_path = {agents_sync.norm_path(e["path"]): e for e in entries}
+    active = [key for key in harnesses.KEYS if harnesses.installed(key, env=env, home=home)]
+    skipped = [key for key in harnesses.KEYS if key not in active]
+
+    if remove:
+        removed = sorted(e["path"] for e in owned if _remove_entry(e))
+        if manifest_path.exists() and owned:
+            agents_sync.write_manifest(manifest_path, other)
+        return {"written": [], "unchanged": [], "removed": removed, "conflicts": [],
+                "skipped_harnesses": skipped, "items": []}
+
+    if sync_root is None:
+        raise ChanchiError("missing_prerequisite", "SYNC is not initialized", field="sync", hint="chanchi sync init")
+    inspected = _check_items(sync_root, own_names=own_names)
+    if inspected["problems"]:
+        raise _mirror_problems(inspected["problems"], check=check)
+    published = sorted((item for item in inspected["items"] if item.status == "published"), key=lambda i: i.name)
+
+    wanted: dict[str, dict] = {}
+    skills_root = Path(os.path.abspath(sync_root)) / "ITEMS" / KIND_FOLDER["skill"]
+    skill_names = [item.name for item in published if item.kind == "skill"]
+    for path, text, kind in skills_link.skill_targets(
+        home, skill_names, skills_root, installed=lambda key: key in active
+    ):
+        norm = agents_sync.norm_path(path)
+        wanted[norm] = {"owner": MIRROR_OWNER, "item": path.name, "kind": kind, "path": norm, "link": text}
+    agent_files: dict[str, tuple[str, str, str]] = {}
+    for item in (i for i in published if i.kind == "agent"):
+        source = agents_sync._parse(item.path / MANIFEST["agent"])
+        plan = agents_sync.plan_agents([source], agents_sync.MIRROR_HEADER, harness_keys=active, env=env, home=home)
+        for norm, (kind, text, digest) in plan.items():
+            agent_files[norm] = (kind, text, digest)
+            wanted[norm] = {"owner": MIRROR_OWNER, "item": item.name, "kind": kind, "path": norm, "sha256": digest}
+
+    conflicts = set(agents_sync.entry_conflicts(wanted, owned_by_path, all_by_path))
+    for norm, entry in wanted.items():  # an owned link that something else replaced is not ours to delete
+        if entry["kind"] in SKILL_ENTRY_KINDS and norm in owned_by_path:
+            if os.path.lexists(norm) and not os.path.islink(norm):
+                conflicts.add(norm)
+    conflicts = sorted(conflicts)
+    orphans = sorted(path for path in owned_by_path if path not in wanted)
+
+    stale_skills = []
+    for norm, entry in sorted(wanted.items()):
+        if entry["kind"] in SKILL_ENTRY_KINDS and norm not in conflicts:
+            current = norm in owned_by_path and os.path.islink(norm) and os.readlink(norm) == entry["link"]
+            if not current or owned_by_path[norm].get("link") != entry["link"]:
+                stale_skills.append(norm)
+    stale_agents = sorted(set(agents_sync.agent_issues(agent_files, owned_by_path, [], conflicts)) - set(conflicts))
+
+    if check:
+        issues = sorted({*stale_skills, *stale_agents, *orphans, *conflicts})
+        if issues:
+            raise ChanchiError(
+                "stale_wrappers",
+                f"the mirror is out of date: {issues}",
+                field="path",
+                hint="run `chanchi items mirror` to repair it",
+                details={"stale": issues, "conflicts": conflicts},
+            )
+        return {"written": [], "unchanged": sorted(wanted), "removed": [], "conflicts": [],
+                "skipped_harnesses": skipped, "items": [item.name for item in published]}
+    if conflicts:
+        raise ChanchiError(
+            "link_conflict",
+            f"mirror paths conflict with existing or foreign-owned entries: {conflicts}",
+            field="path",
+            hint="remove or rename the conflicting entries, then run `chanchi items mirror` again",
+            details={"conflicts": conflicts},
+        )
+
+    for norm in stale_skills:
+        path = Path(norm)
+        if os.path.lexists(path):
+            path.unlink()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.symlink_to(wanted[norm]["link"])
+    written_agents, unchanged_agents = agents_sync.write_agents(agent_files)
+    removed = sorted(path for path in orphans if _remove_entry(owned_by_path[path]))
+    new_entries = other + [wanted[norm] for norm in sorted(wanted)]
+    if new_entries != entries:
+        agents_sync.write_manifest(manifest_path, new_entries)
+    unchanged_skills = [n for n, e in sorted(wanted.items()) if e["kind"] in SKILL_ENTRY_KINDS and n not in stale_skills]
+    return {
+        "written": sorted(stale_skills + written_agents),
+        "unchanged": sorted(unchanged_skills + unchanged_agents),
+        "removed": removed,
+        "conflicts": [],
+        "skipped_harnesses": skipped,
+        "items": [item.name for item in published],
+    }

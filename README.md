@@ -194,7 +194,16 @@ chanchi items list                                  # name, kind, version, statu
 chanchi audit open --kind item --ref <item> --author <agent:model[:effort]> --version <x.y.z>
 chanchi items publish <item> --audit <audit-id>     # after `audit close` returned accepted
 chanchi items retire <item> [--replaced-by <item>] --reason "<why>"
+chanchi items mirror                                # expose published items to the installed harnesses
+chanchi items mirror --check                        # write nothing; fail when the mirror is stale
+chanchi items mirror --remove                       # delete exactly what the mirror made
 ```
+
+`items mirror` links each published skill into `~/.agents/skills` (plus relative links for Claude Code and the
+agy CLI) and writes each published agent for the installed harnesses (`~/.claude/agents`, the opencode
+`agents` folder, `~/.gemini/config/agents`). Drafts and retired items never appear. Every entry is recorded
+in `mirror.json` next to the database; the mirror updates or removes only what it recorded, refuses to
+overwrite anything else, and leaves `chanchi skills link` and `chanchi agents link --user` entries alone.
 
 ## Exploration
 
