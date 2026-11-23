@@ -1,9 +1,8 @@
 # Global Items — Phase 4 (Adoption) Implementation Plan
 
-- **Revision:** 2, after audit round 1 (`fix`; chanchi audit 7,
-  [round1-consolidation.md](../../designs/reviews/global-items-phase4-plan/round1-consolidation.md)).
-  Audited with `chanchi audit` (kind `other`) by three auditors of different model families
-  before any session starts.
+- **Revision:** 3, accepted in audit round 2 with its minor fixes applied (round 1 `fix`; chanchi
+  audit 7, [round1-consolidation.md](../../designs/reviews/global-items-phase4-plan/round1-consolidation.md),
+  [round2-consolidation.md](../../designs/reviews/global-items-phase4-plan/round2-consolidation.md)).
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor`. Steps use
 > checkbox (`- [ ]`) syntax. Write the failing test first, then the code.
@@ -50,14 +49,14 @@ report the disagreement.
 | D1 | New domain module `adoption.py` holds `inbox` and `decide`; `taxonomy.ADOPTION_DECISIONS = ("adopt", "wrap", "keep", "deprecate")` and `taxonomy.INBOX_STATES = ("new", "changed", "deprecate_pending", "retired", "up_to_date")`, listed by `taxonomy.describe()` under `items` as `adoption_decisions` and `inbox_states`. `items.py` exposes `retired_entries(sync_root) -> tuple[list[dict] | None, str | None]` (today's private `_retired_entries`, kept as an alias) for `adoption.py`. No migration: `item_decisions` exists since 006 | `items.py` is already over 800 lines; one module per pipeline stage |
 | D2 | **Scope.** Both commands act on one registered project: detected from the working directory or `--project <slug>` (`projects.resolve_scope`; `project=True` leaves of the `items` group, so they get the shared `--project`). An unregistered project is `project_not_registered`. Both need `SYNC` (`sync.require()`) | The design: "lists, for this project" |
 | D3 | **Current decision** of `(project, global item)`: the row with the highest `id`. The inbox reads `items.load` and `items.retired_entries`; a malformed `retired.json` fails the command (`invalid_value`, `field: "items"`, hint `chanchi items check`), and an item whose `version`, `status` or `hash` is unreadable is left out and listed under `problems` (`{item, hint: "chanchi items check"}`). Only `published` and **retired** items (status `retired` or a name in `retired.json`, checked first) are considered; drafts never appear. **State, in order:** retired item — current decision `adopt` or `wrap` → `retired` (with `replaced_by` from the last `retired.json` entry of that name); `deprecate` → `deprecate_pending`; `keep` → `up_to_date`; no decision → not listed at all. Published item — no decision → `new`; current decision `deprecate` → `deprecate_pending` (with `version_changed: true` when its version differs); version differs → `changed`; otherwise `up_to_date`. Without `--all` the inbox prints every state except `up_to_date`; with `--all` it prints those too. Entries sorted by item name | The design's three inbox cases plus the deprecate follow-up ("the inbox keeps showing it until a later adopt, wrap or keep"), with one precedence |
-| D4 | **Entry shape:** `{item, kind, version, hash, status, state, version_changed, replaced_by, path, decision: null or {id, decision, version, hash, local_item, reason, audit_id, decided_at}, similar: [...]}`; `path` is the item's folder `<SYNC>/ITEMS/<kind>s/<item>/` (unresolved `SYNC` path). `similar` lists this project's **current** `project_items` rows of the **same kind** whose path is either a row whose name's slug (`inventory.slug_of`) equals the global item's `<name>` part, or a `path` or `aliases` entry of this project's copies in the evidence of a proposal whose `global_item` is this item; joining on live rows means a copy removed and re-scanned disappears. Each `{kind, name, path, abs_path, lines, sha256}`, `abs_path` from `inventory.project_root` (`null` when missing), sorted by `path`. The inbox reads only the database and `SYNC`, never a project file | The adopting agent needs the project's overlapping items to compare (design D, step 2) |
+| D4 | **Entry shape:** `{item, kind, version, hash, status, state, version_changed, replaced_by, path, decision: null or {id, decision, version, hash, local_item, reason, audit_id, decided_at}, similar: [...]}`; `path` is the item's folder `<SYNC>/ITEMS/<kind>s/<item>/` (unresolved `SYNC` path). `similar` lists this project's **current** `project_items` rows of the **same kind** that match either (a) `inventory.slug_of(row.name)` equals the global item's `<name>` part, or (b) `row.path` equals a `path` or `aliases` entry of this project's copies in the evidence of a proposal whose `global_item` is this item; joining on live rows means a copy removed and re-scanned disappears. Each `{kind, name, path, abs_path, lines, sha256}`, `abs_path` from `inventory.project_root` (`null` when missing), sorted by `path`. The inbox reads only the database and `SYNC`, never a project file | The adopting agent needs the project's overlapping items to compare (design D, step 2) |
 | D5 | **`items decide <global-item> --decision adopt|wrap|keep|deprecate --version <x.y.z> [--local <item>] --reason "<why>" --audit <id>`.** Refusals in order: unknown global item (`invalid_value`, `field: "item"`); an item `items.load` cannot read fully (`invalid_value`, hint `chanchi items check`), or a malformed `retired.json` (same); status `draft` (`invalid_transition`); unknown decision (`invalid_value`, `field: "decision"`, `valid_values`); `--version` differs from the item's current version (`invalid_value`, `field: "version"`); a retired item takes only `keep` or `deprecate` (`invalid_transition`, hint: adopt or wrap its `replaced_by` as its own entry); blank reason (`invalid_value`, `field: "reason"`); `--local` rules (D6); the audit (D7). Recorded: project id, item, version, the item's content hash read at decision time, decision, local item, reason, audit id, `decided_at` UTC. Output: `{id, project, item, version, hash, decision, local_item, reason, audit_id, decided_at, state}`, `state` being the entry's state after the decision (D3) | The design's command and record ("the record keeps version and hash") |
 | D6 | **`--local`.** `wrap` requires it, named `<kind>-chanchi-<project-slug>-<name>` where `<kind>` is the global item's kind, `<project-slug>` is `inventory.slug_of(<project slug>)` and `<name>` matches `[a-z0-9]+(-[a-z0-9]+)*` (`invalid_value`, `field: "local"`, hint with the expected prefix). On a **published** item, `keep` and `deprecate` require it (the project item kept or to be removed). On a **retired** item it is optional (a project that adopted it has no local copy: `keep` then acknowledges the retirement). `adopt` accepts it optionally (the project item that was removed). A given `--local` is never blank | The design's wrapper naming (`<item>-chanchi-<slug>-<name>`); a retirement must be acknowledgeable without inventing a name |
 | D7 | **Audit link.** `--audit <id>` is required: the audit must exist (`unknown_audit`), be of kind `adoption` with `subject_ref` equal to `<project slug>:<global item>` and `project_id` equal to this project (`invalid_value`, `field: "audit"`), its last round must be `accepted` (`invalid_transition`, hint: finish the audit rounds), and no row of `item_decisions` may already carry that audit id (`invalid_value`, `field: "audit"`, hint: open a new adoption audit for this decision). Every decision therefore has its own audit | The design: "The decision is audited (kind `adoption`) ... and recorded"; an old audit cannot back a later version or a different decision |
 | D8 | **The skill's text is part of this plan** (Task 2, verbatim), so the plan audit reviews it; S2 installs it unchanged. No eval case ships with it: the eval layer (`evals/`, `docs/designs/chanchi-agents-mvp.md` phase 2) does not exist yet, and `skill-chanchi-item-authoring` ties the eval rule to it | Same as phase 3 D15; the eval rule cannot be met before its layer exists |
 | D9 | **Decision records** (the adopting agent's proposal with its comparison) live in `<SYNC>/reviews/<global item>/<version>/adoption-<project slug>.md`, `<SYNC>` being the path `chanchi sync status` prints; adoption audit reports next to them. Never in this repository or the project | They quote project items; users own their results (privacy) |
-| D11 | **Who does what in adoption.** A delegated adopting agent (unattended) does the read-only comparison and writes the proposal (skill steps 1-3), and later applies and commits the approved change on a branch in a **git worktree of the project** created outside the project's folder (skill step 5a); it never asks the owner, opens audits or writes chanchi records. The project's orchestrating role (in the gate, this orchestrator) asks the owner (step 4), runs the adoption audit (5b) and records (6). For `keep` and `deprecate`, which change no project file, the audit's `--commit` is the project's current `HEAD` and the brief points to the proposal file | AGENTS.md: executors never write chanchi records; a headless agent cannot seat auditors; the owner's checkout stays untouched |
 | D10 | **herdr 0.1.1 before adoption.** The gate builds `skill-chanchi-global-herdr` 0.1.1 with the four changes deferred in `SYNC/reviews/skill-chanchi-global-herdr/0.1.0/round2-consolidation.md` (three minor fixes and the owner's auto-approval rule), audits it (kind `item`), publishes and mirrors it, so projects decide on a published version. The owner chose this order on 2026-11-22 | A draft never reaches the inbox (D3) or the harnesses |
+| D11 | **Who does what in adoption.** A delegated adopting agent (unattended) does the read-only comparison and writes the proposal (skill steps 1-3), and later applies and commits the approved change on a branch in a **git worktree of the project** created outside the project's folder (skill step 5a); it never asks the owner, opens audits or writes chanchi records. The project's orchestrating role (in the gate, this orchestrator) asks the owner (step 4), runs the adoption audit (5b) and records (6). For `keep` and `deprecate`, which change no project file, the audit's `--commit` is the project's current `HEAD` and the brief points to the proposal file | AGENTS.md: executors never write chanchi records; a headless agent cannot seat auditors; the owner's checkout stays untouched |
 
 ## Sessions
 
@@ -92,7 +91,7 @@ agy executors run headless from the main checkout with `--dangerously-skip-permi
 
 **Interfaces produced:**
 - `adoption.inbox(conn, sync_root, *, project_id, slug, all_=False) -> dict`:
-  `{project, entries: [...]}` (D3, D4).
+  `{project, entries: [...], problems: [...]}` (D3, D4).
 - `adoption.decide(conn, sync_root, *, project_id, slug, item, decision, version, reason, audit_id,
   local=None, now=None) -> dict` (D5-D7).
 - CLI: `chanchi items inbox [--all] [--project <slug>]`, `chanchi items decide <global-item>
@@ -101,6 +100,8 @@ agy executors run headless from the main checkout with `--dangerously-skip-permi
 - [ ] **Step 1:** Failing tests, on a scratch `SYNC` with one published skill, one draft skill and
   one published agent, and two registered temporary projects A and B scanned with `items scan`
   (A holds a `tool-x` skill, so `similar` has it):
+  - an unreadable item (a symlink inside it) is left out of `entries` and listed under
+    `problems`; a malformed `retired.json` fails `items inbox` (`invalid_value`, `field: "items"`).
   - inbox of A lists the two published items as `new`, never the draft; `similar` of the skill
     lists A's `tool-x` with `abs_path`; a built proposal whose evidence names a second A copy adds
     it once; B's inbox is independent of A's decisions.
@@ -110,7 +111,8 @@ agy executors run headless from the main checkout with `--dangerously-skip-permi
   - `deprecate` makes it `deprecate_pending` until a later `keep`, `adopt` or `wrap`.
   - `items retire` of an adopted item → `retired` with `replaced_by`; `decide --decision adopt` on
     it is refused, `deprecate` is accepted (→ `deprecate_pending`) and `keep` clears it; a retired
-    item that A kept or never decided is not listed.
+    item that A kept is `up_to_date` (listed only with `--all`), and one A never decided is
+    absent even with `--all`.
   - retirement of an adopted item: `keep` without `--local` is accepted and the entry leaves the
     inbox (`up_to_date` with `--all`); `wrap` on it is refused; `replaced_by` comes from the last
     of two `retired.json` entries of that name.
@@ -163,7 +165,7 @@ one that asks the owner, opens audits and writes chanchi records.
 
 ## 1. Read the inbox
 
-`chanchi items inbox` lists, for this project, every global item that needs a decision: `new` (no
+`chanchi items inbox [--project <project slug>]` lists, for this project, every global item that needs a decision: `new` (no
 decision yet), `changed` (a new version since the decision), `deprecate_pending` (a removal still
 open) and `retired` (an item the project adopted or wrapped was retired; see `replaced_by`). Each
 entry gives the item's folder (`path`) and `similar`: the project's own items that overlap it.
@@ -220,10 +222,11 @@ b. Audit it with three auditors (`skill-chanchi-audit-rounds`):
 ## 6. Record
 
 When the audit is accepted:
-`chanchi items decide <global item> --decision <decision> --version <version> [--local <item>] --reason "<why>" --audit <audit id>`.
-Then `chanchi items scan --project <project slug>` and confirm with `chanchi items inbox --all`
-that the entry is `up_to_date` (or `deprecate_pending` after deprecate). Merging the branch
-follows the project's own rules and the owner's go-ahead.
+`chanchi items decide <global item> --decision <decision> --version <version> [--local <item>] --reason "<why>" --audit <audit id> --project <project slug>`.
+Confirm with `chanchi items inbox --all --project <project slug>` that the entry is `up_to_date`
+(or `deprecate_pending` after deprecate). Merging the branch follows the project's own rules and
+the owner's go-ahead; after the merge, `chanchi items scan --project <project slug>` refreshes the
+inventory.
 
 If something went wrong, the orchestrating role follows `skill-chanchi-lessons`; a delegated agent
 says so in its report.
@@ -269,21 +272,23 @@ works in the consumer projects only after the owner's go-ahead for each one.
       the proposal file exists in `<SYNC>/reviews/...`, and the project's `git status
       --porcelain` equals the baseline.
    b. **Go-ahead.** Ask the owner for that project, showing the proposal's decision, reason and
-      file list, with a recommendation. Without a go-ahead the project records nothing and the
+      file list, with a recommendation; say that applying it adds a worktree and a branch to the
+      project's git metadata (removed afterwards). Without a go-ahead the project records nothing and the
       phase is not done.
    c. **Apply.** For adopt or wrap, save `<baseline-sha>` (the project's `HEAD`), create a worktree
       of the project at `.claude/worktrees/research/gi4-<project>-adopt` (in chanchi's ignored
       folder, outside the project) on branch `chanchi/adopt-skill-chanchi-global-herdr`, and let
-      the agent (same session or a retry) run skill step 5a there. Check: `git diff --stat
-      <baseline-sha>..HEAD` in the worktree names only the proposal's files; the project's main
-      checkout status equals the baseline.
+      the agent run skill step 5a there (a continuation of the same session, recorded on S4 or S5).
+      Check: `git diff --stat <baseline-sha>..HEAD` in the worktree names only the proposal's
+      files, the worktree's `git status --porcelain` is empty, and the project's main checkout
+      status equals the baseline.
    d. **Audit and record.** Run the adoption audit (skill step 5b; seats from the roster; reports in
       private scratch paths, moved to `<SYNC>/reviews/...` after all active seats finish and before
       the votes are recorded). When accepted: `chanchi items decide ...` with that audit,
-      `chanchi items scan --project <slug>` (the scan reads the main checkout, so the result
-      reflects the change only after the owner merges), and `chanchi items inbox --all --project
+      and `chanchi items inbox --all --project
       <slug>` shows `up_to_date` (or `deprecate_pending`). Ask the owner whether to merge the
-      branch in the project; the worktree is removed after the merge or the owner's decision.
+      branch in the project; after the merge, `chanchi items scan --project <slug>`; the worktree
+      (and the branch, if not merged) is removed after the merge or the owner's decision.
 4. **Record.** `docs/designs/reviews/global-items-phase4/gate.md`, redacted as in phase 3
    (projects as "project A/B", roots as `<project root>`, `<SYNC>`), then `chanchi change close
    global-items-phase4` and `chanchi show global-items-phase4`.
