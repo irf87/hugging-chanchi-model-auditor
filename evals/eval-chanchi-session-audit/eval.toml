@@ -1,0 +1,16 @@
+name = "eval-chanchi-session-audit"
+item = "skill-chanchi-session-audit"
+regression = ["stop-plan-gap", "clean-complete"]
+capability = ["false-claim", "scope-and-choices"]
+blind_allow = []
+
+[candidate]
+agent = "agent-chanchi-orchestrator"
+harness = "claude"
+model = "sonnet"
+effort = "medium"
+
+[judge]
+harness = "agy"
+model = "gemini-4-neon-high"
+effort = "high"
