@@ -471,6 +471,16 @@ def strip_load_events(harness: str, events: list[dict], item: str) -> list[dict]
     return out
 
 
+REDACTED = "[skill]"
+
+
+def redact_item(events: list[dict], text: str, item: str) -> tuple[list[dict], str]:
+    """Replace every mention of the evaluated skill's name (and so its folder path) with a neutral token in the
+    judge's and the owner's copies, in both arms: a candidate that reads a skill file with a shell command, or names
+    the skill in its answer, would otherwise reveal the arm (D14). The saved candidate transcript stays complete."""
+    return ([json.loads(json.dumps(e).replace(item, REDACTED)) for e in events], text.replace(item, REDACTED))
+
+
 def tool_call_lines(harness: str, events: list[dict], limit: int = 60) -> list[str]:
     """One line per tool call, for the calibration sheet's excerpt."""
     lines: list[str] = []
@@ -852,8 +862,9 @@ def execute_case_run(ctx: Context, cfg: EvalConfig, *, arm: str, case: str, n: i
             raise RunnerError(f"grade.py of case {case} printed no criterion line; artifacts: {run_dir}")
         state = end_state(work, injected)
         (run_dir / "end_state.md").write_text(state, encoding="utf-8")
-        stripped = strip_load_events(harness, events, cfg.item)
-        output_md = f"# Final message\n\n{text}\n\n# End state\n\n{state}"
+        stripped, shown_text = redact_item(strip_load_events(harness, events, cfg.item),
+                                           f"# Final message\n\n{text}\n\n# End state\n\n{state}", cfg.item)
+        output_md = shown_text
         (run_dir / "output.md").write_text(output_md, encoding="utf-8")
         (run_dir / "judge-transcript.jsonl").write_text("".join(json.dumps(e) + "\n" for e in stripped),
                                                         encoding="utf-8")

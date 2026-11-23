@@ -961,3 +961,11 @@ def test_unknown_item_and_mode_errors(world, capsys):
     assert code == 2
     code, _, err = world.run(capsys, "--dry-run", item=None)
     assert code == 2 and "item" in err
+
+
+def test_redact_item_hides_the_skill_name_in_judge_and_owner_copies():
+    events = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash",
+               "input": {"command": "cat .claude/skills/skill-chanchi-x/references/r.md"}}]}}]
+    out, text = R.redact_item(events, "Per skill-chanchi-x I accepted it.", "skill-chanchi-x")
+    assert "skill-chanchi-x" not in json.dumps(out) and "skill-chanchi-x" not in text
+    assert R.REDACTED in text
