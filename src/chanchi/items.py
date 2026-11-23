@@ -282,7 +282,7 @@ def _changelog_state(item_dir: Path, version: str) -> tuple[bool, str | None]:
 # --- retired.json -----------------------------------------------------------------
 
 
-def _retired_entries(sync_root: Path) -> tuple[list[dict] | None, str | None]:
+def retired_entries(sync_root: Path) -> tuple[list[dict] | None, str | None]:
     """(entries, None), or (None, why the file is unusable). A missing file is an empty list."""
     path = Path(sync_root) / "ITEMS" / RETIRED
     if not os.path.lexists(path):
@@ -297,6 +297,9 @@ def _retired_entries(sync_root: Path) -> tuple[list[dict] | None, str | None]:
         if not isinstance(entry, dict) or not isinstance(entry.get("name"), str) or not entry["name"]:
             return None, f"{RETIRED} entry {index} must be an object with a string name"
     return data, None
+
+
+_retired_entries = retired_entries
 
 
 # --- inspection ----------------------------------------------------------------------

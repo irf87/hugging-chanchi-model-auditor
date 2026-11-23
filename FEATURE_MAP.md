@@ -456,7 +456,7 @@ Covered by: tests/test_sync.py, tests/test_cli.py
 
 ### Sub-features
 `items check`, `items list`, `items publish`, `items retire`, `items mirror`, `items scan`, `items propose`,
-`items proposals`, `items proposal-status`
+`items proposals`, `items proposal-status`, `items inbox`, `items decide`
 
 ### How to get to it
     export CHANCHI_DB="$(mktemp -d)/chanchi.db"
@@ -532,6 +532,13 @@ Covered by: tests/test_sync.py, tests/test_cli.py
     printf -- '---\nname: skill-chanchi-global-demo\ndescription: Project copy.\n---\n' > "$proj_a/.agents/skills/skill-chanchi-global-demo/SKILL.md"
     chanchi items scan --project project-a
     chanchi items check                                 # fails: project_item_collision
+    chanchi items inbox --project project-a
+    chanchi audit open --kind adoption --ref project-a:agent-chanchi-global-demo --project project-a --author claude:opus:unknown --commit abc1234
+    chanchi audit vote 3 --round 1 --seat 1 --verdict pass --blocking 0 --major 0 --minor 0 --report fixture   # seats 2 and 3 too
+    chanchi audit close 3 --round 1
+    chanchi items decide agent-chanchi-global-demo --decision adopt --version 0.1.0 --reason "covered by global" --audit 3 --project project-a
+    chanchi items inbox --project project-a
+    chanchi items inbox --all --project project-a
 
 ### Evidence
 `items check` prints `problems` `[]` and one entry per item (`name`, `kind`, `version`, `status`, `hash`,
@@ -578,7 +585,12 @@ fails with `field` `global_item`, then `--status rejected` closes proposal 2; re
 `invalid_transition`; `--status built` without `--global-item` fails with `field` `global_item`, and with
 `skill-chanchi-global-demo` (any status, same kind) closes proposal 1 as `built`. The last `items propose` prints
 `proposals` `[]` and both ids under `closed` with their `status` and `global_item`.
-Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py, tests/test_inventory.py, tests/test_propose.py, tests/test_sync.py
+`items inbox --project project-a` prints `project` `project-a`, `entries` with `agent-chanchi-global-demo` in
+state `new` (the retired `skill-chanchi-global-demo` has no prior decision and is omitted), and `problems` `[]`.
+After audit 3 is accepted and `items decide` records `adopt` with the item's hash (`state` `up_to_date`),
+`items inbox --project project-a` prints `entries` `[]`, while `items inbox --all --project project-a` prints
+`agent-chanchi-global-demo` with `state` `up_to_date` and its `decision` record.
+Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_sync.py, tests/test_mirror.py, tests/test_inventory.py, tests/test_propose.py, tests/test_sync.py, tests/test_adoption.py
 
 ### Gotchas
 - Every command needs `SYNC` (`missing_prerequisite`, hint `chanchi sync init`).
@@ -639,3 +651,15 @@ Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_
   itself, does not exist, is retired or is of another kind (`invalid_value`), and an item whose name,
   frontmatter, version or status cannot be read; a draft may be retired. A retired name set back to another
   status fails `items check` (`retired_not_retired`).
+- `items inbox` and `items decide` require `SYNC` (`missing_prerequisite`) and one registered project (detected
+  from the working directory or `--project <slug>`, else `project_not_registered`). Drafts never appear in the
+  inbox, and retired items appear only when the project already recorded a decision (`adopt`/`wrap` -> `retired`,
+  `deprecate` -> `deprecate_pending`, `keep` -> `up_to_date`). Unreadable items go under `problems`; a malformed
+  `retired.json` fails with `invalid_value`, `field: "items"`. `--all` includes `up_to_date` entries.
+- `items decide` refusals in order: unknown global item (`invalid_value`, `field: "item"`), unreadable item or
+  malformed `retired.json` (`invalid_value`), draft (`invalid_transition`), unknown decision (`invalid_value`,
+  `field: "decision"`), wrong `--version` (`invalid_value`, `field: "version"`), `adopt`/`wrap` on a retired item
+  (`invalid_transition`), blank `--reason` (`invalid_value`, `field: "reason"`), `--local` rules (`wrap` requires
+  `<kind>-chanchi-<project-slug>-<name>`, `keep`/`deprecate` on published items require `--local`, optional on
+  retired items and `adopt`, never blank), and audit link (`--audit` must be an accepted `adoption` audit of
+  `<project>:<item>` for this project not yet used by another decision).

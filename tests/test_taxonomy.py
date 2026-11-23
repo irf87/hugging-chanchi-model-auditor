@@ -342,3 +342,11 @@ def test_audit_sets_are_listed_and_unchanged_elsewhere():
         "escalations": list(tx.AUDIT_ESCALATIONS),
         "seat_statuses": list(tx.SEAT_STATUSES),
     }
+
+
+def test_adoption_sets_are_listed_in_describe():
+    assert tx.ADOPTION_DECISIONS == ("adopt", "wrap", "keep", "deprecate")
+    assert tx.INBOX_STATES == ("new", "changed", "deprecate_pending", "retired", "up_to_date")
+    described = tx.describe()["items"]
+    assert described["adoption_decisions"] == list(tx.ADOPTION_DECISIONS)
+    assert described["inbox_states"] == list(tx.INBOX_STATES)

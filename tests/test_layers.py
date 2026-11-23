@@ -55,3 +55,15 @@ def test_inventory_imports_only_domain_modules_it_may():
     allowed = {"db", "items", "projects", "sync", "taxonomy", "errors", "timeutil"}
     extra = MODULES["inventory"] - allowed
     assert not extra, f"inventory.py imports {sorted(extra)}; it may import only {sorted(allowed)}."
+
+
+def test_adoption_imports_only_domain_modules_it_may():
+    assert "adoption" in MODULES, "adoption.py does not exist yet"
+    allowed = {"db", "errors", "inventory", "items", "projects", "sync", "taxonomy", "timeutil"}
+    extra = MODULES["adoption"] - allowed
+    assert not extra, f"adoption.py imports {sorted(extra)}; it may import only {sorted(allowed)}."
+
+
+def test_items_and_inventory_never_import_adoption():
+    assert "adoption" not in MODULES["items"], "items.py must never import adoption.py"
+    assert "adoption" not in MODULES["inventory"], "inventory.py must never import adoption.py"
