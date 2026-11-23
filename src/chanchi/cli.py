@@ -13,6 +13,7 @@ from pathlib import Path
 
 from chanchi import (
     __version__,
+    adoption,
     agents_sync,
     audits,
     catalog,
@@ -598,6 +599,31 @@ def cmd_items_proposal_status(args):
         )
 
 
+def cmd_items_inbox(args):
+    root = sync.require()
+    with _conn() as conn:
+        scope = projects.resolve_scope(conn, project=args.project)
+        return adoption.inbox(conn, root, project_id=scope.project_id, slug=scope.slug, all_=args.all)
+
+
+def cmd_items_decide(args):
+    root = sync.require()
+    with _conn() as conn:
+        scope = projects.resolve_scope(conn, project=args.project)
+        return adoption.decide(
+            conn,
+            root,
+            project_id=scope.project_id,
+            slug=scope.slug,
+            item=args.item,
+            decision=args.decision,
+            version=args.version,
+            reason=args.reason,
+            audit_id=args.audit,
+            local=args.local,
+        )
+
+
 # --- parser ----------------------------------------------------------------
 
 
@@ -923,6 +949,15 @@ def build_parser() -> argparse.ArgumentParser:
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="write nothing; fail if the mirror is stale")
     mode.add_argument("--remove", action="store_true", help="remove every entry the mirror made")
+    p = leaf(g, "inbox", cmd_items_inbox, "list global items needing an adoption decision for this project")
+    p.add_argument("--all", action="store_true", help="include up_to_date entries")
+    p = leaf(g, "decide", cmd_items_decide, "record an audited adoption decision for one global item")
+    p.add_argument("item", help="the item: <agent|skill>-chanchi-global-<name>")
+    p.add_argument("--decision", required=True, help="adopt, wrap, keep or deprecate")
+    p.add_argument("--version", required=True, help="item version being decided")
+    p.add_argument("--local", default=None, help="wrapper or project item name")
+    p.add_argument("--reason", required=True, help="why this decision was chosen")
+    p.add_argument("--audit", required=True, type=_int("audit"), help="the id of the accepted `adoption` audit")
     return parser
 
 

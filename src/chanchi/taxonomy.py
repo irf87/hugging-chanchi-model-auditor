@@ -195,6 +195,10 @@ ITEM_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 PROJECT_ITEM_KINDS = ("agent", "skill", "hook", "rule")
 PROPOSAL_STATUSES = ("open", "built", "rejected")
 
+# Adoption (phase 4, migration 006): decision types and inbox entry states.
+ADOPTION_DECISIONS = ("adopt", "wrap", "keep", "deprecate")
+INBOX_STATES = ("new", "changed", "deprecate_pending", "retired", "up_to_date")
+
 # Model families (decision D7): the last `/`-separated segment of a model id, lowercased, matched
 # by prefix. Migration 005 seeds models.family with the same rule in SQL; a test holds both equal.
 FAMILY_PREFIXES = (
@@ -328,5 +332,7 @@ def describe() -> dict:
             "kinds": dict(ITEM_KINDS),
             "project_item_kinds": list(PROJECT_ITEM_KINDS),
             "proposal_statuses": list(PROPOSAL_STATUSES),
+            "adoption_decisions": list(ADOPTION_DECISIONS),
+            "inbox_states": list(INBOX_STATES),
         },
     }

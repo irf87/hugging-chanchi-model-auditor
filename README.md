@@ -211,6 +211,8 @@ chanchi items scan [--project <slug>]               # fingerprint the item folde
 chanchi items propose [--owner-promote <name>]      # candidate global items from the scan and the lessons
 chanchi items proposals [--status open|built|rejected | --id <n>]   # stored candidates; --id adds absolute paths
 chanchi items proposal-status <n> --status built --global-item <item>   # or --status rejected
+chanchi items inbox [--all] [--project <slug>]      # global items needing a decision for this project
+chanchi items decide <item> --decision adopt|wrap|keep|deprecate --version <x.y.z> [--local <item>] --reason "<why>" --audit <id> [--project <slug>]
 ```
 
 `items mirror` links each published skill into `~/.agents/skills` (plus relative links for Claude Code and the
@@ -240,6 +242,11 @@ vendored_share = 0.5  # two copies sharing a block of identical lines this share
 
 `items proposals --id <n>` prints one candidate with the absolute path of each copy, for the item builder;
 `items proposal-status` closes an open candidate as `built` (linked to the draft in `SYNC/ITEMS`) or `rejected`.
+
+`items inbox` lists, for one registered project, global items that need an adoption decision (`new`, `changed`,
+`deprecate_pending` or `retired`), together with overlapping scanned items (`similar`); `--all` also shows
+`up_to_date` items. `items decide` records an audited `adopt`, `wrap`, `keep` or `deprecate` decision (backed by
+an accepted `adoption` audit of `<project>:<item>`), keeping the item's version and content hash.
 
 ## Exploration
 
