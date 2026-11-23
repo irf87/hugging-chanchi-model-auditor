@@ -27,3 +27,5 @@ now tells graders to read changes with `git status --porcelain` and `git ls-file
 
 Accept Revision 4 with this fix, or open a new audit for it. Orchestrator's recommendation: accept;
 the fix is the text both seats proposed, it touches two sentences, and seat 1 passed everything else.
+
+**Owner decision (2026-11-23):** accept Revision 4 (`73be6bd`) with the fix; merge the plan.

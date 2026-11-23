@@ -1,6 +1,6 @@
 # chanchi Agents — MVP Phase 2 (Skills Tested by Evals) Implementation Plan
 
-- **Revision:** 4: round 3 of chanchi audit 12 escalated on one finding raised by two seats, fixed
+- **Revision:** 4, accepted by the owner (2026-11-23) after round 3 of chanchi audit 12 escalated on one finding raised by two seats, fixed
   here (S5 `new-agent`, D22); see `docs/designs/reviews/chanchi-agents-mvp-phase2-plan/`.
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor` (S1 runs
