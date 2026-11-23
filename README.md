@@ -51,6 +51,7 @@ are updated.
 - `skill-chanchi-session-audit` — used while orchestrating: records sessions, incidents and verdicts.
 - `skill-chanchi-lessons` — used by writer roles at the end of a conversation, and in maintenance
   conversations that review lessons.
+- `skill-chanchi-item-adoption` — used in a project to compare global items against its own, propose a decision, apply it and record it.
 
 ## Agents
 
