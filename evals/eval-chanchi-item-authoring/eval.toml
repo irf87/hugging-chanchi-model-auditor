@@ -1,0 +1,16 @@
+name = "eval-chanchi-item-authoring"
+item = "skill-chanchi-item-authoring"
+regression = ["new-skill", "new-agent"]
+capability = ["rename-skill", "rule-or-check"]
+blind_allow = ["eval", "evals", "tests"]
+
+[candidate]
+agent = "agent-chanchi-executor"
+harness = "claude"
+model = "sonnet"
+effort = "medium"
+
+[judge]
+harness = "agy"
+model = "gemini-4-neon-high"
+effort = "high"

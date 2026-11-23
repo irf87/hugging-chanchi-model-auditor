@@ -1,0 +1,11 @@
+name = "eval-chanchi-item-adoption"
+item = "skill-chanchi-item-adoption"
+regression = ["propose-new"]
+capability = ["retired-entry"]
+blind_allow = []
+
+[candidate]
+agent = "agent-chanchi-executor"
+harness = "claude"
+model = "sonnet"
+effort = "medium"

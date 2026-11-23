@@ -19,7 +19,7 @@ this and fails when an operational file names an item that does not exist.
 |---|---|---|
 | agent | `agents/agent-chanchi-<n>/AGENT.md` | wrappers are generated; never edit `.claude/agents`, `.opencode/agents`, `.agents/agents` or `.cursor/agents` by hand |
 | skill | `skills/skill-chanchi-<n>/SKILL.md`, optional `references/` | linked into projects by `chanchi skills link` |
-| eval | `evals/eval-chanchi-<item>/` | phase 2: from then on every new skill ships with at least one eval case |
+| eval | `evals/eval-chanchi-<n>/`: `eval.toml`, `cases/<case>/` (`prompt.md`, `setup.sh`, `grade.py`), optional `rubric.md`, `triggers.md` | every new skill ships with one (`tests/test_evals.py`); after any change to an evaluated skill run `uv run python scripts/run_evals.py <skill>` and commit the ledger row |
 | hook | `hooks/hook-chanchi-<n>/` | a harness hook; git hooks are not items |
 
 ## Agent source

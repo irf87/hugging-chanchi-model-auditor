@@ -22,8 +22,6 @@ from run_evals import LEDGER_COLUMNS, read_ledger, tree_hash  # noqa: E402
 
 GRANDFATHERED = {
     "skill-chanchi-audit-rounds",
-    "skill-chanchi-item-adoption",
-    "skill-chanchi-item-authoring",
     "skill-chanchi-model-selection",
     "skill-chanchi-verify",
 }
