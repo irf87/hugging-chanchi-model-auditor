@@ -34,6 +34,7 @@ extend-exclude = [".claude", "external-references"]
 select = ["F", "E722", "BLE001", "S110", "ERA001", "T20", "B006"]
 
 [tool.ruff.lint.per-file-ignores]
+"evals/*" = ["T20"]
 "src/chanchi/cli.py" = ["T20"]
 "src/chanchi/render.py" = ["T20"]
 "scripts/*" = ["T20"]
