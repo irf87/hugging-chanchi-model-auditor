@@ -473,7 +473,10 @@ When the user asks a project to "check whether there are global items to adopt",
      records the follow-up and the inbox keeps showing it until a later `adopt`, `wrap` or `keep`.
 3. The decision is audited (kind `adoption`), applied in the project with the owner's go-ahead, and
    recorded: `chanchi items decide <global-item> --decision adopt|wrap|keep|deprecate
-   --version <x.y.z> [--local <item>] --reason "<why>"`. The record keeps version and hash.
+   --version <x.y.z> [--local <item>] --reason "<why>" --audit <id>`, where the audit is an
+   accepted `adoption` audit of `<project>:<global-item>` that no other decision uses. `--local` is
+   required for wrap (the wrapper's name) and, on a published item, for keep and deprecate. The
+   record keeps version and hash.
 
 This generalizes stage 2 of the lessons design (inbox, decline, replaces) to items; the lessons
 inbox, when built, reuses the same pattern.
