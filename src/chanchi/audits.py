@@ -20,6 +20,7 @@ from chanchi.timeutil import utc_now
 SEATS = (1, 2, 3)
 AUDITOR_AGENT = "agent-chanchi-auditor"
 PROMPT = "<prompt>"
+REPORT_DIR = "<report-dir>"
 MIN_VOTERS = 2
 DISTINCT_FAMILIES = 3
 MAX_ROUNDS = 3
@@ -211,7 +212,13 @@ def _fill(
     for seat, cand in zip(seat_numbers, chosen):
         entry, row = cand["entry"], cand["row"]
         launch = harnesses.launch(
-            entry["harness"], agent=AUDITOR_AGENT, model=entry["model"], effort=entry.get("effort"), prompt=PROMPT
+            entry["harness"],
+            agent=AUDITOR_AGENT,
+            model=entry["model"],
+            effort=entry.get("effort"),
+            prompt=PROMPT,
+            profile="read-only",
+            add_dirs=(REPORT_DIR,),
         )
         conn.execute(
             "INSERT INTO audit_seats (round_id, seat, model_id, effort, status, created_at, updated_at) "
@@ -243,7 +250,13 @@ def _seat_view(row: sqlite3.Row, *, launch: bool) -> dict:
     }
     if launch and row["status"] == "assigned":
         view["launch"] = harnesses.launch(
-            row["agent"], agent=AUDITOR_AGENT, model=row["model"], effort=row["effort"], prompt=PROMPT
+            row["agent"],
+            agent=AUDITOR_AGENT,
+            model=row["model"],
+            effort=row["effort"],
+            prompt=PROMPT,
+            profile="read-only",
+            add_dirs=(REPORT_DIR,),
         )
     if row["family"] is None:
         view["hint"] = _family_hint(row["agent"], row["model"])
