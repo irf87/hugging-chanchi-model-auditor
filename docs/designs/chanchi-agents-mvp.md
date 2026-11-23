@@ -1,7 +1,12 @@
 # chanchi Agents and the Agentic Trust MVP
 
 - **Author:** Iván R
-- **Status:** Phase 1 implemented (2026-11-21, change `chanchi-agents-phase1`)
+- **Status:** Phase 1 implemented (2026-11-21, change `chanchi-agents-phase1`) and closed
+  (2026-11-23): its exit signal holds on the consecutive changes `global-items-phase1`,
+  `global-items-phase2` and `global-items-phase3`, whose last attempt of every
+  `agent-chanchi-executor` session is `accepted` with `gate:first-green`, and 10 of those 11
+  sessions also carry `verify:feature-map` (`chanchi show`; evidence in
+  [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). Phase 2 in progress.
 - **Date:** 2026-11-21
 - **Revision:** 2 (after two independent audits of Revision 1, both `PASS WITH FIXES` and both
   agreeing with option A:
