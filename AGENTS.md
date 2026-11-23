@@ -117,15 +117,18 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one. Delegated agents run unattended with their harness's
-  auto-approval flags: agy (`--dangerously-skip-permissions`) and opencode
-  (`--auto`) always; headless claude (`claude -p`) with `--permission-mode acceptEdits --allowedTools`
-  naming `Bash` and the tools its profile needs (owner decision 2026-11-23), and
-  `--dangerously-skip-permissions` only in another terminal pane such as a herdr pane, never as
-  an in-process subagent. `harnesses.launch` builds these lines and `tests/test_harnesses.py`
-  enforces them; confirm a flag in the CLI's `--help`. The owner authorized this explicitly (2026-11-22); it
-  is not bypassing a rule, because a permission prompt would stop the flow. The flag
-  removes prompts, not limits: the agent still works only in its worktree with a
-  scratch database, and the orchestrator checks that on handoff.
+  auto-approval flags: agy (`--dangerously-skip-permissions`) and opencode (`--auto`)
+  always; headless claude (`claude -p`) with `--permission-mode acceptEdits
+  --allowedTools` naming `Bash` and the tools its profile needs, never
+  `--dangerously-skip-permissions`; interactive claude with
+  `--dangerously-skip-permissions` only in another terminal pane such as a herdr
+  pane, never as an in-process subagent. `harnesses.launch` builds the headless
+  lines and `tests/test_harnesses.py` enforces them; confirm a flag in the CLI's
+  `--help`. The owner authorized the skip flags (2026-11-22) and the headless claude
+  tool grant (2026-11-23); this is not bypassing a rule, because a permission prompt
+  would stop the flow. These flags remove prompts, not limits: the agent still works
+  only in its worktree with a scratch database, and the orchestrator checks that on
+  handoff.
 - External research (repositories, posts, papers) is adapted, never adopted wholesale: rarely
   does anything cover our goal completely. Verify each claim at its primary source before relying
   on it, and give every design that uses external sources an "Adopt / Adapt / Avoid" section that

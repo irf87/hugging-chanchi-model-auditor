@@ -332,6 +332,10 @@ def test_cli_open_show_list_and_unavailable(cli_env):
     )
     moved = ok(cli_env, "audit", "unavailable", "1", "--round", "1", "--seat", "2", "--reason", "quota")
     assert moved["seat"]["spec"] == "agy:gemini-4-hydrogen-high:high"
+    assert moved["seat"]["launch"] == (
+        "agy --agent agent-chanchi-auditor --model gemini-4-hydrogen --effort high "
+        '--dangerously-skip-permissions --add-dir "<report-dir>" -p="<prompt>" < /dev/null'
+    )
     shown = ok(cli_env, "audit", "show", "1")
     assert [(s["seat"], s["status"]) for s in shown["rounds"][0]["seats"]] == [
         (1, "assigned"), (2, "unavailable"), (2, "assigned"), (3, "assigned"),

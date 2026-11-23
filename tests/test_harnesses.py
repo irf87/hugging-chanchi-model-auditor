@@ -71,7 +71,7 @@ def test_prompt_is_escaped_inside_double_quotes():
 
 
 @pytest.mark.parametrize("key", harnesses.KEYS)
-@pytest.mark.parametrize("profile", ("read-only", "workspace-write", "orchestrator"))
+@pytest.mark.parametrize("profile", harnesses.PROFILES)
 def test_launch_carries_permission_flags_and_add_dirs(key, profile):
     model = "gemini-4-neon-high" if key == "agy" else "m"
     effort = "high" if key == "agy" else None
@@ -154,3 +154,12 @@ def test_available_uses_the_injected_lookup():
     assert harnesses.available("claude", which=which) is True
     assert harnesses.available("agy", which=which) is False
     assert seen == ["claude", "agy"]
+
+
+def test_launch_add_dirs_refuses_a_bare_string_and_quotes_paths():
+    with pytest.raises(ChanchiError) as exc:
+        harnesses.launch("claude", agent="a", model="m", effort=None, prompt="p", add_dirs="/tmp/r")
+    assert exc.value.field == "add_dirs"
+    line = harnesses.launch("agy", agent="a", model="gemini-4-neon-high", effort="high", prompt="p",
+                            add_dirs=('/tmp/a "b" $x',))
+    assert '--add-dir "/tmp/a \\"b\\" \\$x"' in line

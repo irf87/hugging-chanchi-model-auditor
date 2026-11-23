@@ -56,7 +56,7 @@ def _arg(value: str) -> str:
 
 
 def _dq(prompt: str) -> str:
-    """The prompt as one double-quoted shell word."""
+    """A value (prompt, tool list or directory) as one double-quoted shell word."""
     return '"' + _DQ_ESCAPED.sub(r"\\\1", prompt) + '"'
 
 
@@ -90,9 +90,14 @@ def launch(
     profile: str = "read-only",
     add_dirs: Iterable[str] = (),
 ) -> str:
-    """The headless launch line of a harness. The caller runs it; chanchi never does."""
+    """The headless launch line of a harness, with the permission flags its `profile` needs and an
+    `--add-dir` per entry of `add_dirs` (opencode has no such flag and ignores them). The caller runs
+    it; chanchi never does."""
     _key(key)
     _profile(profile)
+    if isinstance(add_dirs, (str, bytes)):
+        raise ChanchiError("invalid_value", "add_dirs must be a sequence of paths, not one string",
+                           field="add_dirs")
     dirs = "".join(f" --add-dir {_dq(d)}" for d in add_dirs)
     if key == "claude":
         flag = f" --effort {_arg(effort)}" if effort else ""
