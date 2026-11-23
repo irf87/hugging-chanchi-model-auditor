@@ -310,9 +310,9 @@ mirror writes. Launch templates verified on the installed CLIs (the phase-1 plan
 
 | Harness | Headless launch |
 |---|---|
-| claude | `claude -p --agent <a> --model <m> --effort <e> "<prompt>" < /dev/null` |
-| opencode | `opencode run --agent <a> -m <provider/model>[#variant] "<prompt>" < /dev/null` |
-| agy | `agy --agent <a> --model <base> --effort <e> -p="<prompt>" < /dev/null`, where the catalog id `<base>-<e>` (for example `gemini-4-neon-high`) is split into base and effort; a roster `effort` that differs from the id's suffix is an error |
+| claude | `claude -p --agent <a> --model <m> --effort <e> --permission-mode acceptEdits --allowedTools "<tools>" [--add-dir "<dir>"] -- "<prompt>" < /dev/null`, `<tools>` being `Bash Read Grep Glob` for a read-only profile, plus `Edit Write` otherwise (change `launch-permissions`, 2026-11-23) |
+| opencode | `opencode run --agent <a> -m <provider/model>[#variant] --auto "<prompt>" < /dev/null` (no `--add-dir` flag exists) |
+| agy | `agy --agent <a> --model <base> --effort <e> --dangerously-skip-permissions [--add-dir "<dir>"] -p="<prompt>" < /dev/null`, where the catalog id `<base>-<e>` (for example `gemini-4-neon-high`) is split into base and effort; a roster `effort` that differs from the id's suffix is an error |
 
 chanchi only checks whether the binary is on `PATH` (`shutil.which`); it never runs a harness.
 Adding a harness (Cursor, OpenAI Codex) needs an adapter row, an agent renderer in `agents_sync`

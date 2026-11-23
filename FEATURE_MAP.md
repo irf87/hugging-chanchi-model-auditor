@@ -390,6 +390,7 @@ Covered by: tests/test_audits.py, tests/test_harnesses.py, tests/test_sync.py, t
 
 ### Gotchas
 - `chanchi` never launches a harness: `launch` is a line the orchestrator runs, one conversation per seat.
+- Each `launch` line carries its harness's permission flags and a `<report-dir>` placeholder (where present) to replace with the seat's private report folder.
 - A model with `family: null` never counts as a distinct family; the seat carries the hint
   `chanchi models set <agent:model> --family <name>`.
 - `--change <ref>` needs a project: pass `--project <slug>` or run inside a project that has recorded

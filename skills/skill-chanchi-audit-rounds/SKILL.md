@@ -20,7 +20,7 @@ All `chanchi` commands print JSON. Errors carry `field`, `valid_values`, and `hi
    - Check `degraded` (`true` when fewer than three distinct known families sit; unknown families fail closed — fix with `chanchi models set <agent:model> --family <name>`) and `skipped` (register missing models with `chanchi models add --agent <harness> --model <model> --cost <1-3>`).
    - If fewer than two seats can be filled, round 1 closes immediately as `escalated` (`quorum`); stop and hand the escalation to the human.
 
-3. **Launch each seat independently.** `chanchi` never launches harnesses. For each seat, run its `launch` command in its own conversation with the brief (and that seat's private report path) as the prompt. Keep all reports in their private scratch paths and move them into `docs/designs/reviews/<topic>/` (or the subject's review folder) **only after every active seat has voted**, so no auditor can read another's report.
+3. **Launch each seat independently.** `chanchi` never launches harnesses. For each seat, run its `launch` command in its own conversation, replacing `<prompt>` with the brief and that seat's private report path, and `<report-dir>` (where present; opencode has no `--add-dir`) with that seat's private report folder; a placeholder left unreplaced is an error. Keep all reports in their private scratch paths and move them into `docs/designs/reviews/<topic>/` (or the subject's review folder) **only after every active seat has voted**, so no auditor can read another's report.
 
 4. **Replace an unavailable auditor.** If a seat's harness fails to run, record the failure and paste its error:
    `chanchi audit unavailable <audit-id> --round <n> --seat <1-3> --reason "<error>"`

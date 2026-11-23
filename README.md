@@ -74,7 +74,8 @@ chanchi agents link --user --remove  # remove user wrappers owned by this reposi
 - `agent-chanchi-item-builder` — user-installed builder that turns one stored item proposal into a global item draft in `SYNC/ITEMS`; never publishes and never writes chanchi records.
 
 Launch one with `claude --agent <name>`, `opencode run --agent <name>` or
-`agy --agent <name>` (headless: `agy --agent <name> -p="<prompt>"`). `FEATURE_MAP.md` tells an
+`agy --agent <name>`. Unattended headless lines need each harness's permission flags
+(`AGENTS.md`, Working Conventions); `chanchi audit open` prints them. `FEATURE_MAP.md` tells an
 agent how to reach and verify every command. Design: `docs/designs/chanchi-agents-mvp.md`.
 
 ## Everyday commands
