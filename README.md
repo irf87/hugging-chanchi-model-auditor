@@ -292,6 +292,25 @@ uv run python scripts/fetch_hf_benchmarks.py --write
 4. Compare `vision_candidates` in the summary with `chanchi models list`, check each provider's model page, and update capabilities with the installed `chanchi` (`chanchi models set <agent:model> --capability vision=yes|no`).
 5. Review `git diff src/chanchi/data/hf_snapshot.json`, commit, and merge to `main`. Every project's next `chanchi recommend` call uses the new snapshot automatically through the editable install.
 
+## Evals
+
+Skills are tested with with-skill vs without-skill evals (`docs/designs/chanchi-agents-mvp.md`, Layer 2). Each evaluated skill has a directory under `evals/`, and `agent-chanchi-judge` grades subjective rubric criteria from a separate model family.
+
+### Runner contract
+
+- Work directory `W` is `<tmp>/work-<8 hex>`, the current directory of `setup.sh` and the candidate.
+- Environment for `setup.sh`, the candidate, and `grade.py`: `CHANCHI_DB=W/.state/chanchi.db`, `CHANCHI_SYNC=<tmp>/sync-<8 hex>`, and `PATH` starting with a folder holding the `chanchi` shim.
+- `bash setup.sh` may create anything under `W` and the scratch `SYNC`. When `W/.git` exists, the runner adds `.state/`, the injected wrapper, and the injected skill folder to `W/.git/info/exclude` before the candidate starts so `W` starts git-clean in both arms; graders read project changes via `git status --porcelain` and `git ls-files --cached --others --exclude-standard`.
+- After the candidate finishes, `python -I grade.py W` runs with the same environment plus `FINAL_MESSAGE_FILE` (path to the candidate's final message as text) and prints one JSON line per criterion: `{"criterion": "<id>", "pass": true|false, "detail": "<text>"}`.
+
+### Ledger semantics
+
+`evals/ledger.tsv` records one row per arm per full measurement (`id`, `date`, `item`, `item_sha`, `hypothesis`, `change`, `arm`, `candidate`, `runs`, `median_pass`, `before`, `after`, `delta`, `verdict`, `note`):
+
+- `arm` is `with`, `without`, or `triggers`. `median_pass` is the median run score over the arm's capability runs (for `triggers`, the share of trigger prompts with the expected outcome); `note` carries `regression=<passed runs>/<runs>` on `with` rows.
+- `verdict` is `baseline`, `kept`, or `reverted`; `item_sha` is the git tree hash of the skill directory.
+- The current `with` row of an item is the newest `baseline` or `kept` `with` row whose `item_sha` matches the item's current tree hash, compared against the `without` row of the same baseline; `reverted` rows are never current.
+
 ## Databases and migrations
 
 | | Template | Operational |

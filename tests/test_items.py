@@ -76,13 +76,22 @@ def test_own_items_are_not_global_flags_global_item_in_temp_tree(tmp_path):
     assert "SYNC/ITEMS/" in str(exc.value)
 
 
-def operational_files():
+def _skip_eval_file(path: Path, evals_root: Path) -> bool:
+    rel = path.relative_to(evals_root)
+    return len(rel.parts) >= 2 and (rel.parts[1] == "cases" or rel.parts[1] == "triggers.md")
+
+
+def operational_files(root: Path = ROOT):
     for item in OPERATIONAL:
-        path = ROOT / item
+        path = root / item
         if path.is_file():
             yield path
         elif path.is_dir():
-            yield from sorted(p for p in path.rglob("*") if p.is_file() and p.suffix in {".md", ".toml"})
+            for p in sorted(path.rglob("*")):
+                if p.is_file() and p.suffix in {".md", ".toml"}:
+                    if item == "evals" and _skip_eval_file(p, path):
+                        continue
+                    yield p
 
 
 def dangling_references(text: str, known: set[str]) -> list[str]:
@@ -109,3 +118,18 @@ def test_references_resolve():
 def test_global_references_are_skipped():
     text = "Load `skill-chanchi-global-x` and `skill-chanchi-global` and `skill-chanchi-missing`."
     assert dangling_references(text, set()) == ["skill-chanchi-missing"]
+
+
+def test_eval_cases_and_triggers_skipped_in_references(tmp_path):
+    eval_dir = tmp_path / "evals" / "eval-chanchi-demo"
+    (eval_dir / "cases" / "c1").mkdir(parents=True)
+    (eval_dir / "cases" / "c1" / "prompt.md").write_text("prompt", encoding="utf-8")
+    (eval_dir / "triggers.md").write_text("triggers", encoding="utf-8")
+    (eval_dir / "eval.toml").write_text("name = 'eval-chanchi-demo'\n", encoding="utf-8")
+    (eval_dir / "rubric.md").write_text("# Rubric\n", encoding="utf-8")
+
+    files = {p.relative_to(tmp_path).as_posix() for p in operational_files(tmp_path)}
+    assert files == {
+        "evals/eval-chanchi-demo/eval.toml",
+        "evals/eval-chanchi-demo/rubric.md",
+    }
