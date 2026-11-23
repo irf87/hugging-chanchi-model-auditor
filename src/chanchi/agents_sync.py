@@ -14,7 +14,7 @@ from chanchi import db, harnesses, projects, taxonomy
 from chanchi.errors import ChanchiError
 
 SCOPES = ("main", "subagent", "both")
-PROFILES = ("read-only", "workspace-write", "orchestrator")
+PROFILES = harnesses.PROFILES
 INSTALLS = ("repo", "user")
 NAME = re.compile(r"^agent-chanchi-[a-z0-9]+(-[a-z0-9]+)*$")
 WRAPPER_GLOBS = (".claude/agents/agent-chanchi-*.md", ".opencode/agents/agent-chanchi-*.md",

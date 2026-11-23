@@ -10,14 +10,20 @@ import os
 import re
 import shlex
 import shutil
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from chanchi.errors import ChanchiError
 
 KEYS = ("claude", "opencode", "agy")
+PROFILES = ("read-only", "workspace-write", "orchestrator")
 
 _BINARY = {"claude": "claude", "opencode": "opencode", "agy": "agy"}
+_CLAUDE_TOOLS = {
+    "read-only": "Bash Read Grep Glob",
+    "workspace-write": "Bash Read Grep Glob Edit Write",
+    "orchestrator": "Bash Read Grep Glob Edit Write",
+}
 _PLAIN = re.compile(r"^[A-Za-z0-9@%+=:,./#_-]+$")
 _DQ_ESCAPED = re.compile(r'([\\"$`])')
 
@@ -31,6 +37,17 @@ def _key(key: str) -> str:
             valid_values=KEYS,
         )
     return key
+
+
+def _profile(profile: str) -> str:
+    if profile not in PROFILES:
+        raise ChanchiError(
+            "invalid_value",
+            f"unknown profile {profile!r}",
+            field="profile",
+            valid_values=PROFILES,
+        )
+    return profile
 
 
 def _arg(value: str) -> str:
@@ -63,16 +80,35 @@ def split_agy_model(model: str, effort: str | None) -> str:
     return model[: -len(suffix)]
 
 
-def launch(key: str, *, agent: str, model: str, effort: str | None, prompt: str) -> str:
+def launch(
+    key: str,
+    *,
+    agent: str,
+    model: str,
+    effort: str | None,
+    prompt: str,
+    profile: str = "read-only",
+    add_dirs: Iterable[str] = (),
+) -> str:
     """The headless launch line of a harness. The caller runs it; chanchi never does."""
     _key(key)
+    _profile(profile)
+    dirs = "".join(f" --add-dir {_dq(d)}" for d in add_dirs)
     if key == "claude":
         flag = f" --effort {_arg(effort)}" if effort else ""
-        return f"claude -p --agent {_arg(agent)} --model {_arg(model)}{flag} {_dq(prompt)} < /dev/null"
+        tools = _CLAUDE_TOOLS[profile]
+        return (
+            f"claude -p --agent {_arg(agent)} --model {_arg(model)}{flag} "
+            f"--permission-mode acceptEdits --allowedTools {_dq(tools)}{dirs} -- {_dq(prompt)} < /dev/null"
+        )
     if key == "opencode":
-        return f"opencode run --agent {_arg(agent)} -m {_arg(model)} {_dq(prompt)} < /dev/null"
+        # opencode run has no --add-dir flag; add_dirs are ignored here.
+        return f"opencode run --agent {_arg(agent)} -m {_arg(model)} --auto {_dq(prompt)} < /dev/null"
     base = split_agy_model(model, effort)
-    return f'agy --agent {_arg(agent)} --model {_arg(base)} --effort {_arg(effort)} -p={_dq(prompt)} < /dev/null'
+    return (
+        f"agy --agent {_arg(agent)} --model {_arg(base)} --effort {_arg(effort)} "
+        f"--dangerously-skip-permissions{dirs} -p={_dq(prompt)} < /dev/null"
+    )
 
 
 def home_dir(key: str, *, env: Mapping[str, str] | None = None, home: Path | None = None) -> Path:

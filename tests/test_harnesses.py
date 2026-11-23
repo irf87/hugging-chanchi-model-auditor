@@ -16,9 +16,15 @@ def test_keys():
 
 def test_launch_claude_with_and_without_effort():
     line = harnesses.launch("claude", agent="a-1", model="sonnet", effort="medium", prompt="<prompt>")
-    assert line == 'claude -p --agent a-1 --model sonnet --effort medium "<prompt>" < /dev/null'
+    assert line == (
+        "claude -p --agent a-1 --model sonnet --effort medium "
+        '--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob" -- "<prompt>" < /dev/null'
+    )
     bare = harnesses.launch("claude", agent="a-1", model="sonnet", effort=None, prompt="<prompt>")
-    assert bare == 'claude -p --agent a-1 --model sonnet "<prompt>" < /dev/null'
+    assert bare == (
+        "claude -p --agent a-1 --model sonnet "
+        '--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob" -- "<prompt>" < /dev/null'
+    )
     assert "--effort" not in bare
 
 
@@ -26,12 +32,15 @@ def test_launch_opencode_keeps_variant_and_ignores_effort():
     line = harnesses.launch(
         "opencode", agent="a-1", model="opencode-go/minimax-m3#thinking", effort="high", prompt="<prompt>"
     )
-    assert line == 'opencode run --agent a-1 -m opencode-go/minimax-m3#thinking "<prompt>" < /dev/null'
+    assert line == 'opencode run --agent a-1 -m opencode-go/minimax-m3#thinking --auto "<prompt>" < /dev/null'
 
 
 def test_launch_agy_splits_model_and_effort():
     line = harnesses.launch("agy", agent="a-1", model="gemini-4-neon-high", effort="high", prompt="<prompt>")
-    assert line == 'agy --agent a-1 --model gemini-4-neon --effort high -p="<prompt>" < /dev/null'
+    assert (
+        line
+        == 'agy --agent a-1 --model gemini-4-neon --effort high --dangerously-skip-permissions -p="<prompt>" < /dev/null'
+    )
 
 
 def test_launch_agy_refuses_missing_or_mismatched_effort():
@@ -54,7 +63,45 @@ def test_split_agy_model():
 
 def test_prompt_is_escaped_inside_double_quotes():
     line = harnesses.launch("claude", agent="a", model="m", effort=None, prompt='say "hi" $HOME `x` \\')
-    assert line == 'claude -p --agent a --model m "say \\"hi\\" \\$HOME \\`x\\` \\\\" < /dev/null'
+    assert line == (
+        "claude -p --agent a --model m "
+        '--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob" '
+        '-- "say \\"hi\\" \\$HOME \\`x\\` \\\\" < /dev/null'
+    )
+
+
+@pytest.mark.parametrize("key", harnesses.KEYS)
+@pytest.mark.parametrize("profile", ("read-only", "workspace-write", "orchestrator"))
+def test_launch_carries_permission_flags_and_add_dirs(key, profile):
+    model = "gemini-4-neon-high" if key == "agy" else "m"
+    effort = "high" if key == "agy" else None
+    dirs = ("/tmp/r1", "/tmp/r2")
+    line = harnesses.launch(key, agent="a", model=model, effort=effort, prompt="p", profile=profile, add_dirs=dirs)
+    msg = "a headless launch line must carry its harness's permission flags (AGENTS.md, Working Conventions)"
+    if key == "claude":
+        assert "--permission-mode acceptEdits" in line, msg
+        assert "--dangerously-skip-permissions" not in line, msg
+        expected_tools = (
+            "Bash Read Grep Glob" if profile == "read-only" else "Bash Read Grep Glob Edit Write"
+        )
+        assert f'--allowedTools "{expected_tools}"' in line, msg
+        assert line.count("--add-dir ") == 2
+        assert '--add-dir "/tmp/r1"' in line and '--add-dir "/tmp/r2"' in line
+    elif key == "agy":
+        assert "--dangerously-skip-permissions" in line, msg
+        assert line.count("--add-dir ") == 2
+        assert '--add-dir "/tmp/r1"' in line and '--add-dir "/tmp/r2"' in line
+    else:
+        assert " --auto " in line, msg
+        assert "--add-dir" not in line
+
+
+def test_launch_unknown_profile_is_refused():
+    with pytest.raises(ChanchiError) as exc:
+        harnesses.launch("claude", agent="a", model="m", effort=None, prompt="p", profile="admin")
+    assert exc.value.code == "invalid_value"
+    assert exc.value.field == "profile"
+    assert exc.value.valid_values == list(harnesses.PROFILES)
 
 
 def test_unknown_harness_lists_valid_keys():

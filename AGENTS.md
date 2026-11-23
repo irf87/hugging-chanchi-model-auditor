@@ -117,10 +117,12 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one. Delegated agents run unattended with their harness's
-  auto-approval flag: agy (`--dangerously-skip-permissions`) and opencode (`--auto`)
-  always, claude (`--dangerously-skip-permissions`) only when it runs in another
-  terminal pane such as a herdr pane, never as an in-process subagent; confirm the
-  flag in the CLI's `--help`. The owner authorized this explicitly (2026-11-22); it
+  auto-approval flags: agy (`--dangerously-skip-permissions`) and opencode
+  (`--auto`) always; headless claude (`claude -p`) with `--permission-mode acceptEdits --allowedTools`
+  naming `Bash` and the tools its profile needs (owner decision 2026-11-23), and
+  `--dangerously-skip-permissions` only in another terminal pane such as a herdr pane, never as
+  an in-process subagent. `harnesses.launch` builds these lines and `tests/test_harnesses.py`
+  enforces them; confirm a flag in the CLI's `--help`. The owner authorized this explicitly (2026-11-22); it
   is not bypassing a rule, because a permission prompt would stop the flow. The flag
   removes prompts, not limits: the agent still works only in its worktree with a
   scratch database, and the orchestrator checks that on handoff.

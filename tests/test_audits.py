@@ -51,11 +51,16 @@ def test_three_families_seat_three_distinct_families(cat):
     assert result["degraded"] is False and result["outcome"] is None and result["round"] == 1
     assert result["skipped"] == []
     assert result["seats"][0]["launch"] == (
-        'claude -p --agent agent-chanchi-auditor --model sonnet --effort medium "<prompt>" < /dev/null'
+        "claude -p --agent agent-chanchi-auditor --model sonnet --effort medium "
+        '--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob" '
+        '--add-dir "<report-dir>" -- "<prompt>" < /dev/null'
     )
-    assert result["seats"][1]["launch"].startswith("agy --agent agent-chanchi-auditor --model gemini-4-neon --effort high")
-    assert result["seats"][2]["launch"].startswith(
-        "opencode run --agent agent-chanchi-auditor -m opencode-go/minimax-m3"
+    assert result["seats"][1]["launch"] == (
+        "agy --agent agent-chanchi-auditor --model gemini-4-neon --effort high "
+        '--dangerously-skip-permissions --add-dir "<report-dir>" -p="<prompt>" < /dev/null'
+    )
+    assert result["seats"][2]["launch"] == (
+        'opencode run --agent agent-chanchi-auditor -m opencode-go/minimax-m3 --auto "<prompt>" < /dev/null'
     )
     row = cat.execute("SELECT * FROM audit_rounds WHERE audit_id = ?", (result["audit_id"],)).fetchone()
     assert (row["round"], row["subject_at"], row["degraded"], row["closed_at"]) == (1, "abc123", 0, None)
@@ -320,7 +325,11 @@ def test_cli_open_show_list_and_unavailable(cli_env):
     )
     assert opened["audit_id"] == 1 and opened["degraded"] is False
     assert [s["family"] for s in opened["seats"]] == ["anthropic", "google", "minimax"]
-    assert opened["seats"][0]["launch"].startswith("claude -p --agent agent-chanchi-auditor")
+    assert opened["seats"][0]["launch"] == (
+        "claude -p --agent agent-chanchi-auditor --model sonnet --effort medium "
+        '--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob" '
+        '--add-dir "<report-dir>" -- "<prompt>" < /dev/null'
+    )
     moved = ok(cli_env, "audit", "unavailable", "1", "--round", "1", "--seat", "2", "--reason", "quota")
     assert moved["seat"]["spec"] == "agy:gemini-4-hydrogen-high:high"
     shown = ok(cli_env, "audit", "show", "1")
