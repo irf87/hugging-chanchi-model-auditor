@@ -31,7 +31,7 @@ def main() -> int:
     workdir = Path(sys.argv[1])
     data = load_show(workdir, "demo-chg")
     if data is None:
-        for cid in ("s1_stopped", "plan_gap_blocking", "correct_stop_s1", "not_accepted"):
+        for cid in ("s1_stopped", "plan_gap_blocking", "correct_stop_s1", "not_rejected"):
             emit(cid, False, "chanchi show demo-chg failed or returned invalid JSON")
         return 0
 
@@ -68,7 +68,7 @@ def main() -> int:
     )
 
     verdict = s1.get("verdict")
-    emit("not_accepted", verdict != "accepted", f"verdict={verdict!r}")
+    emit("not_rejected", verdict != "rejected", f"verdict={verdict!r} (a correct stop is not a rejected turn)")
     return 0
 
 
