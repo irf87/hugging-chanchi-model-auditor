@@ -116,7 +116,14 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
   `skill-chanchi-audit-rounds` and `docs/designs/global-items.md`.
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
-  the operational one.
+  the operational one. Delegated agents run unattended with their harness's
+  auto-approval flag: agy (`--dangerously-skip-permissions`) and opencode (`--auto`)
+  always, claude (`--dangerously-skip-permissions`) only when it runs in another
+  terminal pane such as a herdr pane, never as an in-process subagent; confirm the
+  flag in the CLI's `--help`. The owner authorized this explicitly (2026-11-22); it
+  is not bypassing a rule, because a permission prompt would stop the flow. The flag
+  removes prompts, not limits: the agent still works only in its worktree with a
+  scratch database, and the orchestrator checks that on handoff.
 - External research (repositories, posts, papers) is adapted, never adopted wholesale: rarely
   does anything cover our goal completely. Verify each claim at its primary source before relying
   on it, and give every design that uses external sources an "Adopt / Adapt / Avoid" section that
