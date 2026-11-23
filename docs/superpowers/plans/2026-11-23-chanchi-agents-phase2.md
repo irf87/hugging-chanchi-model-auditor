@@ -1,7 +1,7 @@
 # chanchi Agents — MVP Phase 2 (Skills Tested by Evals) Implementation Plan
 
-- **Revision:** 3, after audit rounds 1 and 2 (chanchi audit 12, both `fix`; consolidations in
-  `docs/designs/reviews/chanchi-agents-mvp-phase2-plan/`).
+- **Revision:** 4: round 3 of chanchi audit 12 escalated on one finding raised by two seats, fixed
+  here (S5 `new-agent`, D22); see `docs/designs/reviews/chanchi-agents-mvp-phase2-plan/`.
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor` (S1 runs
 > as `agent-chanchi-researcher`). Steps use checkbox (`- [ ]`) syntax. Write the failing test
@@ -78,7 +78,7 @@ D21 adapt it, and the gate commit (G5) amends the design text for each of them s
 | D19 | **Eval files and existing checks (adapts check 1 and check 6).** `pyproject.toml` gains `"evals/*" = ["T20"]` under ruff's per-file ignores (graders print their verdict lines). `tests/test_items.py::test_references_resolve` skips `evals/*/cases/**` and `evals/*/triggers.md`: prompts there may name planned or fictional items; `eval.toml` and `rubric.md` stay checked. Prompts avoid fictional `<item>-chanchi-*` names anyway | A case's prompt is data the candidate reads, not an operational reference |
 | D20 | **Scratch `SYNC`.** The runner creates `<tmp>/sync-<8 hex>` next to the work directory and passes `CHANCHI_SYNC` to `setup.sh`, the candidate (with `--add-dir` on claude and agy) and `grade.py`; without it `chanchi` falls back to the main checkout's `SYNC` (`src/chanchi/sync.py`) | Item adoption writes proposals under `SYNC`; the real one must never be touched |
 | D21 | **Lesson review with a check (the design's "can a check enforce it?").** `chanchi lesson review` cannot change another conversation's `target_kind` (`lessons.py`: `modify` is author-only, `review` is never the author). So the reviewer records a replacement lesson whose `target_kind` is `tool`, `hook` or `permission`, whose proposal names the check and whose `replaces` lists the original (with `--force-new` if `lesson add` reports it as a duplicate), then reviews the original as `duplicate --of <new id>`, which moves its occurrences. The replacement is reviewed later by another conversation | Uses only existing commands; nothing approves a prose rule a check can enforce |
-| D22 | **Runner contract** (S2 writes it into `README.md`'s evals section and pins it in `tests/test_evals.py`; S3, S4 and S5 rely on it). Work directory `W` = `<tmp>/work-<8 hex>`, the current directory of `setup.sh` and of the candidate; `CHANCHI_DB=W/.state/chanchi.db`; `CHANCHI_SYNC=<tmp>/sync-<8 hex>` (D20); `PATH` starts with a folder holding the `chanchi` shim. `bash setup.sh` runs with that environment and may create anything under `W` and the scratch `SYNC` (a project repository, if any, is `W` itself). After setup and before the candidate, the runner adds its own paths (`.state/`, the injected wrapper, the injected skill folder) to `W/.git/info/exclude` when `W/.git` exists, so `W` starts git-clean in both arms; graders read project changes with `git status --porcelain` and `git diff` on tracked paths, never by listing `W`. After the candidate, `python -I grade.py W` runs with the same environment plus `FINAL_MESSAGE_FILE` (the candidate's final message as text) and prints D7's lines | Graders and setups are written before the runner exists |
+| D22 | **Runner contract** (S2 writes it into `README.md`'s evals section and pins it in `tests/test_evals.py`; S3, S4 and S5 rely on it). Work directory `W` = `<tmp>/work-<8 hex>`, the current directory of `setup.sh` and of the candidate; `CHANCHI_DB=W/.state/chanchi.db`; `CHANCHI_SYNC=<tmp>/sync-<8 hex>` (D20); `PATH` starts with a folder holding the `chanchi` shim. `bash setup.sh` runs with that environment and may create anything under `W` and the scratch `SYNC` (a project repository, if any, is `W` itself). After setup and before the candidate, the runner adds its own paths (`.state/`, the injected wrapper, the injected skill folder) to `W/.git/info/exclude` when `W/.git` exists, so `W` starts git-clean in both arms; graders read project changes with `git status --porcelain` and `git ls-files --cached --others --exclude-standard` (new untracked files count; the candidate never commits), never by listing `W`. After the candidate, `python -I grade.py W` runs with the same environment plus `FINAL_MESSAGE_FILE` (the candidate's final message as text) and prints D7's lines | Graders and setups are written before the runner exists |
 
 ## Sessions
 
@@ -275,8 +275,8 @@ Files: `evals/eval-chanchi-item-authoring/**`, `evals/eval-chanchi-item-adoption
     lines, and an `evals/eval-chanchi-<n>/` with at least one case.
   - `new-agent` (regression): "add a read-only agent that summarizes changelogs". Graded: the
     source has `name`, `description`, `scope`, `profile: read-only`, `skills`, no model name, and
-    `chanchi agents sync --check` exits 0 on a temporary git repository holding a copy of `W`'s
-    tracked files (runner paths are excluded, D22).
+    `chanchi agents sync --check` exits 0 in `W` itself (the runner's `worker` wrapper does not
+    match `agent-chanchi-*`, D3), with the candidate's new, untracked files present.
   - `rename-skill` (capability): rename one skill of the small repository to a name the prompt
     gives (both names exist only in the setup, never in this repository). Graded: no operational
     file names the old name, and `python3 tests/check_items.py` exits 0.
