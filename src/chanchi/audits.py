@@ -154,7 +154,9 @@ def _candidates(
         skip: dict | None = None
         row = conn.execute("SELECT * FROM models WHERE agent = ? AND model = ?", (harness, model)).fetchone()
         if not harnesses.available(harness, which):
-            skip = {"reason": "not_on_path", "hint": f"install {harness} or put it on PATH"}
+            binary = harnesses.binary(harness)
+            target = harness if binary == harness else f"{binary} ({harness})"
+            skip = {"reason": "not_on_path", "hint": f"install {target} or put it on PATH"}
         elif row is None:
             skip = {
                 "reason": "not_in_catalog",

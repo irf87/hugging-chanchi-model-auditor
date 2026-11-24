@@ -11,7 +11,7 @@ HOME = Path("/home-for-tests")
 
 
 def test_keys():
-    assert harnesses.KEYS == ("claude", "opencode", "agy")
+    assert harnesses.KEYS == ("claude", "opencode", "agy", "cursor")
 
 
 def test_launch_claude_with_and_without_effort():
@@ -33,6 +33,26 @@ def test_launch_opencode_keeps_variant_and_ignores_effort():
         "opencode", agent="a-1", model="opencode-go/minimax-m3#thinking", effort="high", prompt="<prompt>"
     )
     assert line == 'opencode run --agent a-1 -m opencode-go/minimax-m3#thinking --auto "<prompt>" < /dev/null'
+
+
+def test_launch_cursor_with_and_without_effort_and_bracketed_model():
+    line = harnesses.launch("cursor", agent="agent-chanchi-auditor", model="gpt-5.4-high", effort="high", prompt="<prompt>")
+    expected = (
+        "agent -p --trust --force --model gpt-5.4-high -- "
+        '"Follow the agent-chanchi-auditor role (.cursor/agents/agent-chanchi-auditor.md or '
+        '~/.cursor/agents/agent-chanchi-auditor.md): <prompt>" < /dev/null'
+    )
+    assert line == expected
+    bare = harnesses.launch("cursor", agent="agent-chanchi-auditor", model="gpt-5.4-high", effort=None, prompt="<prompt>")
+    assert bare == expected
+    bracketed = harnesses.launch(
+        "cursor",
+        agent="agent-chanchi-auditor",
+        model="claude-opus-4-8[context=1m,effort=high,fast=false]",
+        effort=None,
+        prompt="p",
+    )
+    assert "--model 'claude-opus-4-8[context=1m,effort=high,fast=false]'" in bracketed
 
 
 def test_launch_agy_splits_model_and_effort():
@@ -68,6 +88,14 @@ def test_prompt_is_escaped_inside_double_quotes():
         '--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob" '
         '-- "say \\"hi\\" \\$HOME \\`x\\` \\\\" < /dev/null'
     )
+    cursor_line = harnesses.launch(
+        "cursor", agent="agent-chanchi-auditor", model="auto", effort=None, prompt='-dash "hi" $HOME `x` \\'
+    )
+    assert cursor_line == (
+        "agent -p --trust --force --model auto -- "
+        '"Follow the agent-chanchi-auditor role (.cursor/agents/agent-chanchi-auditor.md or '
+        '~/.cursor/agents/agent-chanchi-auditor.md): -dash \\"hi\\" \\$HOME \\`x\\` \\\\" < /dev/null'
+    )
 
 
 @pytest.mark.parametrize("key", harnesses.KEYS)
@@ -91,9 +119,15 @@ def test_launch_carries_permission_flags_and_add_dirs(key, profile):
         assert "--dangerously-skip-permissions" in line, msg
         assert line.count("--add-dir ") == 2
         assert '--add-dir "/tmp/r1"' in line and '--add-dir "/tmp/r2"' in line
-    else:
+    elif key == "opencode":
         assert " --auto " in line, msg
         assert "--add-dir" not in line
+    elif key == "cursor":
+        assert "agent -p --trust --force " in line, msg
+        assert line.count("--add-dir ") == 2
+        assert '--add-dir "/tmp/r1"' in line and '--add-dir "/tmp/r2"' in line
+        assert " -- " in line
+        assert line.endswith("< /dev/null")
 
 
 def test_launch_unknown_profile_is_refused():
@@ -106,18 +140,23 @@ def test_launch_unknown_profile_is_refused():
 
 def test_unknown_harness_lists_valid_keys():
     with pytest.raises(ChanchiError) as exc:
-        harnesses.launch("cursor", agent="a", model="m", effort=None, prompt="p")
+        harnesses.launch("codex", agent="a", model="m", effort=None, prompt="p")
     assert exc.value.code == "invalid_value"
     assert exc.value.valid_values == list(harnesses.KEYS)
     with pytest.raises(ChanchiError):
-        harnesses.home_dir("cursor", env={}, home=HOME)
+        harnesses.home_dir("codex", env={}, home=HOME)
     with pytest.raises(ChanchiError):
-        harnesses.available("cursor", which=lambda _: None)
+        harnesses.available("codex", which=lambda _: None)
 
 
 def test_home_dir_per_harness():
     assert harnesses.home_dir("claude", env={}, home=HOME) == HOME / ".claude"
     assert harnesses.home_dir("agy", env={}, home=HOME) == HOME / ".gemini"
+    assert harnesses.home_dir("cursor", env={}, home=HOME) == HOME / ".cursor"
+    assert (
+        harnesses.home_dir("cursor", env={"OPENCODE_CONFIG_DIR": "/oc", "XDG_CONFIG_HOME": "/xdg"}, home=HOME)
+        == HOME / ".cursor"
+    )
     assert harnesses.home_dir("opencode", env={}, home=HOME) == HOME / ".config" / "opencode"
 
 
@@ -132,6 +171,9 @@ def test_installed_is_whether_the_folder_exists(tmp_path):
     assert harnesses.installed("claude", env={}, home=tmp_path) is False
     (tmp_path / ".claude").mkdir()
     assert harnesses.installed("claude", env={}, home=tmp_path) is True
+    assert harnesses.installed("cursor", env={}, home=tmp_path) is False
+    (tmp_path / ".cursor").mkdir()
+    assert harnesses.installed("cursor", env={}, home=tmp_path) is True
 
 
 def test_user_agent_path(tmp_path):
@@ -139,21 +181,25 @@ def test_user_agent_path(tmp_path):
     assert claude == tmp_path / ".claude" / "agents" / "agent-chanchi-auditor.md"
     agy = harnesses.user_agent_path("agy", "agent-chanchi-auditor", env={}, home=tmp_path)
     assert agy == tmp_path / ".gemini" / "config" / "agents" / "agent-chanchi-auditor" / "agent.md"
+    cursor = harnesses.user_agent_path("cursor", "agent-chanchi-auditor", env={}, home=tmp_path)
+    assert cursor == tmp_path / ".cursor" / "agents" / "agent-chanchi-auditor.md"
     env = {"OPENCODE_CONFIG_DIR": str(tmp_path / "oc")}
     opencode = harnesses.user_agent_path("opencode", "agent-chanchi-auditor", env=env, home=tmp_path)
     assert opencode == tmp_path / "oc" / "agents" / "agent-chanchi-auditor.md"
 
 
-def test_available_uses_the_injected_lookup():
+def test_available_and_binary_uses_the_injected_lookup():
     seen = []
 
     def which(name):
         seen.append(name)
-        return "/bin/x" if name == "claude" else None
+        return "/bin/x" if name in ("claude", "agent") else None
 
+    assert harnesses.binary("cursor") == "agent"
     assert harnesses.available("claude", which=which) is True
     assert harnesses.available("agy", which=which) is False
-    assert seen == ["claude", "agy"]
+    assert harnesses.available("cursor", which=which) is True
+    assert seen == ["claude", "agy", "agent"]
 
 
 def test_launch_add_dirs_refuses_a_bare_string_and_quotes_paths():

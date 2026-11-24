@@ -218,7 +218,7 @@ def test_lesson_severity_uses_critical_not_blocking():
 
 def test_existing_sets_are_unchanged_by_lessons():
     described = tx.describe()
-    assert described["agents"] == ["claude", "agy", "opencode"]
+    assert described["agents"] == ["claude", "agy", "opencode", "cursor"]
     assert described["severities"][-1] == {"value": "blocking", "multiplier": 5}
 
 

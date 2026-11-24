@@ -104,6 +104,33 @@ def test_missing_binary_degrades_the_round(cat):
     assert cat.execute("SELECT degraded FROM audit_rounds").fetchone()[0] == 1
 
 
+def test_cursor_auditor_seat_uses_agent_binary_and_emits_launch_line(cat):
+    catalog.add_model(cat, agent="cursor", model="gpt-5.4-high", cost_tier=2)
+    roster = [*sync.BUILTIN_ROSTER, {"harness": "cursor", "model": "gpt-5.4-high", "effort": None}]
+    result = open_(cat, roster=roster, which=which_with("claude", "agy", "agent"))
+    assert specs(result) == [
+        "claude:sonnet:medium",
+        "agy:gemini-4-neon-high:high",
+        "cursor:gpt-5.4-high",
+    ]
+    assert [s["family"] for s in result["seats"]] == ["anthropic", "google", "openai"]
+    assert result["degraded"] is False
+    assert result["seats"][2]["launch"] == (
+        'agent -p --trust --force --model gpt-5.4-high --add-dir "<report-dir>" -- '
+        '"Follow the agent-chanchi-auditor role (.cursor/agents/agent-chanchi-auditor.md or '
+        '~/.cursor/agents/agent-chanchi-auditor.md): <prompt>" < /dev/null'
+    )
+
+
+def test_cursor_missing_agent_binary_hint_names_agent_and_cursor(cat):
+    catalog.add_model(cat, agent="cursor", model="gpt-5.4-high", cost_tier=2)
+    roster = [*sync.BUILTIN_ROSTER, {"harness": "cursor", "model": "gpt-5.4-high", "effort": None}]
+    result = open_(cat, roster=roster, which=which_with("claude", "agy", "cursor"))
+    skipped = {s["spec"]: s for s in result["skipped"]}
+    assert skipped["cursor:gpt-5.4-high"]["reason"] == "not_on_path"
+    assert skipped["cursor:gpt-5.4-high"]["hint"] == "install agent (cursor) or put it on PATH"
+
+
 def test_unknown_family_never_counts_as_distinct(cat):
     catalog.add_model(cat, agent="opencode", model="opencode-go/hy4", cost_tier=1)
     roster = [

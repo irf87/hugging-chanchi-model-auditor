@@ -255,6 +255,9 @@ def test_skill_targets_follow_the_installed_harnesses(tmp_path):
     assert skills_link.skill_targets(home, ["x"], source, installed=only()) == []
     opencode = skills_link.skill_targets(home, ["x"], source, installed=only("opencode"))
     assert [kind for _, _, kind in opencode] == ["skill-primary"]
+    cursor = skills_link.skill_targets(home, ["x"], source, installed=only("cursor"))
+    assert [kind for _, _, kind in cursor] == ["skill-primary"]
+    assert [p.parent.parent.name for p, _, _ in cursor] == [".agents"]
     claude = skills_link.skill_targets(home, ["x"], source, installed=only("claude"))
     assert [p.parent.parent.name for p, _, _ in claude] == [".agents", ".claude"]
     # agy needs its CLI folder too, the rule plan_targets applies today
