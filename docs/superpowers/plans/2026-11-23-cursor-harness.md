@@ -4,7 +4,7 @@
 - **Change:** `cursor-harness`
 - **Accepted design:** `docs/designs/cursor-harness.md` (Audit 14, Round 2 — accepted)
 - **Brief:** `docs/designs/cursor-harness.brief.md`
-- **Status:** Draft — Revision 2 after Audit 15 Round 1
+- **Status:** Accepted (Audit 15, Round 2 — 2026-11-23)
 
 ## Constraints
 
@@ -161,7 +161,7 @@ Run inside `.claude/worktrees/chanchi-cursor-s1` using `uv run chanchi` (never b
    - `uv run chanchi taxonomy list` (`agents` contains `"cursor"`)
    - `uv run chanchi models add --agent cursor --model gpt-5.4-high --cost 2` (`family` inferred as `openai`) and `uv run chanchi models add --agent cursor --model auto --cost 1` (`family` is `null`)
    - `HOME="$scratch_home" OPENCODE_CONFIG_DIR= XDG_CONFIG_HOME= uv run chanchi agents link --user` (with `$scratch_home/.cursor` created), `--check`, and `--remove`
-   - Scratch `CHANCHI_SYNC/config/auditors.toml` containing `harness = "cursor"`, `model = "gpt-5.4-high"` -> `uv run chanchi audit open` prints the Cursor `launch` line
+   - Scratch `CHANCHI_SYNC/config/auditors.toml` containing `harness = "cursor"`, `model = "gpt-5.4-high"` plus at least one other cataloged auditor (e.g. `agy:gemini-4-neon-high` with `efforts=high`) so quorum (`MIN_VOTERS = 2`) holds -> `uv run chanchi audit open` prints the non-null Cursor `launch` line
    - `uv run chanchi project items-dirs` (lists 9 defaults including `.cursor/skills` and `.cursor/agents`), `uv run chanchi items scan` (discovers `.cursor/skills/` and `.cursor/agents/`), and `uv run chanchi items mirror` / `--check` / `--remove` against `$scratch_home/.cursor`.
 
 ---
@@ -178,7 +178,7 @@ Executed by the orchestrator from `.claude/worktrees/chanchi-cursor-s1` before `
      - `uv run chanchi audit open --kind other --ref smoke-cursor --author agy:gemini-4-neon-high:high --commit HEAD` and extract the exact `launch` line for the `cursor:auto` seat.
      - `HOME="$scratch_home" OPENCODE_CONFIG_DIR= XDG_CONFIG_HOME= uv run chanchi agents link --user` (populating `$scratch_home/.cursor/agents/agent-chanchi-auditor.md`).
   2. Create a scratch consumer git repo *without* `.cursor/agents/` and a scratch `<report-dir>`. Run the extracted `launch` line from that consumer repo with `HOME="$scratch_home"` (substituting `<report-dir>` and a minimal prompt asking the auditor to write `VERDICT: PASS` to `<report-dir>/smoke.md` without editing workspace files).
-  3. **Fallback only if `agent` fails login/auth under scratch `HOME`** (because Cursor stores auth under real `~/.cursor`): re-run with real `HOME` after verifying `~/.cursor/agents/agent-chanchi-auditor.md` does not already exist, installing it via `uv run chanchi agents link --user` against scratch `CHANCHI_DB`, running the extracted `launch` line from the scratch consumer repo, and immediately running `uv run chanchi agents link --user --remove` (same scratch `CHANCHI_DB`) and asserting `~/.cursor/agents/agent-chanchi-auditor.md` is gone.
+  3. **Fallback only if `agent` fails login/auth under scratch `HOME`** (because Cursor stores auth under real `~/.cursor`): verify `~/.cursor/agents/agent-chanchi-auditor.md` does not already exist, copy the already-rendered `$scratch_home/.cursor/agents/agent-chanchi-auditor.md` (produced in step 1) to `~/.cursor/agents/agent-chanchi-auditor.md`, run the extracted `launch` line from the scratch consumer repo under real `HOME`, and immediately `rm ~/.cursor/agents/agent-chanchi-auditor.md` and assert it is gone.
   4. **Pass criteria:** exit 0, `<report-dir>/smoke.md` starts with `VERDICT: PASS`, and `git status --porcelain` in the scratch consumer repo is empty.
   5. **Failure contingency:** if Cursor blocks reading `~/.cursor/agents/<agent>.md` outside workspace roots, do **not** edit code inline as orchestrator; dispatch an S1 fix/retry updating `harnesses.py`, `tests/test_harnesses.py`, `tests/test_audits.py` (and amend `docs/designs/cursor-harness.md` if the launch contract changes), re-run `scripts/check` and Smoke 3b, and only merge S1 once both pass.
 
