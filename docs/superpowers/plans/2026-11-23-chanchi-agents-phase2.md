@@ -1,7 +1,12 @@
 # chanchi Agents — MVP Phase 2 (Skills Tested by Evals) Implementation Plan
 
-- **Revision:** 4, accepted by the owner (2026-11-23) after round 3 of chanchi audit 12 escalated on one finding raised by two seats, fixed
-  here (S5 `new-agent`, D22); see `docs/designs/reviews/chanchi-agents-mvp-phase2-plan/`.
+- **Revision:** 5 (2026-11-23, accepted in chanchi audit 16 round 2 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; amended for the cheaper eval protocol — owner decisions 1A,
+  2A, 3A — updating D2, D5, D7, D9, D14, D15, D16, D17, D18, adding D23, S7, S8a, S8b and revised
+  G1b–G5 run counts alongside Revision 3 of `docs/designs/chanchi-agents-mvp.md`; see
+  `docs/designs/reviews/chanchi-agents-mvp-eval-cost-cut/`.
+  Revision 4 was accepted by the owner on 2026-11-23 after round 3 of chanchi audit 12; see
+  `docs/designs/reviews/chanchi-agents-mvp-phase2-plan/`.)
 
 > **For agentic workers:** each session below is one brief for `agent-chanchi-executor` (S1 runs
 > as `agent-chanchi-researcher`). Steps use checkbox (`- [ ]`) syntax. Write the failing test
@@ -13,23 +18,28 @@
 question in lesson review. Also the backlog this phase unblocks: an eval for every skill created
 without one (`skill-chanchi-item-adoption`), as `skill-chanchi-item-authoring` requires.
 
-**Done only when the phase signal holds** (design, *Adoption plan*, phase 2), read from the
-ledger and the calibration files, never from an impression:
+**Done only when the phase signal holds** (design Revision 3, *Adoption plan*, phase 2), read from
+the ledger and the calibration files, never from an impression:
 
-1. each of the three skills has a calibrated judge: the owner labeled 10 outputs and the judge
-   agrees on at least 9;
-2. its regression cases pass 3 of 3 runs in the with-skill arm;
-3. its capability median with the skill beats the arm without it;
+1. each of the three skills has a calibrated judge: the owner labeled at least 6 outputs with
+   label contrast (at least one owner `PASS` and one owner `FAIL`) and the judge agrees with at
+   most one disagreement (`total >= 6` and `agree >= total - 1`, i.e., ≥ 5/6 for 6 samples or
+   ≥ 9/10 for 10 samples);
+2. its regression cases pass 100% of executed runs in the with-skill arm (`1/1` by default, `3/3`
+   when confirmed);
+3. its capability median with the skill beats the cached arm without it (matching `candidate` and
+   `cases_sha`);
 4. no pending lesson with 2 or more occurrences proposes a prose rule where a check is possible
    (read on 2026-11-23: every pending lesson has 1 occurrence, so this holds today; re-read at
    the end).
 
-**Spec:** `docs/designs/chanchi-agents-mvp.md`, sections *Layer 2: skills tested by evals*,
-*Repeated corrections become checks*, *Adoption plan* (phase 2) and *Verification plan*. When
-this plan and the design disagree, the design wins (stop and report), except on the points the
-numbered decisions below adapt: those take precedence until G5 amends the design. The
-decisions below fill what the design leaves open; D3, D4, D5, D6, D9, D10, D14, D16, D17, D19 and
-D21 adapt it, and the gate commit (G5) amends the design text for each of them so both agree.
+**Spec:** `docs/designs/chanchi-agents-mvp.md` (Revision 3), sections *Layer 2: skills tested by
+evals*, *Repeated corrections become checks*, *Adoption plan* (phase 2) and *Verification plan*.
+When this plan and the design disagree, the design wins (stop and report), except on the points the
+numbered decisions below adapt: those take precedence until G5 amends the design. The decisions
+below fill what the design leaves open; D3, D4, D6, D10, D16, D19 and D21 adapt it, and the gate
+commit (G5) reconciles any remaining plan-only details into the design text so both agree (D2, D5,
+D7, D9, D14, D15, D17 and D23 are folded into Revision 3 of the design).
 
 **Tech stack:** Python ≥ 3.11 standard library, pytest and ruff (dev only), uv.
 
@@ -44,8 +54,10 @@ D21 adapt it, and the gate commit (G5) amends the design text for each of them s
   (claude, agy, opencode) except S1, whose runs are counted against the budget; runner tests use a
   fake harness executable written by the test.
 - **Eval budget:** the owner approved 300 headless runs for this phase (2026-11-23), counting
-  candidate, judge and trigger runs. Only the orchestrator runs `scripts/run_evals.py` against
-  real harnesses, keeps a running total in the gate record, and stops and asks before crossing it.
+  candidate, judge and trigger runs. About 160 runs were spent before the cost-cut amendment; the
+  remaining work under Revision 5 is estimated at ~74–105 runs (including optional `--rejudge`,
+  inside the ~140 remaining). Only the orchestrator runs `scripts/run_evals.py` against real
+  harnesses, keeps a running total in the gate record, and stops and asks before crossing 300.
 - Executors run unattended with their auto-approval flag (`AGENTS.md`, Working Conventions); they
   never commit, merge, push or write chanchi records; they report each verification as the exact
   command plus its last output line and stop at any gap. Last step: `scripts/check`.
@@ -58,27 +70,28 @@ D21 adapt it, and the gate commit (G5) amends the design text for each of them s
 | # | Decision | Why |
 |---|---|---|
 | D1 | **Eval names.** The eval of `skill-chanchi-<n>` is `evals/eval-chanchi-<n>/` (for example `eval-chanchi-session-audit`). `eval.toml` holds `name` (equal to the directory), `item` (the skill), `[candidate]` (`agent`, `harness`, `model`, `effort`), `[judge]` (`harness`, `model`, `effort`; absent when there is no `rubric.md`), `regression = [<case>...]`, `capability = [<case>...]` and `blind_allow = [<word>...]` (D6). An evaluated item is a skill that has an eval directory | The design's layout; one place names the candidate and the judge |
-| D2 | **Models.** Candidate `claude` / `sonnet` / `medium`; judge `agy` / `gemini-4-neon-high` / `high` as catalog spec (family google, other than the candidate's; `harnesses.split_agy_model` turns it into `--model gemini-4-neon --effort high`, the form the auditor seats already run on agy 1.5.15). S1 confirms it. Candidate agents: `agent-chanchi-orchestrator` for session-audit and lessons, `agent-chanchi-executor` for item-authoring and item-adoption | The design's example; the judge is of another family |
+| D2 | **Models (amended Rev 5, owner decision 1A).** Candidate `agy` / `claude-sonnet-5-5-low` / `low` (family `anthropic`, agy's quota, low effort; `harnesses.split_agy_model` turns it into `--model claude-sonnet-5-5 --effort low`); judge `agy` / `gemini-4-hydrogen-high` / `high` (family `google`, cost tier 1; escalate to `agy` / `gemini-4-neon-high` / `high` only if `hydrogen` fails calibration after one rubric rewording). `scripts/run_evals.py` remains harness-agnostic (`claude` and `agy` both supported). Candidate agents: `agent-chanchi-orchestrator` for session-audit and lessons, `agent-chanchi-executor` for item-authoring and item-adoption. G1b confirms `agy:claude-sonnet-5-5-low` (case + trigger) and `agy:gemini-4-hydrogen-high` in one smoke run before baselines | Zero Claude CLI quota spent on evals while preserving Anthropic-candidate vs Google-judge cross-family separation and scaling to future projects |
 | D3 | **Arms and skill preload (adapts *One run*, step 2: the runner renders the wrapper instead of copying the committed one).** The runner renders the candidate's wrapper with `agents_sync.render` from a copy of its source renamed to a neutral name that is not `agent-chanchi-*` (`worker`, launched as `--agent worker`, so `chanchi agents sync` in a work directory never treats it as an orphan), with `scope: both` (so on claude the role is the agent's system prompt, never an `initialPrompt` that `claude -p` may skip) and `skills:` set to `[<item>]` in the with-skill arm and `[]` in the without-skill arm, and copies the skill directory only into the with-skill arm (`.claude/skills/` for claude, `.agents/skills/` for agy). The orchestrator preloads five skills; without this, each arm would measure the others too. S1 verifies on claude whether a main-session `--agent` wrapper preloads its `skills:`; if it does not, the with-skill arm relies on the installed skill being discovered (what `triggers.md` measures) and the plan records it | The arms must differ only in the evaluated skill |
 | D4 | **Global copies.** Global copies of every chanchi skill exist today in `~/.claude/skills/` and `~/.agents/skills/`. The runner runs each harness with `HOME` set to a temporary directory that holds only the credential files S1 found necessary, or refuses that harness with an error naming the global copy (design, *One run*, step 2). Permissions: every claude run of the runner (candidate, trigger) uses `--permission-mode acceptEdits --allowedTools "Bash Read Grep Glob Edit Write Skill"` and `--` before the prompt (the form `harnesses.launch` emits for a writing profile since change `launch-permissions`, merged on `main`, plus `Skill`; never `--dangerously-skip-permissions`: AGENTS.md allows it only in another terminal pane) and `--add-dir` for the scratch `SYNC` (D20); agy with `--dangerously-skip-permissions` | The baseline arm would otherwise load the skill anyway |
-| D5 | **Run count (adapts *One run*, step 3).** Capability cases run in both arms, 3 runs each. Regression cases run only in the with-skill arm, 3 runs each: their signal is "pass 3 of 3 with the skill", and the arm without the skill adds cost and no information. The runner prints the plan (`candidate`, `judge`, `trigger` run counts) and refuses more than 30 runs without `--yes` | Saves 6 runs per regression case |
+| D5 | **Run count, caching and adaptive repeat (amended Rev 5).** Default `--arm auto` and `--runs 1`. Regression cases run only in the `with` arm and are code-graded only (never judged). Capability cases run in `with`, and in `without` only when `evals/ledger.tsv` has no `baseline` `without` row matching `(item, candidate, cases_sha)` (or when `--arm both` / `--arm without` is forced). Auto-triggers apply only to `--arm auto` and `--arm both`: triggers run when `evals/ledger.tsv` has no `triggers` row matching `(item, candidate, triggers_sha)`. Explicit `--arm with` and `--arm without` skip triggers unless `--triggers` is passed; `--triggers` and `--no-triggers` are mutually exclusive. **Adaptive repeat:** during a full measurement with `--runs < 3`, after the initial `--runs` runs of each `with`-arm case, top up with `3 - runs` confirming runs (total 3) if (a) it is a regression case that failed any initial run, OR (b) it is a regression case whose previous matching `baseline`/`kept` `with` row (`candidate`, `cases_sha`) had `< 100%` pass rate (prevents a flaky `2/3` regression from passing on a single lucky `1/1` run), OR (c) the previous matching `with` row records a value for that case in `cases=` and the initial rounded case value (pass rate for regression, median score for capability) differs from it. Neither `claude` nor `agy` CLI supports `--max-turns` (verified locally 2026-11-23; `agy` has `--print-timeout`, while a uniform Python subprocess timeout preserves harness parity); default `--timeout` and `Context.timeout` are lowered from `1800`s to `300`s, apply to every harness call (candidate, judge and trigger), and are wired through `main()`. The runner prints `{candidate, judge, trigger, total, max_total}` (`max_total` being the upper bound if every `with` case triggers adaptive repeat) and refuses `max_total > 30` without `--yes` | Cuts routine skill changes to 2–3 runs and first baselines to 7–9 runs while still confirming every claimed lift, regression, or flaky fix across 3 runs |
 | D6 | **Blinding (adapts *One run*, step 1).** The work directory's path is `<tmp>/work-<8 hex>`; `prompt.md` never contains a blinded word (`eval`, `test`, `judge`, `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate`, `arena`, as a word or a word prefix, any case). `setup.sh` and the files it creates may hold a blinded word only when it is listed in the eval's `blind_allow`, because the domain needs it (a repository has `tests/`; a report quotes `pytest`). `tests/test_evals.py` checks both. The evaluated skill and the candidate's wrapper are exempt: they are the subject (the session-audit skill ships `references/rubric.md`), and the runner's own path check skips them | The skills under eval work on repositories that contain tests; the subject cannot be blind |
-| D7 | **Grading.** `grade.py <workdir>` (run with `python -I`) prints one JSON line per criterion `{"criterion": "<id>", "pass": true|false, "detail": "<text>"}`. The judge returns, as the last fenced `json` block of its final message, `{"criteria": [{"n": 1, "verdict": "PASS"|"FAIL"|"N/A", "critique": "<quote and reason>"}]}`. A run's score is passed criteria over applicable criteria (code and judge; `N/A` excluded). A run passes when every applicable criterion passes. An unparsable judge answer counts as a failed judge run and is retried once | Code first, judge second (design) |
+| D7 | **Grading and gated judge (amended Rev 5).** `grade.py <workdir>` (run with `python -I`) prints one JSON line per criterion `{"criterion": "<id>", "pass": true|false, "detail": "<text>"}`. Regression cases are code-graded only (`judge = None`). On capability cases with `rubric.md`, `grade.py` runs first: if every code criterion passes (`all(c["pass"] for c in code)`), `agent-chanchi-judge` runs and returns, as the last fenced `json` block of its final message, `{"criteria": [{"n": 1, "verdict": "PASS"|"FAIL"|"N/A", "critique": "<quote and reason>"}]}`, giving `score = (passed_code + passed_rubric_applicable) / (len(code) + total_rubric_applicable)` (`N/A` excluded; passes when every applicable criterion passes; an unparsable judge answer is retried once, and if still unparsable every rubric criterion is marked `FAIL`, giving `score = C / (C + R)`, which still strictly exceeds any code-failed score). If any code criterion fails, the judge is skipped (`judge = None`, `judge_skipped = "code_failed"`), `passed = False`, and `score = passed_code / (len(code) + len(rubric_criteria))` — guaranteeing strict monotonicity so a code-failed run always scores strictly lower than any code-passed run (even when all rubric criteria fail) | Code first, judge only when code passes on capability cases; avoids score inversion even on all-FAIL judge or parse failure |
 | D8 | **Pairwise judging.** This phase judges each output alone against its rubric, so the both-orders rule (design, *One run*, step 5) does not apply yet; the runner has no pairwise mode | No comparison of two outputs is needed for the signal |
-| D9 | **Ledger (adapts *One run*, step 7).** Columns exactly as the design. One row per arm per measurement: `arm` is `with`, `without` or `triggers`; `median_pass` is the median run score over the arm's capability runs (for `triggers`, the share of trigger prompts with the expected outcome, documented in the README evals section; the signal never reads `triggers` rows); `note` carries `regression=<passed runs>/<runs>` on `with` rows. `item_sha` is the git tree hash of the skill directory. The first measurement writes `baseline` rows; a hill-climb measurement writes one `with` row with `before`, `after`, `delta` and `kept` or `reverted`. `id` is `<item>-<n>` (n counts that item's rows from 1); `date` is UTC `YYYY-MM-DD`; on `baseline` rows `before` and `delta` are empty and `after` equals `median_pass`; on hill-climb rows `before` is the previous kept or baseline `with` median, `after` the new one, `delta` = `after - before` (two decimals). Only a full measurement writes rows: every case of the arm and `--runs 3`; `--cases`, `--runs` below 3 or `--no-ledger` never write one. The current `with` row of an item is the newest `baseline` or `kept` `with` row whose `item_sha` equals the item's current tree hash; it is compared with the `without` row of the same baseline; `reverted` rows are never current | Columns stay as designed; the signal is computable from the file |
+| D9 | **Ledger (amended Rev 5).** Exact same 15 columns (`LEDGER_COLUMNS`). One row per executed arm (`with`, `without`, `triggers`): `runs` is the total candidate (or trigger) runs executed in that arm; `median_pass` is the median of per-case medians across the arm's capability cases (weighting every capability case equally even when one case repeated to 3 runs; for `triggers`, share of prompts with expected outcome). `note` carries semicolon-separated `key=value` tokens: `with` row `regression=<passed>/<runs>;cases_sha=<12-hex>;cases=<c1>:<v1>,<c2>:<v2>` (ordered by `cfg.cases`, two decimals: per-case pass rate `passed_runs/total_runs` for regression cases, per-case score median for capability cases); `without` row `cases_sha=<12-hex>;cases=<c1>:<v1>,...` (capability cases only); `triggers` row `triggers=<passed>/<total>;triggers_sha=<12-hex>`. Hash definitions (first 12 hex of SHA-256 over canonical JSON): `cases_sha` hashes `(candidate, judge_or_null, sha256(agents/<agent>/AGENT.md), sorted capability case names, sorted [rel_path, sha256] of every file in each capability case folder excluding __pycache__, *.pyc and .DS_Store, plus rubric.md if present)` — excluding regression cases, `triggers.md`, `calibration.tsv` and `skills/<item>` (regression cases are frozen with the harness alongside capability cases and rubrics; editing a regression case requires a fresh baseline); `triggers_sha` hashes `({harness, model, effort}, skill frontmatter description, sha256 of triggers.md)`. Any full measurement (`--cases` absent, `--no-ledger` absent, `--runs >= 1`) writes rows for the arms it executed. `id`, `date`, `before`, `after`, `delta`, `verdict` (`baseline`, `kept`, `reverted`) and `item_sha` keep their existing rules; a `triggers` row written during `--hypothesis` (when `description` changed under `--arm auto`) uses `item_sha=<current>`, `hypothesis`, `change`, `verdict="baseline"`, and empty `before`/`delta`. Current `with` row: newest `baseline` or `kept` `with` row matching `(item, item_sha, candidate, cases_sha)`; previous `with` row (for adaptive repeat and hill-climb `before`): newest `baseline` or `kept` `with` row matching `(item, candidate, cases_sha)`; compared against the newest `baseline` `without` row matching `(item, candidate, cases_sha)` | Keeps the 15-column schema unchanged, prevents cross-harness comparisons, tracks agent-source edits, and prevents weighting distortion under adaptive runs |
 | D10 | **`item_sha` and the gate.** `scripts/run_evals.py` computes the tree hash of the item directory from the working tree, with git's tree algorithm applied recursively: blobs `100644` (or `100755` when executable), subdirectories as `40000` trees, entries in git's order (a directory sorts as its name plus `/`), over the files git tracks there plus staged additions. `tree_hash(path)` itself is pure; the runner's CLI (not the function) refuses to write a ledger row while the item directory has unstaged or untracked changes, so a hill-climb edit is staged (`git add skills/<item>`) before its measurement. `tests/test_evals.py` imports the function and fails when an evaluated item's current hash has no `kept` or `baseline` row, with the message: `<item> changed (tree <sha>) and has no kept or baseline row in evals/ledger.tsv. Run: uv run python scripts/run_evals.py <item>, then commit the row.` A unit test compares the function with `git rev-parse HEAD:<dir>` on a committed fixture that holds a nested `references/` folder and an executable file | The design's gate rule; the hook runs before the merge commit exists |
 | D11 | **Every new skill has an eval** (the item-authoring rule, turned into a check): `tests/test_evals.py` fails when a skill in `skills/` has no eval directory with at least one case, except a `GRANDFATHERED` set in the test. S2 starts it with all seven current skills, so the check passes from S2 on and fails for any skill added later; S4 removes `skill-chanchi-session-audit` and `skill-chanchi-lessons`, S5 removes `skill-chanchi-item-authoring` and `skill-chanchi-item-adoption`, leaving the skills created before phase 2 and not evaluated now (`skill-chanchi-audit-rounds`, `skill-chanchi-model-selection`, `skill-chanchi-verify`). The message names the skill and the folder to create | Rule or check: a check can enforce it; the gate never goes red between sessions |
 | D12 | **Judge agent.** `agents/agent-chanchi-judge/AGENT.md`: `scope: both` (agy and opencode need a main-capable wrapper for `--agent`; every CLI-launched chanchi agent uses `both`), `profile: read-only`, `install: repo`, `skills: []`. Body verbatim in Task S2. It reads the rubric, the output and the transcript from files in its own work directory and prints its verdict; it never sees the skill or the case's grader | A read-only judge cannot change what it grades |
 | D13 | **Run artifacts** (work directories, transcripts, end states, judge answers) are kept under `${CHANCHI_EVALS_DIR:-~/.local/share/chanchi/evals}/<item>/<run id>/`, never in this repository; they hold temporary paths and the candidate's free text | User results stay out of the repository |
-| D14 | **Calibration.** `run_evals.py <item> --calibration-sheet` writes `<artifacts>/<item>/calibration-sheet.md` with 10 outputs from the latest baseline (both arms, mixing judge passes and fails when both exist, leaving out runs whose judge criteria were all `N/A`), each showing the rubric's numbered criteria, the candidate's final message, the end state and an excerpt of the transcript's tool calls, with blank `label:` and `critique:` lines, and neither the arm nor the judge verdict. The owner labels each output PASS or FAIL against the rubric criteria only (PASS when every applicable criterion holds); the judge's label is likewise its rubric-only verdict, code criteria excluded. `run_evals.py <item> --calibrate <sheet>` compares each owner label with the judge's overall verdict (PASS when every applicable criterion passes) and writes `evals/eval-chanchi-<n>/calibration.tsv` (`sample, owner_label, judge_label, agree, owner_critique`, committed). Calibrated means agreement ≥ 9 of 10. If it falls short, the orchestrator may reword the rubric once (before any hill climb) then `run_evals.py <item> --rejudge` (no argument) re-judges every saved output of the latest baseline (judge runs only; it prints the count and honors `--yes` and `--dry-run`), updates the saved verdicts and that baseline's uncommitted `with` and `without` rows, and `--calibrate <sheet>` is run again on the owner's existing labels to recompute agreement and write `calibration.tsv`. No committed row rests on an old rubric: baseline rows are committed only after calibration (G2-G3). The judge's transcript copy has the skill-load events removed (S1 names them), so the judge, like the owner, does not see the arm | Hamel Husain via the design; one human step |
-| D15 | **Signal report.** `run_evals.py --signal` prints, per evaluated item, conditions 1-3 as JSON from the current rows of `ledger.tsv` (D9) and `calibration.tsv`; an eval without `rubric.md` reports `judge: "none"`. Condition 4 runs `chanchi lesson export --all --status pending --limit 1000` (operational database, every project and the global lessons) and lists every lesson with `occurrences` ≥ 2 whose `target_kind` is not `tool`, `hook` or `permission`; it is `true` only when that list is empty, otherwise the orchestrator decides each listed lesson with the owner (whether a check is possible is a judgment) | One command proves the phase; the judgment part is named, not hidden |
-| D16 | **Scope of the signal.** The signal covers the design's three skills. `eval-chanchi-item-adoption` is code-graded only (no rubric, no judge): it needs its baseline row like every evaluated item, and its own regression case must pass 3 of 3, but it is not part of the phase signal | The design names three first items; the backlog item needs an eval, not a phase gate |
-| D17 | **Hill climb.** When a skill's capability median does not beat the arm without it, or a regression case fails a run, the orchestrator writes one hypothesis; an executor session makes that one change to the skill; the orchestrator runs `run_evals.py <item> --arm with --hypothesis "<text>"`; the runner writes `kept` when the regression runs passed did not drop and either the capability median rose or the regression runs passed rose, else `reverted`, and on `reverted` the orchestrator reverts the change. If both arms sit at the ceiling (median 1.0), "beats" cannot hold: the orchestrator stops and reports to the owner, proposing a harder capability case for a new frozen harness. Cases, graders and rubric are frozen once calibration is done. A kept skill change is a rule change: one audit (`skill-chanchi-audit-rounds`, kind `other`, ref the skill) before merge. Hill-climb sessions are planned at the gate with `chanchi recommend`, and the exploration budget is recounted with them | The design's loop; AGENTS.md audits every skill change |
-| D18 | **Merge order.** S1 to S3 merge to `main`. S4 and S5 add eval directories, which turn the ledger check red until baseline rows exist, so the orchestrator runs each baseline on the session's branch after the audit, commits the rows there, and merges the branch with the gate green. S4 merges first; S5 is rebased on it (both edit `GRANDFATHERED`) | The gate never goes red on `main` |
+| D14 | **Calibration (amended Rev 5).** Calibrated means `total >= 6`, `agree >= total - 1` (≥ 5/6 for 6 samples; also accepts 10-sample sheets at ≥ 9/10), AND **label contrast** (at least one owner `PASS` and at least one owner `FAIL`; if all owner labels are identical, `--calibrate` and `--signal` report `calibrated: false` / `"uncalibrated: no contrast"`). `run_evals.py <item> --calibration-sheet [--samples 6] [--collect] [--dry-run] [--yes]` builds `<artifacts>/<item>/calibration-sheet.md` (default 6 samples, minimum 6) from non-`N/A` judged capability runs of the latest baseline plus any saved runs in `<artifacts>/<item>/calibration-runs/` matching `cases_sha`, preferring ≥ 2 PASS and ≥ 2 FAIL when the pool allows. With `--collect`, if fewer than `samples` eligible outputs exist, the runner runs only the missing capability runs (alternating `without` and `with` to get both PASS and FAIL examples, invoking the judge even when code graders fail, saved under `<artifacts>/<item>/calibration-runs/`, never mutating `evals/ledger.tsv` or baseline scores; honors `--dry-run` and `> 30` `--yes` refusal; allows up to 2 fallback runs if a run yields all-`N/A`, else errors). Without `--collect`, insufficient eligible samples error with the hint to pass `--collect`. Sheet format, owner labeling, blinding (load events stripped + skill name redacted) and `--calibrate <sheet>` writing `calibration.tsv` stay as before. If agreement falls short (`agree < total - 1`), the orchestrator may reword the rubric once (or escalate `[judge]` in `eval.toml` from `gemini-4-hydrogen-high` to `gemini-4-neon-high` before commit, D2), then run `run_evals.py <item> --rejudge`: (a) re-judges `set(calibration_map.values()) \| {code-passed capability runs of latest uncommitted baseline}` (deduplicated) with the current rubric and judge, updating each re-judged run's `cases_sha`; (b) recomputes the uncommitted baseline `with` and `without` ledger rows from **all runs of the latest baseline** (re-judged scores for code-passed capability runs, recomputed gated scores `passed_code / (len(code) + len(rubric_criteria))` without calling the judge for code-failed baseline capability runs, unchanged code-only regression runs, never including `calibration-runs/`); (c) refreshes `cases_sha=<new-12-hex>` and `cases=...` in BOTH uncommitted baseline `with` and `without` rows (refuses if baseline rows are already committed); then re-runs `--calibrate <sheet>` on the owner's existing labels. If a sheet instead fails on `"uncalibrated: no contrast"`, re-judging cannot change owner labels: collect contrasting samples (or propose a harder capability case) and have the owner label a new sheet | Keeps one-time calibration working with 1-run/case baselines and 1+1 cases, prevents rubber-stamp calibration, keeps `cases_sha` synchronized across `--rejudge`/judge escalation, and preserves baseline gated scores |
+| D15 | **Signal report (amended Rev 5).** `run_evals.py --signal` prints, per evaluated item, conditions 1–3 as JSON from the current rows of `ledger.tsv` (D9) and `calibration.tsv`; an eval without `rubric.md` reports `judge: "none"`. Condition 1: `len(cal_rows) >= 6`, `agree >= len(cal_rows) - 1`, and label contrast (`PASS` and `FAIL` both present among `owner_label`). Condition 2: `passed == runs and runs >= 1` (`1/1` or `3/3`). Condition 3: `with > without` comparing the current `with` row matching `(item, item_sha, candidate, cases_sha)` against the matching `(item, candidate, cases_sha)` `without` row. Condition 4 runs `chanchi lesson export --all --status pending --limit 1000` (operational database, every project and the global lessons) and lists every lesson with `occurrences` ≥ 2 whose `target_kind` is not `tool`, `hook` or `permission`; it is `true` only when that list is empty, otherwise the orchestrator decides each listed lesson with the owner (whether a check is possible is a judgment) | One command proves the phase; aligned with Rev 5 thresholds and contrast/harness invariants |
+| D16 | **Scope of the signal.** The signal covers the design's three skills. `eval-chanchi-item-adoption` is code-graded only (no rubric, no judge): it needs its baseline row like every evaluated item, and its own regression case must pass 100% of executed runs (`1/1` or `3/3`), but it is not part of the phase signal | The design names three first items; the backlog item needs an eval, not a phase gate |
+| D17 | **Hill climb (amended Rev 5).** When a skill's capability median does not beat the cached `without` arm, or a regression case fails, the orchestrator writes one hypothesis; an executor session makes that one change to the skill; the orchestrator runs `run_evals.py <item> --hypothesis "<text>"` (allowed with default `--arm auto` or `--arm with`; refuses `--arm without`/`both` and refuses if no matching `(candidate, cases_sha)` `without` baseline exists). Under `--arm auto`, `without` is reused and `triggers` run only if `description` changed (`triggers_sha`), writing a `triggers` row per D9. Adaptive repeat (D5) confirms any case whose initial result differs from the previous matching `with` row (or any regression whose prior pass rate was `< 100%` or that failed run 1) across 3 runs before the verdict is written. Verdict compares regression **pass rate** (`reg_rate = reg_passed / reg_runs`, not raw passed count, so `1/1` vs `3/3` is never misread as a drop): `kept` when `reg_runs > 0`, `reg_rate >= prev_reg_rate` (100% once healthy) and (`median > before` or `reg_rate > prev_reg_rate`), else `reverted`; on `reverted` the orchestrator reverts the change. Ceiling handling, frozen harness, skill-change audit (`skill-chanchi-audit-rounds`), `chanchi recommend` and exploration budget recount stay as before | Prevents false drops between 1-run and 3-run regression counts; confirms every claimed lift or flaky-regression fix across 3 runs while keeping unchanged cases at 1 run |
+| D18 | **Merge order (amended Rev 5).** S1 to S3 and S7 merge to `main`. S4 and S5 add eval directories, which turn the ledger check red until baseline rows exist, so **never merge `main` into `feat/mvp2-s4` or `feat/mvp2-s5`** (`pre-merge-commit` runs `scripts/check` and blocks merges while the ledger check is red). The orchestrator (never an executor) discards dirty `evals/ledger.tsv` on `feat/mvp2-s4` (`git checkout -- evals/ledger.tsv`) and **rebases** `feat/mvp2-s4` and `feat/mvp2-s5` onto `main`, runs `S8a`/`S8b`, baselines and calibration on each branch, commits `evals/ledger.tsv` and `calibration.tsv` on each branch, merges `feat/mvp2-s4` (`--no-ff`) first, then rebases `feat/mvp2-s5` (after committing its rows) onto `main` (resolving expected `ledger.tsv` and `GRANDFATHERED` conflicts) and merges `--no-ff` once the gate is green | Fixes the Rev 4 bug recorded in the handoff; `main` never goes red and no rebase fails on dirty ledgers |
 | D19 | **Eval files and existing checks (adapts check 1 and check 6).** `pyproject.toml` gains `"evals/*" = ["T20"]` under ruff's per-file ignores (graders print their verdict lines). `tests/test_items.py::test_references_resolve` skips `evals/*/cases/**` and `evals/*/triggers.md`: prompts there may name planned or fictional items; `eval.toml` and `rubric.md` stay checked. Prompts avoid fictional `<item>-chanchi-*` names anyway | A case's prompt is data the candidate reads, not an operational reference |
 | D20 | **Scratch `SYNC`.** The runner creates `<tmp>/sync-<8 hex>` next to the work directory and passes `CHANCHI_SYNC` to `setup.sh`, the candidate (with `--add-dir` on claude and agy) and `grade.py`; without it `chanchi` falls back to the main checkout's `SYNC` (`src/chanchi/sync.py`) | Item adoption writes proposals under `SYNC`; the real one must never be touched |
 | D21 | **Lesson review with a check (the design's "can a check enforce it?").** `chanchi lesson review` cannot change another conversation's `target_kind` (`lessons.py`: `modify` is author-only, `review` is never the author). So the reviewer records a replacement lesson whose `target_kind` is `tool`, `hook` or `permission`, whose proposal names the check and whose `replaces` lists the original (with `--force-new` if `lesson add` reports it as a duplicate), then reviews the original as `duplicate --of <new id>`, which moves its occurrences. The replacement is reviewed later by another conversation | Uses only existing commands; nothing approves a prose rule a check can enforce |
 | D22 | **Runner contract** (S2 writes it into `README.md`'s evals section and pins it in `tests/test_evals.py`; S3, S4 and S5 rely on it). Work directory `W` = `<tmp>/work-<8 hex>`, the current directory of `setup.sh` and of the candidate; `CHANCHI_DB=W/.state/chanchi.db`; `CHANCHI_SYNC=<tmp>/sync-<8 hex>` (D20); `PATH` starts with a folder holding the `chanchi` shim. `bash setup.sh` runs with that environment and may create anything under `W` and the scratch `SYNC` (a project repository, if any, is `W` itself). After setup and before the candidate, the runner adds its own paths (`.state/`, the injected wrapper, the injected skill folder) to `W/.git/info/exclude` when `W/.git` exists, so `W` starts git-clean in both arms; graders read project changes with `git status --porcelain` and `git ls-files --cached --others --exclude-standard` (new untracked files count; the candidate never commits), never by listing `W`. After the candidate, `python -I grade.py W` runs with the same environment plus `FINAL_MESSAGE_FILE` (the candidate's final message as text) and prints D7's lines | Graders and setups are written before the runner exists |
+| D23 | **Case budget and phase-2 trimming (new Rev 5, owner decisions 2A & 3A).** Every new skill eval starts with **1 regression + 1 capability** case; add cases only when a real failure shows a gap. Trim the three already-written phase-2 evals to 1+1 (`S8a`/`S8b`) and re-run all four baselines cleanly under Revision 5 so `evals/ledger.tsv` is uniform: `eval-chanchi-session-audit` keeps `stop-plan-gap` (reg) + `false-claim` (cap), drops `clean-complete`, `scope-and-choices`; `eval-chanchi-lessons` keeps `record-failure` (reg) + `review-check-first` (cap), drops `repeat-existing`, `nothing-wrong`; `eval-chanchi-item-authoring` keeps `new-skill` (reg) + `new-hook` (cap), drops `new-agent`, `agent-without-model`; `eval-chanchi-item-adoption` stays `propose-new` (reg) + `retired-entry` (cap) | Cuts routine skill changes to 2–3 runs and aligns phase-2 evals with the protocol future projects will adopt |
 
 ## Sessions
 
@@ -89,10 +102,15 @@ D21 adapt it, and the gate commit (G5) amends the design text for each of them s
 | S3 | `agent-chanchi-executor` | integration / high | recommended `agy:gemini-4-hydrogen-medium:medium` (global, low) · chosen `claude:sonnet:high` · reason: at high complexity global data is weak; `claude:sonnet:high` has `task_type` data (n 7, clean 1.0) | gate |
 | S4 | `agent-chanchi-executor` | tests / medium | recommended `agy:gemini-4-hydrogen-medium:medium` (global, low) · chosen the same | gate |
 | S5 | `agent-chanchi-executor` | tests / medium | recommended `agy:gemini-4-hydrogen-medium:medium` · chosen `agy:gemini-4-hydrogen-high:high` · explore: `agy:gemini-4-hydrogen-high:high` (5 sessions, budget 1; S5 blocks nothing; started with `--tags agent-chanchi-executor,explore`) | gate |
+| S6 | `agent-chanchi-executor` | tests / medium | completed prior to Rev 5 (replaced `eval-chanchi-item-authoring` capability cases on `feat/mvp2-s5`) | S8b |
+| S7 | `agent-chanchi-executor` | integration / medium | planned after Rev 5 audit acceptance with `chanchi recommend` (updates `scripts/run_evals.py`, `tests/test_run_evals.py`, `README.md`) | S8a, S8b, G1b |
+| S8a | `agent-chanchi-executor` | tests / low | planned after orchestrator rebases `feat/mvp2-s4` onto `main` (single worktree `.claude/worktrees/chanchi-p2s4`: trims S4 cases per D23, updates `eval.toml` per D2; orchestrator commits) | G1b, G2 |
+| S8b | `agent-chanchi-executor` | tests / low | planned after orchestrator rebases `feat/mvp2-s5` onto `main` (single worktree `.claude/worktrees/chanchi-p2s5`: trims S5 cases per D23, updates `eval.toml` per D2, resets committed Rev-4 ledger rows to header; orchestrator commits) | G2 |
 
-S4 and S5 branch from `main` after S2 merges and write to the D22 contract; the orchestrator
-merges `main` (with S3) into each before its baseline. Hill-climb sessions (D17), if any, are
-planned at the gate with `chanchi recommend` (task type `docs`, complexity `low`).
+S4 and S5 branched from `main` after S2 merged and wrote to the D22 contract; the orchestrator
+**rebases** each branch onto `main` (never merges `main` into them, D18) after S7 merges.
+Hill-climb sessions (D17), if any, are planned at the gate with `chanchi recommend` (task type
+`docs`, complexity `low`).
 
 ### Task S1 (researcher): harness facts for the runner
 
@@ -303,29 +321,144 @@ Files: `evals/eval-chanchi-item-authoring/**`, `evals/eval-chanchi-item-adoption
     "Bump the version in pyproject.toml."
 - [ ] Verify as in S4.
 
+### Task S7: cheaper eval protocol in runner, tests and README (Rev 5)
+
+Files: `scripts/run_evals.py`, `tests/test_run_evals.py`, `README.md` (`## Evals` section). Runs on
+a branch from `main` after Revision 5 audit acceptance.
+
+- [ ] Implement D5, D7, D9, D14, D15 and D17 in `scripts/run_evals.py`:
+  - `--arm` choices `("auto", "with", "without", "both")`, default `"auto"`; `--runs` default `1`;
+    mutually exclusive `--triggers` / `--no-triggers` (auto-triggers only under `--arm auto`/`both`,
+    explicit `--arm with`/`without` skip triggers unless `--triggers` is passed); `--timeout`
+    default `300`, `Context.timeout` default `300`, and wire `timeout=args.timeout` in `main()`.
+  - Compute `cases_sha` (including `agents/<agent>/AGENT.md` and excluding `__pycache__`, `*.pyc`,
+    `.DS_Store`) and `triggers_sha` (D9), and store/read `cases_sha=`, `regression=`, `cases=` and
+    `triggers_sha=` in `note` tokens on both `with` and `without` rows (`cases=` stores per-case
+    pass rate for regression cases and per-case score median for capability cases; `without` rows
+    list capability cases only). Match `current_with_row`, `previous_with_row` and
+    `baseline_without_row` on `(candidate, cases_sha)`. Under `--arm auto`, skip `without` when a
+    matching `baseline` `without` row exists and skip `triggers` when a matching `triggers` row
+    exists.
+  - Adaptive repeat (D5): on `with`-arm full runs with `--runs < 3`, top up with `3 - runs`
+    confirming runs (total 3) when a regression fails an initial run, when the previous matching
+    `with` row had `< 100%` regression pass rate, or when a case's initial rounded value differs
+    from the previous matching `with` row's `cases=` entry. Aggregate per-case medians before arm
+    median (D9). Print `max_total` in plan and refuse `max_total > 30` without `--yes`.
+  - Gated judge (D7): never judge regression cases; on capability cases, skip judge if any code
+    criterion fails and score `passed_code / (len(code) + len(rubric_criteria))`.
+  - Calibration (D14): `--calibration-sheet [--samples 6] [--collect] [--dry-run] [--yes]`,
+    calibration runs saved in `<artifacts>/<item>/calibration-runs/` without mutating ledger rows;
+    `--calibrate` requires `total >= 6`, `agree >= total - 1`, and label contrast (≥ 1 owner `PASS`
+    and ≥ 1 owner `FAIL`, else `"uncalibrated: no contrast"`); `--rejudge` re-judges
+    `set(calibration_map.values()) | {code-passed capability runs of latest uncommitted baseline}`
+    (deduplicated), recomputes uncommitted baseline `with`/`without` rows from all runs of the
+    latest baseline (re-judged scores for code-passed runs, recomputed gated scores without judge
+    for code-failed baseline runs, never including `calibration-runs/`), and refreshes `cases_sha=`
+    and `cases=` in both uncommitted baseline rows.
+  - Hill-climb verdict (D17) compares regression pass rate (`reg_passed / reg_runs`) instead of raw
+    passed counts, and writes a `triggers` row (`verdict="baseline"`, empty `before`/`delta`) if
+    `description` changed under `--arm auto`; `--signal` (D15) checks contrast +
+    `len(cal_rows) >= 6 and agree >= len(cal_rows) - 1`, `passed == runs and runs >= 1`, and
+    `with > without` matching `(candidate, cases_sha)`.
+- [ ] Update `tests/test_run_evals.py` (fake harness only) to cover every new rule: `--arm auto`
+  reusing `without` and skipping unchanged `triggers`, explicit `--arm with`/`without` skipping
+  triggers, `--triggers`/`--no-triggers` mutual exclusion, invalidation on `cases_sha` (including
+  `AGENT.md` edit and ignoring `__pycache__`/`.DS_Store`) and `triggers_sha` change, adaptive
+  repeat (1 run when unchanged, top-up to 3 for `--runs 1` and `--runs 2` when changed, regression
+  fails, or prior regression pass rate `< 100%`), `max_total > 30` refusal, `--timeout` forwarding
+  to `Context`, per-case median aggregation, gated judge + strict score monotonicity on code
+  failure, all-FAIL judge, and judge parse failure, `--calibration-sheet --collect` with 6 samples (5/6 pass with
+  contrast, 4/6 fail, 6/6 all-PASS fail on no contrast) without mutating baseline ledger scores,
+  `--rejudge` refreshing `cases_sha`/`cases=` and preserving code-failed baseline gated scores,
+  `triggers` row during `--hypothesis`, and rate-based hill-climb regression verdict (`1/1` vs
+  `3/3`).
+- [ ] Update `README.md` (`## Evals` -> *Ledger semantics*) for Revision 5 while keeping every D22
+  name checked by `tests/test_evals.py`.
+- [ ] Verify: `uv run pytest -q tests/test_run_evals.py tests/test_evals.py`, `scripts/check`.
+
+### Task S8a: trim S4 evals and update models on `feat/mvp2-s4` (Rev 5)
+
+Worktree: `.claude/worktrees/chanchi-p2s4` (branch `feat/mvp2-s4`, after the orchestrator discards
+uncommitted `evals/ledger.tsv` and rebases `feat/mvp2-s4` onto `main` containing S7, D18). Files:
+`evals/eval-chanchi-session-audit/**`, `evals/eval-chanchi-lessons/**`. Executor never commits or
+rebases; orchestrator audits and commits.
+
+- [ ] Trim cases per D23 (`session-audit`: keep `stop-plan-gap`, `false-claim`; `lessons`: keep
+  `record-failure`, `review-check-first`), removing dropped case folders.
+- [ ] Update `[candidate]` in both `eval.toml` files to `harness = "agy"`,
+  `model = "claude-sonnet-5-5-low"`, `effort = "low"`, and `[judge]` to `harness = "agy"`,
+  `model = "gemini-4-hydrogen-high"`, `effort = "high"` (D2). Confirm each kept capability case
+  exercises its `rubric.md` criteria before freezing.
+- [ ] Verify: `uv run pytest -q tests/test_evals.py tests/test_items.py tests/test_skills_content.py`
+  (only the ledger check is expected red until G2 commits the fresh baseline rows, D18).
+
+### Task S8b: trim S5 evals, update models and reset Rev-4 ledger on `feat/mvp2-s5` (Rev 5)
+
+Worktree: `.claude/worktrees/chanchi-p2s5` (branch `feat/mvp2-s5`, after the orchestrator rebases
+`feat/mvp2-s5` onto `main` containing S7, D18). Files: `evals/eval-chanchi-item-authoring/**`,
+`evals/eval-chanchi-item-adoption/eval.toml`, `evals/ledger.tsv` (reset to header row, removing
+the 3 committed Rev-4 `skill-chanchi-item-adoption` rows from `5f5cd5a`). Executor never commits
+or rebases; orchestrator audits and commits.
+
+- [ ] Trim `item-authoring` cases per D23 (keep `new-skill`, `new-hook`; drop `new-agent`,
+  `agent-without-model`); `item-adoption` stays `propose-new`, `retired-entry`.
+- [ ] Update `[candidate]` in both `eval.toml` files to `harness = "agy"`,
+  `model = "claude-sonnet-5-5-low"`, `effort = "low"`, and `[judge]` in `item-authoring` to
+  `harness = "agy"`, `model = "gemini-4-hydrogen-high"`, `effort = "high"` (D2). Reset
+  `evals/ledger.tsv` to the 15-column header row only. Confirm `new-hook` exercises
+  `item-authoring`'s `rubric.md` criteria before freezing.
+- [ ] Verify: `uv run pytest -q tests/test_evals.py tests/test_items.py tests/test_skills_content.py`
+  (only the ledger check is expected red until G2 commits the fresh baseline rows, D18).
+
 ### Gate (orchestrator)
 
-- [ ] **G1** Merge S1-S3 after audit (`gate:first-green`, `verify:feature-map` as they apply).
-  One real smoke run per harness (`run_evals.py <item> --cases <one> --runs 1 --arm with
-  --no-ledger --yes` on S4's branch) before any baseline; count it.
-- [ ] **G2** On S4's and S5's branches (with `main` merged in and the item directory staged,
-  D10): `--dry-run`, then the baseline (`--arm both`) of each eval, triggers included. Expected:
-  about 133 runs (D5). Rows stay uncommitted until G3; the item-adoption rows (no judge) are
-  committed at once.
-- [ ] **G3** Calibration: write the three sheets, hand them to the owner, `--calibrate`. A rubric
-  below 9/10 may be reworded once and re-judged with `--rejudge` (D14). Then commit the ledger rows
-  and `calibration.tsv`, and merge the branch.
-- [ ] **G4** Hill climb (D17) for any skill whose capability median does not beat the arm without
-  it, within the budget.
+- [x] **G1** Merge S1–S3 after audit; initial smoke run done (pre-Rev 5).
+- [ ] **G1b** Merge S7 after audit. Discard uncommitted `evals/ledger.tsv` on `feat/mvp2-s4`
+  (`git checkout -- evals/ledger.tsv`), rebase `feat/mvp2-s4` and `feat/mvp2-s5` onto `main`
+  (never merge `main` into them, D18), then run `S8a` and `S8b` and commit each after audit. Run
+  one real smoke check on `feat/mvp2-s4` for the new D2 pair (`agy:claude-sonnet-5-5-low`
+  candidate + `agy:gemini-4-hydrogen-high` judge: 1 capability case + 1 must-load trigger with
+  `--no-ledger --yes`, ~3 runs) to verify `agy` `claude-sonnet-5-5-low` execution, `preloadSkills`,
+  and trigger `read_file` detection before any baseline; record wall-clock durations and widen
+  `--timeout` if either run exceeds 200s.
+- [ ] **G2** On `feat/mvp2-s4` and `feat/mvp2-s5` (after `S8a`/`S8b`, item directory staged, D10):
+  `--dry-run`, then fresh baseline (`run_evals.py <item>`, default `--arm auto`, `--runs 1`) for
+  each of the four evals (owner decision 3A). Expected: ~8 + ~8 + ~8 + ~7 = **~31 runs** total
+  (vs ~133 under Rev 4; up to ~36 if a regression fails run 1). Keep baseline rows on both branches
+  uncommitted until G3 finishes (on `feat/mvp2-s5`, committing `evals/ledger.tsv` early for
+  `item-adoption` would also commit `item-authoring`'s rows and block `--rejudge`, D14).
+- [ ] **G3** Calibration: first discard any pre-Rev-5 calibration sheets and maps under
+  `~/.local/share/chanchi/evals/` (including the Rev-4 `skill-chanchi-lessons` sheet) so no stale
+  sheet is labeled. Run `run_evals.py <item> --calibration-sheet --collect` for each of the three
+  judged skills (~8–10 runs each, **~24–30 runs** total one-time), hand the 6-sample sheets to the
+  owner, then `--calibrate`. If agreement falls short (`agree < total - 1`), reword the rubric once
+  and run `--rejudge` (~6 judge runs, which refreshes `cases_sha=`/`cases=` in the uncommitted
+  baseline rows, D14) then `--calibrate <sheet>` on the owner's existing labels; if
+  `gemini-4-hydrogen-high` still falls short after one rubric rewording, update `[judge]` in
+  `eval.toml` to `agy:gemini-4-neon-high:high` (D2), run `--rejudge` (~6 judge runs, refreshing
+  `cases_sha=`/`cases=` for the new judge), and re-run `--calibrate <sheet>` on the owner's
+  existing labels. If a sheet instead fails on `"uncalibrated: no contrast"`, re-judging cannot
+  change owner labels: collect contrasting samples (or propose a harder capability case) and have
+  the owner label a new sheet. Commit `evals/ledger.tsv` and `calibration.tsv` on `feat/mvp2-s4`
+  and merge `--no-ff` to `main`. On `feat/mvp2-s5`, **commit `evals/ledger.tsv` and
+  `calibration.tsv` first**, then rebase `feat/mvp2-s5` onto `main` (resolving expected
+  `evals/ledger.tsv` and `GRANDFATHERED` conflicts), verify `scripts/check`, and merge `--no-ff`
+  to `main`.
+- [ ] **G4** Hill climb (D17) for any skill whose capability median does not beat the cached
+  `without` arm or whose regression case fails (expected 1–2 changes × 5–7 runs = **~10–15 runs**),
+  within the 300-run total budget; re-measure any near-tie baseline with `--runs 3 --arm both`.
+  Each kept skill change is audited (`skill-chanchi-audit-rounds`).
 - [ ] **G5** `run_evals.py --signal` shows all four conditions for the three skills; record the
   output in `docs/designs/reviews/chanchi-agents-mvp/phase2-exit.md`; update the design's status
-  line and amend its text for every decision line 31 lists (audited as a rule change); `chanchi change
+  line and reconcile any remaining plan-only adaptations (audited as a rule change); `chanchi change
   close chanchi-agents-phase2`.
 
 ## Verification plan (phase 2)
 
 1. `scripts/check` green on `main` after every merge; each new check seeded red once (S2).
-2. Runner behavior proven with the fake harness (S3); one real run per harness (G1).
+2. Runner behavior (including Rev 5 caching, adaptive repeat, gated judge and calibration
+   collection) proven with the fake harness (S3, S7); one real smoke check per harness/model pair
+   (G1, G1b).
 3. `run_evals.py --signal` output in `phase2-exit.md` (G5); the ledger and calibration files are
    committed and re-checkable by anyone.
 
@@ -333,9 +466,12 @@ Files: `evals/eval-chanchi-item-authoring/**`, `evals/eval-chanchi-item-adoption
 
 | Risk | Mitigation |
 |---|---|
-| A harness cannot run under a temporary `HOME` (credentials in the keychain or elsewhere) | S1 finds out first, including any per-run config directory or token variable; the runner refuses that harness (D4). Fallback, an owner decision at G1: the candidate on agy with `claude-sonnet-5-5-medium` (listed in chanchi's catalog for agy), the judge staying in another family |
-| The without-skill arm already does well (the agent body states much of the skill) | That is a measurement, not a failure: the hill climb targets the gap; if no change beats it within the budget, the gate reports it to the owner |
-| The budget runs out before the signal holds | Running total in the gate record; stop and ask before 300 |
-| The judge agrees below 9/10 after one rewording | Stop and give the owner the disagreements; the signal is not met |
-| agy ignores workspace agents in a temporary folder | S1 finds out; the judge's role body goes into its prompt (S3) |
+| A harness cannot run under a temporary `HOME` (credentials in the keychain or elsewhere) | S1 verified both `claude` and `agy` under temporary `HOME`; the runner refuses any unisolated harness (D4) |
+| `agy:claude-sonnet-5-5-low` fails, exceeds 300s, or does not emit trigger `read_file` events on `agy` | G1b tests both a capability case and a must-load trigger in ~3 runs and records wall-clock times before baselines (widening `--timeout` if > 200s); fallback is owner decision (e.g., `claude:sonnet:medium` candidate at 2–3 runs/change) |
+| Single-run baseline variance flips `with > without` on a noisy case | Adaptive repeat confirms any changed/failing case across 3 runs; G4 re-measures near-tie baselines with `--runs 3 --arm both` |
+| 6-sample calibration has lower statistical power than 10 samples | `--calibrate` and `--signal` require label contrast (≥ 1 owner PASS and ≥ 1 owner FAIL, preferring ≥ 2 each) in addition to `agree >= total - 1`; owner may pass `--samples 10` for high-stakes rubrics |
+| The without-skill arm already does well (the agent body states much of the skill) | That is a measurement, not a failure: the hill climb targets the gap; if both arms sit at 1.0, stop and propose a harder capability case |
+| The budget runs out before the signal holds | Running total in the gate record (~160 spent + ~74–105 remaining = ~234–265 of 300); stop and ask before 300 |
+| The judge agrees below 5/6 after one rubric rewording | Escalate judge from `gemini-4-hydrogen-high` to `gemini-4-neon-high` (D2) once, run `--rejudge` (refreshing `cases_sha=`/`cases=`) and `--calibrate <sheet>`; if still below 5/6, stop and give the owner the disagreements |
+| agy ignores workspace agents in a temporary folder | S1 verified `agy` loads `.agents/agents/<name>/agent.md` in temporary folders under `HOME` |
 | A grader is wrong | Each grader is run against a hand-made passing and failing end state in S4/S5 and frozen before the loop |

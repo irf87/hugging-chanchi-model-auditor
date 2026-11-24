@@ -9,8 +9,12 @@
   in [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). MVP phase 2 (layer 2, skills
   tested by evals) in progress.
 - **Date:** 2026-11-21
-- **Revision:** 2 (after two independent audits of Revision 1, both `PASS WITH FIXES` and both
-  agreeing with option A:
+- **Revision:** 3 (2026-11-23, accepted in chanchi audit 16 round 2 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; see [chanchi-agents-mvp-eval-cost-cut](reviews/chanchi-agents-mvp-eval-cost-cut/):
+  amended Layer 2 eval protocol, calibration threshold, cost controls, and phase-2 exit signal to
+  cut eval cost from ~40 runs/baseline and ~24 runs/change to ~7–9 runs/baseline and ~2–3
+  runs/change. Revision 2 followed two independent audits of Revision 1, both `PASS WITH FIXES`
+  and both agreeing with option A:
   [Claude Sonnet](reviews/chanchi-agents-mvp/audit-claude-sonnet.md) and
   [agy Gemini 4 Neon](reviews/chanchi-agents-mvp/audit-agy-gemini-4-neon.md))
 - **Brief:** [chanchi-agents-mvp.brief.md](chanchi-agents-mvp.brief.md). This document is complete
@@ -299,8 +303,10 @@ For each criterion answer PASS or FAIL, then one or two sentences of critique qu
 ```
 
 `eval.toml` names the candidate and the judge, for example for `skill-chanchi-session-audit`:
-candidate `agent-chanchi-orchestrator` on `claude` / `sonnet`, judge on `agy` /
-`gemini-4-neon-high`. The judge is always of another model family than the candidate.
+candidate `agent-chanchi-orchestrator` on `agy` / `claude-sonnet-5-5-low` (effort `low`, family
+`anthropic`), judge on `agy` / `gemini-4-hydrogen-high` (effort `high`, family `google`). The
+runner remains harness-agnostic (`claude` and `agy` supported), and the judge is always of another
+model family than the candidate.
 
 ### One run
 
@@ -308,44 +314,92 @@ candidate `agent-chanchi-orchestrator` on `claude` / `sonnet`, judge on `agy` /
    Nothing the candidate sees (paths, files, prompt) contains `eval`, `test`, `judge`,
    `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate` or `arena` (pstack
    `eval.md`). `CHANCHI_DB` points inside the work directory.
-2. **Two arms.** Run the candidate headless (`claude -p --agent`, `opencode run --agent`,
-   `agy --agent <name> -p="<prompt>"`) **with the skill** and **without it** (or with the previous version, from
-   git), so the result measures the skill's lift, not the model. The runner copies the candidate's
-   generated wrapper and, for the with-skill arm, the skill directory into the work directory's
-   `.claude/`, `.opencode/` or `.agents/` folder; the other arm gets the wrapper only. Before it
-   starts, the runner looks for the evaluated skill in the harness's global directories (for
-   example `~/.claude/skills/`); if a copy is there, it runs the candidate with `HOME` set to a
-   temporary directory that holds only that harness's credential files, or stops with an error
-   naming the global copy when it cannot isolate it. A baseline arm contaminated by a global copy
-   would measure nothing.
+2. **Two arms, with cached `without`.** Run the candidate headless (`claude -p --agent`,
+   `opencode run --agent`, `agy --agent <name> -p="<prompt>"`) **with the skill** and **without
+   it**, so the result measures the skill's lift, not the model. Regression cases run only in the
+   with-skill arm. The `without`-skill arm runs once per frozen capability harness (`cases_sha`:
+   first 12 hex of SHA-256 over canonical JSON of candidate spec, judge spec or `null`,
+   `agents/<agent>/AGENT.md`, sorted capability case files excluding `__pycache__`/`.pyc`/`.DS_Store`,
+   and `rubric.md` if present) and is reused across subsequent skill changes until that frozen
+   harness changes. The runner renders or copies the candidate wrapper
+   and, for the with-skill arm, the skill directory into the work directory's `.claude/`,
+   `.opencode/` or `.agents/` folder; the other arm gets the wrapper only. Before it starts, the
+   runner runs the candidate with `HOME` set to a temporary directory that holds only that
+   harness's credential files (hiding global skill directories such as `~/.claude/skills/` and
+   `~/.agents/skills/`), or stops with an error when it cannot isolate it. A baseline arm
+   contaminated by a global copy would measure nothing.
    Transcripts are captured from each CLI's structured output: `claude -p --verbose
-   --output-format stream-json` (Claude requires `--verbose` with it), `agy --output-format stream-json -p="<prompt>"`, `opencode run --format json`.
-3. **Repeat.** Three runs per arm; the ledger keeps the median.
+   --output-format stream-json` (Claude requires `--verbose` with it), `agy --output-format
+   stream-json -p="<prompt>"`, `opencode run --format json`.
+3. **Repeat adaptively.** **One run per case by default.** A `with`-arm case is repeated up to
+   3 runs (keeping the per-case pass rate for regression cases and the per-case score median for
+   capability cases) only when its run-1 result differs from the previous matching `baseline`/`kept`
+   `with` ledger row (`candidate` + `cases_sha`) for that case, when a regression case fails run 1,
+   or when the previous `with` row had `< 100%` regression pass rate (preventing a flaky `2/3`
+   regression from passing on a single lucky run). Routine edits that do not change a case stop
+   after 1 run; any claimed improvement or regression is automatically confirmed across 3 runs
+   before `kept` or `reverted`.
 4. **Code graders.** `grade.py` checks the end state, such as the scratch chanchi database (sessions,
-   incidents with evidence, verdict), files and exit codes.
-5. **Judge.** For criteria code cannot decide, `agent-chanchi-judge` from another model family
-   than the candidate reads `rubric.md`, the candidate's output and its transcript, and returns
-   pass or fail per criterion with a critique. When it compares two outputs it judges both orders
-   and counts only agreement (position bias, Zheng et al. 2023).
-6. **Triggers.** Each prompt in `triggers.md` is run with the skill installed and no other
-   instruction; the transcript shows whether the skill's `SKILL.md` was read or the skill tool was
-   called.
-7. **Ledger.** One row in `evals/ledger.tsv`: `id, date, item, item_sha, hypothesis, change,
-   arm, candidate, runs, median_pass, before, after, delta, verdict, note`, where `verdict` is
-   `baseline`, `kept` or `reverted` and `item_sha` is the git tree hash of the item's directory.
+   incidents with evidence, verdict), files and exit codes. Regression cases are code-graded only.
+5. **Gated judge.** For capability cases with a `rubric.md`, `agent-chanchi-judge` from another
+   model family than the candidate runs **only when every code grader passes** (a run that already
+   failed code needs no judge). When it runs, the score is
+   `(passed_code + passed_rubric_applicable) / (len(code) + total_rubric_applicable)` (`N/A`
+   excluded). When the judge is skipped due to a code failure, the run's score is
+   `passed_code / (len(code) + len(rubric_criteria))`, guaranteeing that a code-failed run always
+   scores strictly lower than any code-passed run (including when all rubric criteria fail or an
+   unparsable judge answer fails all rubric criteria after retry, giving
+   `C / (C + R) > (C - 1) / (C + R)`). When it runs, the judge reads `rubric.md`, the candidate's
+   output and its stripped, redacted transcript, and returns pass, fail or `N/A` per criterion with
+   a critique. When comparing two outputs pairwise, it judges both orders and counts only agreement
+   (position bias, Zheng et al. 2023).
+6. **Triggers on description change.** Each prompt in `triggers.md` is run with the skill installed
+   and no agent; the transcript shows whether the skill's `SKILL.md` was read or the skill tool was
+   called. Triggers run on the first baseline and whenever the skill's frontmatter `description`,
+   `triggers.md`, or candidate (`{harness, model, effort}`) changes (`triggers_sha`); edits to the
+   skill body that leave `description` unchanged skip triggers.
+7. **Ledger.** One row per executed arm in `evals/ledger.tsv`: `id, date, item, item_sha,
+   hypothesis, change, arm, candidate, runs, median_pass, before, after, delta, verdict, note`,
+   where `verdict` is `baseline`, `kept` or `reverted` and `item_sha` is the git tree hash of the
+   item's directory. `note` stores semicolon-separated tokens without altering the 15-column schema:
+   `regression=<passed>/<runs>;cases_sha=<12-hex>;cases=<case>:<val>,...` on `with` rows (regression
+   pass rates and capability medians), `cases_sha=<12-hex>;cases=<case>:<val>,...` on `without`
+   rows (capability cases only), and `triggers=<passed>/<total>;triggers_sha=<12-hex>` on
+   `triggers` rows. Comparisons between `with` and `without` (and adaptive repeat / hill-climb
+   `before`) match on `(candidate, cases_sha)` so rows from different frozen harnesses are never
+   compared.
 
 ### Judge calibration
 
-Before a rubric's judge verdicts count, the owner labels about ten outputs pass or fail once,
-with a one-line critique, and the judge must agree on at least nine. This is the one deliberate
-human step in layer 2 (Hamel Husain, *Using LLM-as-a-Judge*); after it, the loop needs no human.
+Before a rubric's judge verdicts count, the owner labels **at least 6 outputs** pass or fail once,
+with a one-line critique, containing **contrast** (at least one owner `PASS` and at least one owner
+`FAIL`, preferring ≥ 2 of each when the pool allows; an all-identical sheet is uncalibrated), and
+the judge must agree with at most one disagreement (`total >= 6` and `agree >= total - 1`: ≥ 5 of 6
+for small skills, ≥ 9 of 10 for 10-sample sheets). This is the one deliberate human step in layer 2
+(Hamel Husain, *Using LLM-as-a-Judge*); after it, the loop needs no human.
+
+Because a 1-run-per-case baseline of 1–2 capability cases yields fewer than 6 judged outputs,
+calibration uses a one-time collection step (`--calibration-sheet --collect`) that reuses saved
+artifacts first and runs only the missing capability runs (alternating `without` and `with`,
+judging code-failed calibration runs solely for calibration so PASS and FAIL examples exist, never
+mutating baseline ledger scores). If agreement falls short (`agree < total - 1`), the rubric may
+be reworded once (or the judge model escalated before commit) and `--rejudge` re-judges the
+calibration samples plus code-passed baseline capability runs, recomputes the uncommitted baseline
+`with`/`without` rows from all runs of the latest baseline (preserving gated scores on code-failed
+baseline runs), and refreshes `cases_sha` and `cases=` in those rows. If a sheet instead fails on
+missing owner-label contrast (`"uncalibrated: no contrast"`), re-judging cannot change owner
+labels: collect contrasting samples (or propose a harder capability case) and label a new sheet.
 
 ### Improving a skill
 
-The hill-climb loop: one change, one measurement, keep or revert. The harness (cases, graders,
-rubric) is frozen before the loop starts. A change is kept only when the median improves and the
-regression cases stay at 100%. Regression cases (the ones that must always pass) are kept apart
-from capability cases (allowed to start low).
+Every new skill starts with **1 regression case and 1 capability case**; add more cases only when
+a real failure exposes a gap. The hill-climb loop is one change, one measurement, keep or revert.
+The entire harness (regression cases, capability cases, graders, rubric) is frozen before the loop
+starts; editing a regression case requires a fresh baseline. A change is kept only when
+regression cases do not regress (100% of executed regression runs pass once healthy: `1/1` when
+unchanged, `3/3` when confirmed) and either the capability median or the regression pass rate
+improves. Regression cases (the ones that must always pass) are kept apart from capability cases
+(allowed to start low).
 
 ### First items under eval
 
@@ -358,8 +412,16 @@ from capability cases (allowed to start low).
 ### Cost controls
 
 Evals never run in the gate. They run when an evaluated item changes, through
-`scripts/run_evals.py <item>`. The runner prints the planned number of headless runs (cases × 2
-arms × 3 runs, plus the judge calls and triggers) and refuses more than 30 without `--yes`.
+`scripts/run_evals.py <item>`. With 1 regression + 1 capability case, 1 run by default, cached
+`without`, gated judging, and description-gated triggers, a routine skill change costs **2–3
+headless runs** (5–7 runs when adaptive confirmation repeats a changed case), and a first baseline
+costs **7–9 runs** (plus ~8–10 runs once per new rubric for calibration). The runner prints the
+planned counts (initial and adaptive worst-case `max_total`) and refuses `max_total > 30` without
+`--yes`. Because neither `claude` nor `agy` CLI exposes a `--max-turns` flag (verified locally
+2026-11-23; `agy` exposes `--print-timeout`, while a uniform Python subprocess timeout preserves
+harness parity), the runner caps runaway turns with a default per-run timeout of `300s`
+(configurable via `--timeout`). The same caps apply when chanchi helps another project evaluate
+its own items (TODO 4).
 
 The gate only reads the ledger: from phase 2 it fails when an evaluated item's current `item_sha`
 has no `kept` or `baseline` row, with the hint to run the command above. There is no exemption for
@@ -451,8 +513,8 @@ Sources were opened and quoted by a research session on 2026-11-21.
 | Adopt | Launch, Doctor, Drive, Evidence, Cleanup, Helpers; evidence survives cleanup; prove once end to end | pstack `skills/create-verification-skill/SKILL.md` | Direct fit |
 | Adapt | Feature file fields (Sub-features, How to get to it, Driving it, Gotchas) | `poteto/verification-skill-example` | Written for a web UI with a driver script; for a CLI, "driving" is the command line and we add Evidence and Covered by |
 | Adapt | Cross-family judge | pstack `eval.md`; Gu et al. 2024 survey | Zheng et al. 2023 could not confirm self-preference; Wataoka et al. show judges also favor low-perplexity text from other models. We keep cross-family, add both-order judging, code graders first, and calibration against owner labels |
-| Adapt | Pass/fail with a written critique; calibration against expert labels | Hamel Husain, *Using LLM-as-a-Judge* | Calibration reduced to one ~10-label pass per rubric |
-| Adapt | With-skill vs without-skill arms; trigger checks | Agent Skills evaluation guide (agentskills.io) | Three runs per arm instead of large sets |
+| Adapt | Pass/fail with a written critique; calibration against expert labels | Hamel Husain, *Using LLM-as-a-Judge* | Calibration reduced to one 6–10-label pass per rubric (`total >= 6`, `agree >= total - 1`) |
+| Adapt | With-skill vs without-skill arms; trigger checks | Agent Skills evaluation guide (agentskills.io) | 1+1 cases to start, 1 run by default (adaptive up to 3 on change), cached `without` per frozen harness, triggers only when `description` changes |
 | Adapt | Code graders before model graders; regression vs capability sets | Anthropic, *Demystifying evals for AI agents* | Our end state lives in SQLite, so most criteria are code-checkable |
 | Adapt | Mechanical enforcement with remediation in the error; `AGENTS.md` as a short map | OpenAI, *Harness engineering*; Böckeler, Martin Fowler site | Our budget is 150 lines, not 100: the file also carries the harness entry-point table |
 | Adapt | Orchestrator-workers, evaluator-optimizer | Anthropic, *Building effective agents* | Three agents now, the judge in phase 2 |
@@ -496,9 +558,12 @@ and at least one with the note `verify:feature-map`.
 Items: `agent-chanchi-judge`; evals for the three skills, `scripts/run_evals.py`, the ledger and
 its gate check; the "can a check enforce it?" question in lesson review.
 
-**Signal to move on:** each evaluated skill has a calibrated judge (≥ 9 of 10 agreement), its
-regression cases pass 3 of 3 runs, its capability median with the skill beats the arm without it,
-and no pending lesson with 2 or more occurrences proposes a prose rule where a check is possible.
+**Signal to move on:** each evaluated skill has a calibrated judge (`total >= 6`,
+`agree >= total - 1`, and label contrast: at least one owner `PASS` and one owner `FAIL`), its
+regression cases pass 100% of executed runs (`1/1` when unchanged, `3/3` when confirmed), its
+capability median with the skill beats the cached arm without it (matching `candidate` and
+`cases_sha`), and no pending lesson with 2 or more occurrences proposes a prose rule where a check
+is possible.
 
 ### Phase 3: safe parallelism
 
@@ -555,7 +620,8 @@ budget chooses the executors.
 | A Claude `both` agent run as a main session loses the default prompt | Documented; `scope: main` exists for agents that run as main sessions |
 | Duplicate skill listings during the rename transition | Compatibility links only in `~/.agents/skills` and `~/.claude/skills`, removed by TODO 1 |
 | Ruff flags existing code | Fix findings in the same change; per-file ignores only with a reason comment |
-| Eval cost | Evals run only when an evaluated item changes; the gate reads the ledger |
+| Eval cost | Evals run only when an evaluated item changes; 1+1 cases to start, 1 run/case default (adaptive up to 3 on change), cached `without`, gated judge, triggers only on `description` change, 300s default timeout; the gate reads the ledger |
+| Single-run baseline variance & 6-sample calibration noise | Default 1 run/case can let a noisy baseline flip `with > without`, and 6-sample calibration has lower statistical power than 10 samples; mitigated by label-contrast requirement (≥ 1 owner PASS and ≥ 1 owner FAIL), adaptive 3-run confirmation on any changed/failing case, and re-measuring near-ties with `--runs 3 --arm both` |
 
 ## Verification plan
 
