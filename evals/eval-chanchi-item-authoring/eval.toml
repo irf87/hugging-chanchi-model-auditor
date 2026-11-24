@@ -1,7 +1,7 @@
 name = "eval-chanchi-item-authoring"
 item = "skill-chanchi-item-authoring"
 regression = ["new-skill", "new-agent"]
-capability = ["rename-skill", "rule-or-check"]
+capability = ["new-hook", "agent-without-model"]
 blind_allow = ["eval", "evals", "tests"]
 
 [candidate]

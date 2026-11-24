@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p agents/agent-chanchi-helper skills/skill-chanchi-release-notes evals tests
+mkdir -p agents/agent-chanchi-reader skills/skill-chanchi-base evals tests
 
 cat > AGENTS.md <<'EOF'
 # Project Rules
 
 Items use `<item>-chanchi-<name>` (kebab-case) and match their directory name.
-Use `skill-chanchi-release-notes` when preparing release notes.
 Verify naming and wrappers before handing off:
 - `python3 tests/check_items.py`
 - `chanchi agents sync --check`
@@ -16,34 +15,34 @@ EOF
 cat > README.md <<'EOF'
 # Sample Repository
 
-Items:
-- `agent-chanchi-helper`
-- `skill-chanchi-release-notes`
+Starter items:
+- `agent-chanchi-reader`
+- `skill-chanchi-base`
 EOF
 
-cat > agents/agent-chanchi-helper/AGENT.md <<'EOF'
+cat > agents/agent-chanchi-reader/AGENT.md <<'EOF'
 ---
-name: agent-chanchi-helper
-description: Summarizes changes and drafts release notes without editing source code.
+name: agent-chanchi-reader
+description: Reads files and summarizes findings without editing anything.
 scope: both
 profile: read-only
-skills: [skill-chanchi-release-notes]
+skills: [skill-chanchi-base]
 ---
 
-# Helper
+# Reader
 
-Follow `skill-chanchi-release-notes` when formatting summaries.
+Read the requested files and report what you find.
 EOF
 
-cat > skills/skill-chanchi-release-notes/SKILL.md <<'EOF'
+cat > skills/skill-chanchi-base/SKILL.md <<'EOF'
 ---
-name: skill-chanchi-release-notes
-description: Format release notes from merged changes.
+name: skill-chanchi-base
+description: Baseline repository conventions for starter workflows.
 ---
 
-# Release Notes
+# Base Conventions
 
-Group entries into Added, Changed, and Fixed sections.
+Follow repository rules and keep outputs concise.
 EOF
 
 printf "id\tdate\titem\titem_sha\thypothesis\tchange\tarm\tcandidate\truns\tmedian_pass\tbefore\tafter\tdelta\tverdict\tnote\n" > evals/ledger.tsv
