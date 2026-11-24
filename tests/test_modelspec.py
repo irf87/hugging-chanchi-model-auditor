@@ -46,10 +46,15 @@ def test_missing_colon_is_invalid():
     assert info.value.field == "executor"
 
 
+def test_cursor_models():
+    assert parse("cursor:gpt-5.4-high") == ModelSpec("cursor", "gpt-5.4-high", None)
+    assert parse("cursor:auto") == ModelSpec("cursor", "auto", None)
+
+
 def test_unknown_agent_lists_agents():
     with pytest.raises(ChanchiError) as info:
-        parse("cursor:gpt")
-    assert info.value.valid_values == ["claude", "agy", "opencode", "human"]
+        parse("codex:gpt")
+    assert info.value.valid_values == ["claude", "agy", "opencode", "cursor", "human"]
 
 
 def test_empty_model_is_invalid():

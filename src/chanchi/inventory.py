@@ -7,7 +7,7 @@ project files only for reading, never follows a symbolic link and never renders 
 
 An item is stored by its path relative to the project root, in POSIX form. A directory item (skill, or an
 agent kept in `AGENT.md` or agy's `agent.md`) is stored as the directory; a single-file agent
-(`.claude/agents/<name>.md`, `.opencode/agents/<name>.md`) as the file.
+(`.claude/agents/<name>.md`, `.opencode/agents/<name>.md`, `.cursor/agents/<name>.md`) as the file.
 
 `propose` turns the scanned items and the lessons into stored candidates (`item_proposals`), counting
 independent uses: copies that share most of their lines (vendored upstream text) count once.
@@ -35,12 +35,14 @@ DEFAULT_ROOTS = (
     ".agents/skills",
     ".claude/skills",
     ".opencode/skills",
+    ".cursor/skills",
     "agents",
     ".claude/agents",
     ".opencode/agents",
     ".agents/agents",
+    ".cursor/agents",
 )
-AGENT_FILE_ROOTS = (".claude/agents", ".opencode/agents")
+AGENT_FILE_ROOTS = (".claude/agents", ".opencode/agents", ".cursor/agents")
 AGY_AGENTS_ROOT = ".agents/agents"
 MAX_DEPTH = 4
 SKIPPED_NAMES = ("node_modules",)

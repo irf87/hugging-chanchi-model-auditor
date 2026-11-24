@@ -107,12 +107,17 @@ def test_malformed_roster_is_invalid_value(tmp_path, text, needle):
     assert "auditors.toml" in exc.value.message and needle in exc.value.message
 
 
+def test_cursor_harness_accepted_in_roster(tmp_path):
+    env = write_roster(tmp_path, '[[auditor]]\nharness = "cursor"\nmodel = "gpt-5.4-high"\n')
+    assert sync.roster(env) == [{"harness": "cursor", "model": "gpt-5.4-high", "effort": None}]
+
+
 def test_unknown_harness_lists_valid_values(tmp_path):
-    env = write_roster(tmp_path, '[[auditor]]\nharness = "cursor"\nmodel = "m"\n')
+    env = write_roster(tmp_path, '[[auditor]]\nharness = "codex"\nmodel = "m"\n')
     with pytest.raises(ChanchiError) as exc:
         sync.roster(env)
     assert exc.value.code == "invalid_value"
-    assert exc.value.valid_values == ["claude", "opencode", "agy"]
+    assert exc.value.valid_values == ["claude", "opencode", "agy", "cursor"]
     assert "entry 1" in exc.value.message
 
 

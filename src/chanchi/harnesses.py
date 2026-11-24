@@ -15,10 +15,10 @@ from pathlib import Path
 
 from chanchi.errors import ChanchiError
 
-KEYS = ("claude", "opencode", "agy")
+KEYS = ("claude", "opencode", "agy", "cursor")
 PROFILES = ("read-only", "workspace-write", "orchestrator")
 
-_BINARY = {"claude": "claude", "opencode": "opencode", "agy": "agy"}
+_BINARY = {"claude": "claude", "opencode": "opencode", "agy": "agy", "cursor": "agent"}
 _CLAUDE_TOOLS = {
     "read-only": "Bash Read Grep Glob",
     "workspace-write": "Bash Read Grep Glob Edit Write",
@@ -91,8 +91,9 @@ def launch(
     add_dirs: Iterable[str] = (),
 ) -> str:
     """The headless launch line of a harness, with the permission flags its `profile` needs and an
-    `--add-dir` per entry of `add_dirs` (opencode has no such flag and ignores them). The caller runs
-    it; chanchi never does."""
+    `--add-dir` per entry of `add_dirs` (`claude`, `agy`, and `cursor` emit `--add-dir`, while
+    `opencode` has no such flag and ignores `add_dirs`). `cursor` runs from the workspace root with
+    `--model` passed verbatim (ignoring `effort`). The caller runs it; chanchi never does."""
     _key(key)
     _profile(profile)
     if isinstance(add_dirs, (str, bytes)):
@@ -109,6 +110,15 @@ def launch(
     if key == "opencode":
         # opencode run has no --add-dir flag; add_dirs are ignored here.
         return f"opencode run --agent {_arg(agent)} -m {_arg(model)} --auto {_dq(prompt)} < /dev/null"
+    if key == "cursor":
+        role_prompt = (
+            f"Follow the {agent} role "
+            f"(.cursor/agents/{agent}.md or ~/.cursor/agents/{agent}.md): {prompt}"
+        )
+        return (
+            f"agent -p --trust --force --model {_arg(model)}{dirs} "
+            f"-- {_dq(role_prompt)} < /dev/null"
+        )
     base = split_agy_model(model, effort)
     return (
         f"agy --agent {_arg(agent)} --model {_arg(base)} --effort {_arg(effort)} "
@@ -125,6 +135,8 @@ def home_dir(key: str, *, env: Mapping[str, str] | None = None, home: Path | Non
         return home / ".claude"
     if key == "agy":
         return home / ".gemini"
+    if key == "cursor":
+        return home / ".cursor"
     if env.get("OPENCODE_CONFIG_DIR"):
         return Path(env["OPENCODE_CONFIG_DIR"])
     if env.get("XDG_CONFIG_HOME"):
@@ -142,13 +154,16 @@ def user_agent_path(
 ) -> Path:
     """Where a user-level agent is written. agy: ~/.gemini/config/agents (decision D1 of the phase-1 plan)."""
     base = home_dir(key, env=env, home=home)
-    if key == "claude":
-        return base / "agents" / f"{name}.md"
-    if key == "opencode":
+    if key in ("claude", "opencode", "cursor"):
         return base / "agents" / f"{name}.md"
     return base / "config" / "agents" / name / "agent.md"
 
 
+def binary(key: str) -> str:
+    """The CLI executable name of a harness."""
+    return _BINARY[_key(key)]
+
+
 def available(key: str, which: Callable[[str], str | None] = shutil.which) -> bool:
     """Whether the harness binary is on PATH."""
-    return which(_BINARY[_key(key)]) is not None
+    return which(binary(key)) is not None

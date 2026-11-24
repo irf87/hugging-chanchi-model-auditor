@@ -7,7 +7,7 @@ from collections.abc import Iterable
 
 from chanchi.errors import ChanchiError
 
-AGENTS = ("claude", "agy", "opencode")
+AGENTS = ("claude", "agy", "opencode", "cursor")
 PLANNER_ONLY_AGENTS = ("human",)
 ALL_AGENTS = AGENTS + PLANNER_ONLY_AGENTS
 LAUNCH_EFFORTS = ("low", "medium", "high", "xhigh", "max")

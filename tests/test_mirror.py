@@ -82,11 +82,13 @@ class World:
             paths.append(self.home / ".gemini" / "antigravity-cli" / "skills" / name)
         return paths
 
-    def agent_paths(self, name: str, *, opencode=True) -> list[Path]:
+    def agent_paths(self, name: str, *, opencode=True, cursor=True) -> list[Path]:
         paths = [self.home / ".claude" / "agents" / f"{name}.md",
                  self.home / ".gemini" / "config" / "agents" / name / "agent.md"]
         if opencode:
             paths.append(self.home / ".config" / "opencode" / "agents" / f"{name}.md")
+        if cursor:
+            paths.append(self.home / ".cursor" / "agents" / f"{name}.md")
         return paths
 
     def leftovers(self) -> list[str]:
@@ -96,7 +98,7 @@ class World:
 @pytest.fixture
 def world(tmp_path):
     home = tmp_path / "home"
-    for folder in (".claude", ".config/opencode", ".gemini/antigravity-cli"):
+    for folder in (".claude", ".config/opencode", ".gemini/antigravity-cli", ".cursor"):
         (home / folder).mkdir(parents=True)
     root = tmp_path / "SYNC"
     for kind, pub, draft in (("skill", SKILL_PUB, SKILL_DRAFT), ("agent", AGENT_PUB, AGENT_DRAFT)):
@@ -132,7 +134,7 @@ def test_mirror_writes_skill_links_and_agent_files_for_published_items_only(worl
     assert not [p for p in world.home.rglob("*") if "draft" in p.name]
 
     entries = world.manifest()
-    assert {e["kind"] for e in entries} == {"skill-primary", "skill-secondary", "claude", "opencode", "agy"}
+    assert {e["kind"] for e in entries} == {"skill-primary", "skill-secondary", "claude", "opencode", "agy", "cursor"}
     for entry in entries:
         assert entry["owner"] == "items-mirror" and "root" not in entry
         assert entry["item"] in (SKILL_PUB, AGENT_PUB)
@@ -160,9 +162,35 @@ def test_no_installed_harness_writes_nothing(world):
     shutil.rmtree(world.home / ".claude")
     shutil.rmtree(world.home / ".config")
     shutil.rmtree(world.home / ".gemini")
+    shutil.rmtree(world.home / ".cursor")
     result = world.run()
-    assert result["written"] == [] and result["skipped_harnesses"] == ["claude", "opencode", "agy"]
+    assert result["written"] == [] and result["skipped_harnesses"] == ["claude", "opencode", "agy", "cursor"]
     assert not (world.home / ".agents").exists()
+
+
+def test_missing_cursor_folder_is_skipped(world):
+    shutil.rmtree(world.home / ".cursor")
+    result = world.run()
+    assert result["skipped_harnesses"] == ["cursor"]
+    assert not (world.home / ".cursor").exists()
+    assert result["written"] == strs(world.skill_paths(SKILL_PUB) + world.agent_paths(AGENT_PUB, cursor=False))
+
+
+def test_cursor_hand_edit_fails_check_repairs_and_removes(world):
+    world.run()
+    target = world.home / ".cursor" / "agents" / f"{AGENT_PUB}.md"
+    assert target.is_file()
+    target.write_text(target.read_text() + "hand edit\n")
+    with pytest.raises(ChanchiError) as info:
+        world.run(check=True)
+    assert info.value.code == "stale_wrappers" and info.value.details["stale"] == [str(target)]
+    repaired = world.run()
+    assert repaired["written"] == [str(target)]
+    assert "hand edit" not in target.read_text()
+    assert world.run(check=True)["written"] == []
+    removed = world.run(remove=True)
+    assert str(target) in removed["removed"]
+    assert not target.exists()
 
 
 def test_second_run_is_all_unchanged(world):
@@ -179,7 +207,7 @@ def test_check_writes_nothing_and_fails_on_a_fresh_machine(world):
     with pytest.raises(ChanchiError) as info:
         world.run(check=True)
     assert info.value.code == "stale_wrappers"
-    assert len(info.value.details["stale"]) == 6
+    assert len(info.value.details["stale"]) == 7
     assert not (world.home / ".agents").exists()
     assert not (world.home / ".claude" / "agents").exists()
     assert not world.db.exists()
@@ -241,7 +269,7 @@ def test_a_foreign_link_at_a_wanted_skill_path_is_a_conflict(world, tmp_path):
     assert os.readlink(primary) == str(tmp_path)
 
 
-@pytest.mark.parametrize("index", [0, 1, 2])
+@pytest.mark.parametrize("index", [0, 1, 2, 3])
 def test_a_foreign_file_at_a_wanted_agent_path_is_a_conflict_and_nothing_is_written(world, index):
     foreign = world.agent_paths(AGENT_PUB)[index]
     foreign.parent.mkdir(parents=True, exist_ok=True)
@@ -483,14 +511,14 @@ def test_cli_mirror_check_and_remove(tmp_path, monkeypatch, capsys, world):
     assert json.loads(capsys.readouterr().err)["error"]["code"] == "stale_wrappers"
     assert cli.main(["items", "mirror"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert len(out["written"]) == 6 and out["items"] == sorted([SKILL_PUB, AGENT_PUB])
+    assert len(out["written"]) == 7 and out["items"] == sorted([SKILL_PUB, AGENT_PUB])
     assert cli.main(["items", "mirror", "--check"]) == 0
     capsys.readouterr()
     assert cli.main(["items", "mirror", "--check", "--remove"]) == 2
     capsys.readouterr()
     shutil.rmtree(world.sync)
     assert cli.main(["items", "mirror", "--remove"]) == 0
-    assert len(json.loads(capsys.readouterr().out)["removed"]) == 6
+    assert len(json.loads(capsys.readouterr().out)["removed"]) == 7
     assert world.leftovers() == []
     assert cli.main(["items", "mirror"]) == 2
     err = json.loads(capsys.readouterr().err)["error"]
