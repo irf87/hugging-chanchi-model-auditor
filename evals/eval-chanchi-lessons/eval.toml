@@ -3,14 +3,10 @@ item = "skill-chanchi-lessons"
 regression = ["record-failure"]
 capability = ["review-check-first"]
 blind_allow = []
+signal = true
 
 [candidate]
 agent = "agent-chanchi-orchestrator"
 harness = "agy"
 model = "claude-sonnet-5-5-low"
 effort = "low"
-
-[judge]
-harness = "agy"
-model = "gemini-4-hydrogen-high"
-effort = "high"
