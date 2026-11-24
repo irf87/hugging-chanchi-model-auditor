@@ -1,0 +1,12 @@
+name = "eval-chanchi-item-authoring"
+item = "skill-chanchi-item-authoring"
+regression = ["new-skill"]
+capability = ["new-hook"]
+blind_allow = ["eval", "evals", "tests"]
+signal = true
+
+[candidate]
+agent = "agent-chanchi-executor"
+harness = "agy"
+model = "claude-sonnet-5-5-low"
+effort = "low"

@@ -19,7 +19,7 @@ this and fails when an operational file names an item that does not exist.
 |---|---|---|
 | agent | `agents/agent-chanchi-<n>/AGENT.md` | wrappers are generated; never edit `.claude/agents`, `.opencode/agents`, `.agents/agents` or `.cursor/agents` by hand |
 | skill | `skills/skill-chanchi-<n>/SKILL.md`, optional `references/` | linked into projects by `chanchi skills link` |
-| eval | `evals/eval-chanchi-<item>/` | phase 2: from then on every new skill ships with at least one eval case |
+| eval | `evals/eval-chanchi-<n>/`: `eval.toml`, `cases/<case>/` (`prompt.md`, `setup.sh`, `grade.py`), optional `rubric.md`, `triggers.md` | every new skill ships with one (`tests/test_evals.py`); after any change to an evaluated skill run `uv run python scripts/run_evals.py <skill>` and commit the ledger row |
 | hook | `hooks/hook-chanchi-<n>/` | a harness hook; git hooks are not items |
 
 ## Agent source
@@ -32,6 +32,34 @@ Never put a model in it: the orchestrator picks models with `chanchi recommend`.
 
 After editing a source, run `chanchi agents sync` (inside this repository: `uv run chanchi agents sync`),
 and `chanchi agents link --user` when `install: user`, then commit the source and the wrappers.
+
+## Eval source
+
+Structure of `evals/eval-chanchi-<n>/` (required for new skills; grandfathered skills are listed in
+`tests/test_evals.py`):
+
+- `eval.toml`: top-level keys `name = "eval-chanchi-<n>"`, `item = "skill-chanchi-<n>"`,
+  `regression = ["<case>"]` (at least one), `capability = ["<case>"]` (start with 1 regression + 1
+  capability case by default; `[]` only if no capability case exists yet), `blind_allow = [...]`,
+  and optional `signal = true|false` placed before `[candidate]`; `[candidate]` with `agent`,
+  `harness`, `model`, `effort`; and optional `[judge]` only when `rubric.md` exists, using a
+  different model family than the candidate (`chanchi.taxonomy.family_for`).
+- `triggers.md`: `## Must load` and `## Must not load` bullet lists.
+- `cases/<case>/`: at least one case directory holding `prompt.md` (neutral wording; blinded words
+  in `tests/test_evals.py` are banned unconditionally), `setup.sh` (builds starting state; any
+  blinded word in `setup.sh` or fixtures must be listed in `blind_allow`), and `grade.py` (reads
+  the work directory from `sys.argv[1]` and prints one JSON line per criterion:
+  `{"criterion": "<id>", "pass": true|false, "detail": "<text>"}`).
+
+## Hook source
+
+Harness hooks live under `hooks/hook-chanchi-<n>/` (git hooks in `.githooks/` or `.git/hooks/` are
+not chanchi items). Suggested harness-agnostic layout:
+
+- An executable hook script (e.g. `hook.sh`, `chmod +x`) that enforces the guardrail (for example,
+  running the repository's check command) and exits non-zero with a failure message naming both the
+  rule and the fix when it blocks.
+- A brief `README.md` stating when the harness invokes it and how it signals a block.
 
 ## Rule or check?
 
@@ -46,4 +74,12 @@ Move detail to `docs/` or `references/` and link to it.
 
 ## Last step
 
-Run `scripts/check`. It must pass before the change is handed off.
+Follow the worktree and branch a brief names, and never work directly on `main` (`AGENTS.md`). For
+a direct authoring request inside an already-isolated workspace with no separate brief file, author
+the item directly in the current working tree using sensible repository conventions rather than
+stopping. Follow your role's commit rules (executors never commit; orchestrators commit source,
+wrappers, and ledger rows after checks pass).
+
+Run `scripts/check` when present; otherwise run the verification checks documented in the
+repository's `AGENTS.md` (such as its item-naming check and `chanchi agents sync --check`). Checks
+must pass before handing off, and the final message must list every file created or changed.
