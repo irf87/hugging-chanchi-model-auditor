@@ -9,10 +9,12 @@
   in [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). MVP phase 2 (layer 2, skills
   tested by evals) in progress.
 - **Date:** 2026-11-21
-- **Revision:** 3 (2026-11-23: amended Layer 2 eval protocol, calibration threshold, cost controls,
-  and phase-2 exit signal to cut eval cost from ~40 runs/baseline and ~24 runs/change to ~7–9
-  runs/baseline and ~2–3 runs/change; audited before merge. Revision 2 followed two independent
-  audits of Revision 1, both `PASS WITH FIXES` and both agreeing with option A:
+- **Revision:** 3 (2026-11-23, accepted in chanchi audit 16 round 2 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; see [chanchi-agents-mvp-eval-cost-cut](reviews/chanchi-agents-mvp-eval-cost-cut/):
+  amended Layer 2 eval protocol, calibration threshold, cost controls, and phase-2 exit signal to
+  cut eval cost from ~40 runs/baseline and ~24 runs/change to ~7–9 runs/baseline and ~2–3
+  runs/change. Revision 2 followed two independent audits of Revision 1, both `PASS WITH FIXES`
+  and both agreeing with option A:
   [Claude Sonnet](reviews/chanchi-agents-mvp/audit-claude-sonnet.md) and
   [agy Gemini 4 Neon](reviews/chanchi-agents-mvp/audit-agy-gemini-4-neon.md))
 - **Brief:** [chanchi-agents-mvp.brief.md](chanchi-agents-mvp.brief.md). This document is complete
@@ -341,13 +343,16 @@ model family than the candidate.
    incidents with evidence, verdict), files and exit codes. Regression cases are code-graded only.
 5. **Gated judge.** For capability cases with a `rubric.md`, `agent-chanchi-judge` from another
    model family than the candidate runs **only when every code grader passes** (a run that already
-   failed code needs no judge). When the judge is skipped due to a code failure, the run's score is
+   failed code needs no judge). When it runs, the score is
+   `(passed_code + passed_rubric_applicable) / (len(code) + total_rubric_applicable)` (`N/A`
+   excluded). When the judge is skipped due to a code failure, the run's score is
    `passed_code / (len(code) + len(rubric_criteria))`, guaranteeing that a code-failed run always
-   scores strictly lower than any code-passed run (including when an unparsable judge answer fails
-   all rubric criteria after retry, giving `C / (C + R) > (C - 1) / (C + R)`). When it runs, the
-   judge reads `rubric.md`, the candidate's output and its stripped, redacted transcript, and
-   returns pass, fail or `N/A` per criterion with a critique. When comparing two outputs pairwise,
-   it judges both orders and counts only agreement (position bias, Zheng et al. 2023).
+   scores strictly lower than any code-passed run (including when all rubric criteria fail or an
+   unparsable judge answer fails all rubric criteria after retry, giving
+   `C / (C + R) > (C - 1) / (C + R)`). When it runs, the judge reads `rubric.md`, the candidate's
+   output and its stripped, redacted transcript, and returns pass, fail or `N/A` per criterion with
+   a critique. When comparing two outputs pairwise, it judges both orders and counts only agreement
+   (position bias, Zheng et al. 2023).
 6. **Triggers on description change.** Each prompt in `triggers.md` is run with the skill installed
    and no agent; the transcript shows whether the skill's `SKILL.md` was read or the skill tool was
    called. Triggers run on the first baseline and whenever the skill's frontmatter `description`,
@@ -375,19 +380,22 @@ for small skills, ≥ 9 of 10 for 10-sample sheets). This is the one deliberate 
 
 Because a 1-run-per-case baseline of 1–2 capability cases yields fewer than 6 judged outputs,
 calibration uses a one-time collection step (`--calibration-sheet --collect`) that reuses saved
-artifacts first and runs only the missing capability runs (alternating `with` and `without`,
+artifacts first and runs only the missing capability runs (alternating `without` and `with`,
 judging code-failed calibration runs solely for calibration so PASS and FAIL examples exist, never
-mutating baseline ledger scores). If agreement falls short, the rubric may be reworded once (or
-the judge model escalated before commit) and `--rejudge` re-judges the calibration samples plus
-code-passed baseline capability runs, recomputes the uncommitted baseline `with`/`without` rows
-from all runs of the latest baseline (preserving gated scores on code-failed baseline runs), and
-refreshes `cases_sha` and `cases=` in those rows.
+mutating baseline ledger scores). If agreement falls short (`agree < total - 1`), the rubric may
+be reworded once (or the judge model escalated before commit) and `--rejudge` re-judges the
+calibration samples plus code-passed baseline capability runs, recomputes the uncommitted baseline
+`with`/`without` rows from all runs of the latest baseline (preserving gated scores on code-failed
+baseline runs), and refreshes `cases_sha` and `cases=` in those rows. If a sheet instead fails on
+missing owner-label contrast (`"uncalibrated: no contrast"`), re-judging cannot change owner
+labels: collect contrasting samples (or propose a harder capability case) and label a new sheet.
 
 ### Improving a skill
 
 Every new skill starts with **1 regression case and 1 capability case**; add more cases only when
 a real failure exposes a gap. The hill-climb loop is one change, one measurement, keep or revert.
-The harness (cases, graders, rubric) is frozen before the loop starts. A change is kept only when
+The entire harness (regression cases, capability cases, graders, rubric) is frozen before the loop
+starts; editing a regression case requires a fresh baseline. A change is kept only when
 regression cases do not regress (100% of executed regression runs pass once healthy: `1/1` when
 unchanged, `3/3` when confirmed) and either the capability median or the regression pass rate
 improves. Regression cases (the ones that must always pass) are kept apart from capability cases
