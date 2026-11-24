@@ -1,1 +1,7 @@
 id	date	item	item_sha	hypothesis	change	arm	candidate	runs	median_pass	before	after	delta	verdict	note
+skill-chanchi-session-audit-1	2026-11-24	skill-chanchi-session-audit	465113c9261eec0633abbc50de35fa03a7568474			triggers	agy:claude-sonnet-5-5-low:low	4	1.00		1.00		baseline	triggers=4/4;triggers_sha=e3dbb441abdf
+skill-chanchi-lessons-1	2026-11-24	skill-chanchi-lessons	efe7be7997433c295ab60720bad1933db5d70e0a			triggers	agy:claude-sonnet-5-5-low:low	4	1.00		1.00		baseline	triggers=4/4;triggers_sha=42f0c6b596eb
+skill-chanchi-session-audit-2	2026-11-24	skill-chanchi-session-audit	465113c9261eec0633abbc50de35fa03a7568474			with	agy:claude-sonnet-5-5-low:low	2	1.00		1.00		baseline	regression=1/1;cases_sha=ea298abcb4c4;cases=stop-plan-gap:1.00,false-claim:1.00
+skill-chanchi-session-audit-3	2026-11-24	skill-chanchi-session-audit	465113c9261eec0633abbc50de35fa03a7568474			without	agy:claude-sonnet-5-5-low:low	1	0.50		0.50		baseline	cases_sha=ea298abcb4c4;cases=false-claim:0.50
+skill-chanchi-lessons-2	2026-11-24	skill-chanchi-lessons	efe7be7997433c295ab60720bad1933db5d70e0a			with	agy:claude-sonnet-5-5-low:low	2	1.00		1.00		baseline	regression=1/1;cases_sha=bdc42ef1bd35;cases=record-failure:1.00,review-check-first:1.00
+skill-chanchi-lessons-3	2026-11-24	skill-chanchi-lessons	efe7be7997433c295ab60720bad1933db5d70e0a			without	agy:claude-sonnet-5-5-low:low	1	0.00		0.00		baseline	cases_sha=bdc42ef1bd35;cases=review-check-first:0.00
