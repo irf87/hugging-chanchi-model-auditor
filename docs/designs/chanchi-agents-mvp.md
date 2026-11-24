@@ -268,7 +268,8 @@ The skill is proven once end to end by an executor on a real change before phase
 ## Layer 2: skills tested by evals
 
 The protocol combines pstack's `eval.md` and `hillclimb.md` with Anthropic's guidance for agent
-evals and the Agent Skills evaluation guide. Graders run in this order: code first, judge second.
+evals and the Agent Skills evaluation guide. Evals are code-graded by default (`grade.py`); when an
+eval opts into a qualitative `rubric.md`, graders run in this order: code first, judge second.
 
 ### Layout
 
@@ -276,16 +277,17 @@ evals and the Agent Skills evaluation guide. Graders run in this order: code fir
 evals/
   ledger.tsv
   eval-chanchi-session-audit/
-    eval.toml                   # candidate agent, harness and model; judge harness and model
+    eval.toml                   # candidate agent, harness and model; optional signal flag and [judge]
     cases/<case>/prompt.md      # what the candidate reads: neutral words only
     cases/<case>/setup.sh       # builds the starting state in the work directory
     cases/<case>/grade.py       # code graders: read the end state, print one pass/fail per criterion
-    rubric.md                   # judge-only criteria, 3 to 6, pass/fail with a written critique
+    rubric.md                   # optional: judge-only criteria, 3 to 6, pass/fail with a written critique
     triggers.md                 # prompts that must and must not load the skill
 scripts/run_evals.py
 ```
 
-`rubric.md` (never copied into a work directory):
+Optional `rubric.md` (present only when `[judge]` is set in `eval.toml`; never copied into a work
+directory):
 
 ```markdown
 # Rubric: skill-chanchi-lessons
@@ -430,8 +432,8 @@ Evals never run in the gate. They run when an evaluated item changes, through
 1 run by default, cached `without`, and description-gated triggers, a routine skill change costs
 **2 headless runs** (4 runs when adaptive confirmation repeats a changed case), and a first baseline
 costs **7 runs** (3 candidate + 4 triggers; 0 judge runs, 0 calibration runs). Evals that opt into
-a `rubric.md` + `[judge]` add at most 1–2 gated judge runs per measurement plus a one-time
-calibration collection (~8–12 runs). The runner prints the
+a `rubric.md` + `[judge]` add 1–2 gated judge runs per measurement (up to 3–4 with adaptive
+confirmation) plus a one-time calibration collection (~8–12 runs). The runner prints the
 planned counts (initial and adaptive worst-case `max_total`) and refuses `max_total > 30` without
 `--yes`. Because neither `claude` nor `agy` CLI exposes a `--max-turns` flag (verified locally
 2026-11-23; `agy` exposes `--print-timeout`, while a uniform Python subprocess timeout preserves
@@ -640,7 +642,7 @@ budget chooses the executors.
 | A Claude `both` agent run as a main session loses the default prompt | Documented; `scope: main` exists for agents that run as main sessions |
 | Duplicate skill listings during the rename transition | Compatibility links only in `~/.agents/skills` and `~/.claude/skills`, removed by TODO 1 |
 | Ruff flags existing code | Fix findings in the same change; per-file ignores only with a reason comment |
-| Eval cost | Evals run only when an evaluated item changes; 1+1 cases to start, 1 run/case default (adaptive up to 3 on change), cached `without`, gated judge, triggers only on `description` change, 300s default timeout; the gate reads the ledger |
+| Eval cost | Evals run only when an evaluated item changes; code-graded by default (optional judge gated on passing code when a rubric is present), 1+1 cases to start, 1 run/case default (adaptive up to 3 on change), cached `without`, triggers only on `description` change, 300s default timeout; the gate reads the ledger |
 | Single-run baseline variance & optional 6-sample calibration noise | Default 1 run/case can let a noisy baseline flip `with > without`, and optional 6-sample calibration (when an eval opts into a judge) has lower statistical power than 10 samples; mitigated by label-contrast requirement (≥ 1 owner PASS and ≥ 1 owner FAIL), adaptive 3-run confirmation on any changed/failing case, and re-measuring near-ties with `--runs 3 --arm both` |
 | Code-only evals do not automatically grade free-text prose quality | Mitigated by checking all structured end states (SQLite rows, evidence fields, git files, checks) via `grade.py`, auditing free-text outputs in real operational sessions, and keeping optional `rubric.md` + `agent-chanchi-judge` ready when a future skill genuinely needs qualitative judging |
 
