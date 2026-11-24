@@ -35,26 +35,30 @@ and `chanchi agents link --user` when `install: user`, then commit the source an
 
 ## Eval source
 
-Every new `skill-chanchi-<n>` ships with `evals/eval-chanchi-<n>/` containing:
+Structure of `evals/eval-chanchi-<n>/` (required for new skills; grandfathered skills are listed in
+`tests/test_evals.py`):
 
 - `eval.toml`: top-level keys `name = "eval-chanchi-<n>"`, `item = "skill-chanchi-<n>"`,
-  `regression = ["<case>"]`, `capability = ["<case>"]` (or `[]` initially), `blind_allow = [...]`,
+  `regression = ["<case>"]` (at least one), `capability = ["<case>"]` (start with 1 regression + 1
+  capability case by default; `[]` only if no capability case exists yet), `blind_allow = [...]`,
   and optional `signal = true|false` placed before `[candidate]`; `[candidate]` with `agent`,
-  `harness`, `model`, `effort`; and optional `[judge]` only when `rubric.md` exists.
+  `harness`, `model`, `effort`; and optional `[judge]` only when `rubric.md` exists, using a
+  different model family than the candidate (`chanchi.taxonomy.family_for`).
 - `triggers.md`: `## Must load` and `## Must not load` bullet lists.
-- `cases/<case>/`: at least one case directory holding `prompt.md` (neutral wording, no blinded
-  words), `setup.sh` (creates starting state in the work directory), and `grade.py` (reads the
-  work directory path from `sys.argv[1]` and prints one JSON line per criterion:
+- `cases/<case>/`: at least one case directory holding `prompt.md` (neutral wording; blinded words
+  in `tests/test_evals.py` are banned unconditionally), `setup.sh` (builds starting state; any
+  blinded word in `setup.sh` or fixtures must be listed in `blind_allow`), and `grade.py` (reads
+  the work directory from `sys.argv[1]` and prints one JSON line per criterion:
   `{"criterion": "<id>", "pass": true|false, "detail": "<text>"}`).
 
 ## Hook source
 
-A harness hook lives under `hooks/hook-chanchi-<n>/` (never `.githooks/` or `.git/hooks/` — git
-hooks are not items). Minimal harness-agnostic layout:
+Harness hooks live under `hooks/hook-chanchi-<n>/` (git hooks in `.githooks/` or `.git/hooks/` are
+not chanchi items). Suggested harness-agnostic layout:
 
-- An executable hook script (e.g. `hook.sh` or `check.sh`, `chmod +x`) that runs the repository's
-  check command and exits non-zero with a failure message naming both the rule and the fix when
-  the check fails.
+- An executable hook script (e.g. `hook.sh`, `chmod +x`) that enforces the guardrail (for example,
+  running the repository's check command) and exits non-zero with a failure message naming both the
+  rule and the fix when it blocks.
 - A brief `README.md` stating when the harness invokes it and how it signals a block.
 
 ## Rule or check?
@@ -70,11 +74,12 @@ Move detail to `docs/` or `references/` and link to it.
 
 ## Last step
 
-When given a direct request to create or rename an item in the current repository, author the item
-directly in the current working tree using sensible repository conventions — never commit, never
-stop merely because no separate brief file or branch name was supplied, and use existing repository
-checks when minimal repositories lack `scripts/check`.
+Follow the worktree and branch a brief names, and never work directly on `main` (`AGENTS.md`). For
+a direct authoring request inside an already-isolated workspace with no separate brief file, author
+the item directly in the current working tree using sensible repository conventions rather than
+stopping. Follow your role's commit rules (executors never commit; orchestrators commit source,
+wrappers, and ledger rows after checks pass).
 
-Run `scripts/check` when present; otherwise run the repository checks named in `AGENTS.md` (such as
-`python3 tests/check_items.py` and `chanchi agents sync --check`). Checks must pass before handing
-off, and the final message must list every file created or changed.
+Run `scripts/check` when present; otherwise run the verification checks documented in the
+repository's `AGENTS.md` (such as its item-naming check and `chanchi agents sync --check`). Checks
+must pass before handing off, and the final message must list every file created or changed.
