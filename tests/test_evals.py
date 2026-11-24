@@ -24,9 +24,7 @@ GRANDFATHERED = {
     "skill-chanchi-audit-rounds",
     "skill-chanchi-item-adoption",
     "skill-chanchi-item-authoring",
-    "skill-chanchi-lessons",
     "skill-chanchi-model-selection",
-    "skill-chanchi-session-audit",
     "skill-chanchi-verify",
 }
 

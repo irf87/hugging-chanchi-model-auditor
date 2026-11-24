@@ -1,0 +1,12 @@
+name = "eval-chanchi-session-audit"
+item = "skill-chanchi-session-audit"
+regression = ["stop-plan-gap"]
+capability = ["false-claim"]
+blind_allow = []
+signal = true
+
+[candidate]
+agent = "agent-chanchi-orchestrator"
+harness = "agy"
+model = "claude-sonnet-5-5-low"
+effort = "low"

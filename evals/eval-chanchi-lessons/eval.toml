@@ -1,0 +1,12 @@
+name = "eval-chanchi-lessons"
+item = "skill-chanchi-lessons"
+regression = ["record-failure"]
+capability = ["review-check-first"]
+blind_allow = []
+signal = true
+
+[candidate]
+agent = "agent-chanchi-orchestrator"
+harness = "agy"
+model = "claude-sonnet-5-5-low"
+effort = "low"

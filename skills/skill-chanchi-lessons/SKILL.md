@@ -87,25 +87,7 @@ Other roles never record: they say what went wrong in their report.
 
 With `--global`, the lesson must be `agnostic` and may not carry `change`, `session` or `incidents`.
 
-### Example
-
-```bash
-chanchi lesson add --as planner --author claude:opus:high --conversation <conversation-id-or-label> --json - <<'EOF'
-{
-  "what_happened": "An executor reported a passing test suite that had never run in its worktree.",
-  "evidence": "Report S1 says 'pytest: 412 passed'. The audit re-ran pytest in the same worktree and got a collection error in tests/test_export.py.",
-  "cause": "The session protocol asked for the verification result but not for the command and its output.",
-  "prevention": "The executor's report must name the exact verification command and paste the last line it printed.",
-  "proposal": "Add to the executor role: report each verification as the command plus its last output line.",
-  "general_rule": "Report a verification result only with the exact command that produced it and that command's last output line.",
-  "target_kind": "role",
-  "target": "role executor",
-  "generality": "project",
-  "severity": "medium",
-  "tags": ["verification", "reporting"]
-}
-EOF
-```
+Example: [references/example.md](references/example.md).
 
 Never pass `--author human`: only the human uses it, when giving an instruction directly.
 
@@ -116,6 +98,7 @@ A maintenance conversation reviews lessons recorded by another conversation.
 1. `chanchi lesson summary` for counts; `chanchi lesson export` for the pending lessons, most
    urgent first (general before particular, then severity, then occurrences).
 2. For each lesson, `chanchi lesson show <id>`, and decide:
+   - If the lesson has 2 or more occurrences, ask first: can a check (a test, a ruff rule, a CLI check, a hook or a permission) enforce it? If yes and its `target_kind` is not `tool`, `hook` or `permission`, do not approve it: record a replacement lesson with that `target_kind`, a proposal naming the check and `replaces` listing it (add `--force-new` if it is reported as a duplicate), then review the original as `duplicate --of <new id>`. Never add its rule as prose.
    - Is the cause identified, or is it only a symptom? (`symptom_only`)
    - Does an existing rule already cover it? Then adjust that rule instead. (`covered`)
    - Does the rule hold outside the case that produced it?
