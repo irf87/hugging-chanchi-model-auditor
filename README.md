@@ -297,7 +297,7 @@ uv run python scripts/fetch_hf_benchmarks.py --write
 
 ## Evals
 
-Skills are tested with with-skill vs without-skill evals (`docs/designs/chanchi-agents-mvp.md`, Layer 2). Each evaluated skill has a directory under `evals/`, and `agent-chanchi-judge` grades subjective rubric criteria from a separate model family.
+Skills are tested with with-skill vs without-skill evals (`docs/designs/chanchi-agents-mvp.md`, Layer 2). Each evaluated skill has a directory under `evals/`, and `agent-chanchi-judge` grades subjective rubric criteria from a separate model family. By default `scripts/run_evals.py` runs with `--arm auto --runs 1` (reusing cached `without` and `triggers` baselines until their hashes change, repeating changed or failing `with` cases up to 3 runs, and gating the judge behind passing code criteria on capability cases; calibration uses `--calibration-sheet --samples 6 --collect` and requires at least 6 samples with owner-label contrast and at most one disagreement).
 
 ### Runner contract
 
@@ -308,11 +308,12 @@ Skills are tested with with-skill vs without-skill evals (`docs/designs/chanchi-
 
 ### Ledger semantics
 
-`evals/ledger.tsv` records one row per arm per full measurement (`id`, `date`, `item`, `item_sha`, `hypothesis`, `change`, `arm`, `candidate`, `runs`, `median_pass`, `before`, `after`, `delta`, `verdict`, `note`):
+`evals/ledger.tsv` records one row per executed arm per full measurement (`--cases` and `--no-ledger` absent, `--runs >= 1`: `id`, `date`, `item`, `item_sha`, `hypothesis`, `change`, `arm`, `candidate`, `runs`, `median_pass`, `before`, `after`, `delta`, `verdict`, `note`):
 
-- `arm` is `with`, `without`, or `triggers`. `median_pass` is the median run score over the arm's capability runs (for `triggers`, the share of trigger prompts with the expected outcome); `note` carries `regression=<passed runs>/<runs>` on `with` rows.
+- `arm` is `with`, `without`, or `triggers`, and `runs` is the total candidate (or trigger) runs executed in that arm. `median_pass` is the median of per-case medians across the arm's capability cases (for `triggers`, the share of trigger prompts with the expected outcome).
+- `note` carries semicolon-separated `key=value` tokens: `regression=<passed>/<runs>;cases_sha=<12-hex>;cases=<case>:<val>,...` on `with` rows, `cases_sha=<12-hex>;cases=<case>:<val>,...` on `without` rows (capability cases only), and `triggers=<passed>/<total>;triggers_sha=<12-hex>` on `triggers` rows. `cases_sha` hashes the frozen capability harness (`candidate`, `judge`, candidate `AGENT.md`, capability case files, and `rubric.md`), and `triggers_sha` hashes `{harness, model, effort}`, skill frontmatter `description`, and `triggers.md`.
 - `verdict` is `baseline`, `kept`, or `reverted`; `item_sha` is the git tree hash of the skill directory.
-- The current `with` row of an item is the newest `baseline` or `kept` `with` row whose `item_sha` matches the item's current tree hash, compared against the `without` row of the same baseline; `reverted` rows are never current.
+- The current `with` row of an item is the newest `baseline` or `kept` `with` row matching `(item, item_sha, candidate, cases_sha)`, compared against the newest `baseline` `without` row matching `(item, candidate, cases_sha)`; `reverted` rows are never current.
 
 ## Databases and migrations
 

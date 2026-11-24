@@ -1,12 +1,13 @@
 """Eval runner: runs an evaluated skill's cases with and without it, grades them, and keeps the ledger.
 
-Design: docs/designs/chanchi-agents-mvp.md (Layer 2); decisions D1-D22 of
+Design: docs/designs/chanchi-agents-mvp.md (Layer 2); decisions D1-D23 of
 docs/superpowers/plans/2026-11-23-chanchi-agents-phase2.md; runner contract: README.md, section Evals.
-Standard library only; imports chanchi for the agent renderer and the agy model split.
+Standard library only; imports chanchi for the agent renderer, frontmatter parser, and the agy model split.
 
-    run_evals.py <item> [--arm with|without|both] [--cases a,b] [--runs 3] [--yes] [--dry-run] [--no-ledger]
+    run_evals.py <item> [--arm auto|with|without|both] [--cases a,b] [--runs 1]
+                        [--triggers|--no-triggers] [--timeout 300] [--yes] [--dry-run] [--no-ledger]
                         [--hypothesis TEXT] [--change REF]
-    run_evals.py <item> --calibration-sheet | --calibrate SHEET | --rejudge
+    run_evals.py <item> --calibration-sheet [--samples 6] [--collect] | --calibrate SHEET | --rejudge
     run_evals.py --signal
 
 Never run in the gate; the orchestrator runs it against real harnesses (the budget is counted there).
@@ -38,7 +39,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
-from chanchi import agents_sync, harnesses
+from chanchi import agents_sync, errors, harnesses, items
 
 LEDGER_COLUMNS = (
     "id",
@@ -237,22 +238,88 @@ def parse_trigger_prompts(text: str) -> dict[str, list[str]]:
     return out
 
 
+def _canonical_sha(payload: object) -> str:
+    """First 12 hex characters of SHA-256 over canonical JSON (D9)."""
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:12]
+
+
+def cases_sha(repo: Path, cfg: EvalConfig) -> str:
+    """Frozen capability harness hash (D9): candidate, judge, agent source, sorted capability files, and rubric."""
+    agent_path = repo / "agents" / cfg.candidate["agent"] / "AGENT.md"
+    if not agent_path.is_file():
+        raise RunnerError(f"candidate agent {cfg.candidate['agent']!r} has no source under agents/")
+    capability = sorted(cfg.capability)
+    capability_files: list[list[str]] = []
+    for case in capability:
+        case_dir = cfg.dir / "cases" / case
+        if not case_dir.is_dir():
+            continue
+        for path in sorted(case_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(cfg.dir)
+            if "__pycache__" in rel.parts or path.name.endswith(".pyc") or path.name == ".DS_Store":
+                continue
+            capability_files.append([rel.as_posix(), hashlib.sha256(path.read_bytes()).hexdigest()])
+    capability_files.sort(key=lambda pair: pair[0])
+    rubric_path = cfg.dir / "rubric.md"
+    rubric_sha256 = hashlib.sha256(rubric_path.read_bytes()).hexdigest() if rubric_path.is_file() else None
+    return _canonical_sha({
+        "candidate": cfg.candidate,
+        "judge": cfg.judge,
+        "agent_sha256": hashlib.sha256(agent_path.read_bytes()).hexdigest(),
+        "capability": capability,
+        "capability_files": capability_files,
+        "rubric_sha256": rubric_sha256,
+    })
+
+
+def triggers_sha(repo: Path, cfg: EvalConfig) -> str:
+    """Frozen trigger hash (D9): candidate spec, SKILL.md frontmatter description, and triggers.md."""
+    skill_path = repo / "skills" / cfg.item / "SKILL.md"
+    try:
+        fm = items.read_frontmatter(skill_path.read_text(encoding="utf-8")) if skill_path.is_file() else {}
+    except errors.ChanchiError as exc:
+        raise RunnerError(f"skills/{cfg.item}/SKILL.md: {exc}") from exc
+    description = str(fm.get("description") or "")
+    triggers_path = cfg.dir / "triggers.md"
+    return _canonical_sha({
+        "candidate": {
+            "harness": cfg.candidate["harness"],
+            "model": cfg.candidate["model"],
+            "effort": cfg.candidate["effort"],
+        },
+        "description": description,
+        "triggers_sha256": hashlib.sha256(triggers_path.read_bytes()).hexdigest(),
+    })
+
+
 # --------------------------------------------------------------------------------------- planning
 
 
-def plan_runs(cfg: EvalConfig, arm: str, cases: list[str] | None, runs: int, *, triggers: int) -> dict:
-    """D5: capability cases in both arms, regression cases only with the skill; a judge run per candidate run."""
+def plan_runs(cfg: EvalConfig, arm: str, cases: list[str] | None, runs: int, *, resolved_arms: list[str],
+              triggers: int, full: bool) -> dict:
+    """D5: capability cases in both arms, regression only in `with`; gated judge only on capability runs."""
     chosen = cfg.cases if cases is None else cases
     unknown = [c for c in chosen if c not in cfg.cases]
     if unknown:
         raise RunnerError(f"unknown case(s) {unknown}; the eval has {cfg.cases}")
-    with_cases = [c for c in chosen if arm in ("with", "both")]
-    without_cases = [c for c in chosen if arm in ("without", "both") and cfg.kind(c) == "capability"]
+    with_cases = [c for c in chosen if "with" in resolved_arms]
+    without_cases = [c for c in chosen if "without" in resolved_arms and cfg.kind(c) == "capability"]
+    with_cap_cases = [c for c in with_cases if cfg.kind(c) == "capability"]
     candidate = (len(with_cases) + len(without_cases)) * runs
-    judge = candidate if cfg.judge else 0
-    trigger = triggers if arm == "both" else 0
-    return {"item": cfg.item, "arm": arm, "cases": chosen, "runs": runs, "candidate": candidate, "judge": judge,
-            "trigger": trigger, "total": candidate + judge + trigger}
+    judge = ((len(with_cap_cases) + len(without_cases)) * runs) if cfg.judge else 0
+    total = candidate + judge + triggers
+    if full and "with" in resolved_arms and runs < 3:
+        extra_cand = len(with_cases) * (3 - runs)
+        extra_judge = (len(with_cap_cases) * (3 - runs)) if cfg.judge else 0
+        max_total = total + extra_cand + extra_judge
+    else:
+        max_total = total
+    return {"item": cfg.item, "arm": arm, "resolved_arms": resolved_arms, "cases": chosen, "runs": runs,
+            "candidate": candidate, "judge": judge, "trigger": triggers, "total": total, "max_total": max_total,
+            "ledger": "write" if full else "none"}
 
 
 # --------------------------------------------------------------------------------------- credentials
@@ -557,6 +624,12 @@ def run_passed(code: list[dict], judge: list[dict] | None) -> bool:
     return bool(flags) and all(flags)
 
 
+def gated_code_failed_score(code: list[dict], rubric_count: int) -> float:
+    """D7: score when a code criterion fails on a capability run; strictly less than any code-passed run."""
+    denom = len(code) + rubric_count
+    return (sum(1 for c in code if c["pass"]) / denom) if denom else 0.0
+
+
 def judge_label(result: dict) -> str | None:
     """The judge's rubric-only verdict (code criteria excluded); None when every criterion was N/A or failed."""
     judge = result.get("judge")
@@ -575,7 +648,7 @@ def judge_label(result: dict) -> str | None:
 class Context:
     repo: Path
     artifacts: Path
-    timeout: int = 1800
+    timeout: int = 300
     credential_source: Callable[[str], bytes | None] | None = None
     log: Callable[[str], None] = lambda message: print(message, file=sys.stderr)
 
@@ -810,13 +883,15 @@ def save_tree(source: Path, dest: Path) -> None:
 
 
 def execute_case_run(ctx: Context, cfg: EvalConfig, *, arm: str, case: str, n: int, measurement: str,
-                     item_sha: str) -> dict:
-    """One candidate run of a case: setup, candidate, grader, judge. Returns the saved result record."""
+                     item_sha: str, c_sha: str = "", force_judge: bool = False,
+                     artifacts_subdir: str | None = None) -> dict:
+    """One candidate run of a case: setup, candidate, grader, gated judge. Returns the saved result record."""
     harness = cfg.candidate["harness"]
     with_skill = arm == "with"
     case_dir = cfg.dir / "cases" / case
     run_id = new_run_id(arm, case, n)
-    run_dir = ctx.artifacts / cfg.item / run_id
+    item_root = ctx.artifacts / cfg.item
+    run_dir = (item_root / artifacts_subdir / run_id) if artifacts_subdir else (item_root / run_id)
     run_dir.mkdir(parents=True)
     base = Path(tempfile.mkdtemp(prefix="run-"))
     tag = uuid.uuid4().hex[:8]
@@ -868,14 +943,25 @@ def execute_case_run(ctx: Context, cfg: EvalConfig, *, arm: str, case: str, n: i
         (run_dir / "output.md").write_text(output_md, encoding="utf-8")
         (run_dir / "judge-transcript.jsonl").write_text("".join(json.dumps(e) + "\n" for e in stripped),
                                                         encoding="utf-8")
-        judge_list, judge_error = None, None
-        if cfg.judge:
+        judge_list, judge_error, judge_skipped = None, None, None
+        kind = cfg.kind(case)
+        if kind == "capability" and cfg.judge:
             criteria = parse_rubric_criteria((cfg.dir / "rubric.md").read_text(encoding="utf-8"))
-            judge_list, judge_error = run_judge(ctx, cfg, criteria, output_md, stripped, base)
+            if all(c["pass"] for c in code) or force_judge:
+                judge_list, judge_error = run_judge(ctx, cfg, criteria, output_md, stripped, base)
+                score = score_run(code, judge_list)
+                passed = run_passed(code, judge_list)
+            else:
+                judge_skipped = "code_failed"
+                score = gated_code_failed_score(code, len(criteria))
+                passed = False
+        else:
+            score = score_run(code, None)
+            passed = run_passed(code, None)
         record = {
-            "run_id": run_id, "measurement": measurement, "arm": arm, "case": case, "kind": cfg.kind(case), "n": n,
-            "item_sha": item_sha, "code": code, "judge": judge_list, "judge_error": judge_error,
-            "score": score_run(code, judge_list), "passed": run_passed(code, judge_list),
+            "run_id": run_id, "measurement": measurement, "arm": arm, "case": case, "kind": kind, "n": n,
+            "item_sha": item_sha, "cases_sha": c_sha, "code": code, "judge": judge_list, "judge_error": judge_error,
+            "judge_skipped": judge_skipped, "score": score, "passed": passed,
             "note": PRELOAD_NOTES[harness] if with_skill else "", "tool_calls": tool_call_lines(harness, stripped),
         }
         (run_dir / "result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
@@ -936,12 +1022,32 @@ def fmt(value: float) -> str:
 
 
 def arm_summary(results: list[dict], arm: str) -> dict:
-    """Median over the arm's capability runs (all of the arm's runs when it has none), and regression counts."""
+    """D9: per-case medians across capability cases (fallback to all arm cases if none), plus regression counts."""
     mine = [r for r in results if r["arm"] == arm]
-    capability = [r["score"] for r in mine if r["kind"] == "capability"] or [r["score"] for r in mine]
+    by_case: dict[str, list[dict]] = {}
+    for r in mine:
+        by_case.setdefault(r["case"], []).append(r)
+    cases: dict[str, float] = {}
+    cap_medians: list[float] = []
+    all_medians: list[float] = []
+    for case, cruns in by_case.items():
+        if cruns[0]["kind"] == "regression":
+            cases[case] = sum(1 for r in cruns if r["passed"]) / len(cruns)
+            all_medians.append(statistics.median(r["score"] for r in cruns))
+        else:
+            med = statistics.median(r["score"] for r in cruns)
+            cases[case] = med
+            cap_medians.append(med)
+            all_medians.append(med)
+    pool = cap_medians or all_medians
     regression = [r for r in mine if r["kind"] == "regression"]
-    return {"median": round(statistics.median(capability), 2) if capability else 0.0,
-            "reg_passed": sum(1 for r in regression if r["passed"]), "reg_runs": len(regression)}
+    return {
+        "median": round(statistics.median(pool), 2) if pool else 0.0,
+        "reg_passed": sum(1 for r in regression if r["passed"]),
+        "reg_runs": len(regression),
+        "runs": len(mine),
+        "cases": cases,
+    }
 
 
 def write_ledger(path: Path, rows: list[dict[str, str]]) -> None:
@@ -959,20 +1065,79 @@ def clean_cell(value: object) -> str:
     return re.sub(r"[\t\r\n]+", " ", str(value)).strip()
 
 
-def current_with_row(rows: list[dict[str, str]], item: str, sha: str) -> dict[str, str] | None:
-    """D9: the newest baseline or kept `with` row of the item whose item_sha is the current tree hash."""
+def note_tokens(note: str) -> dict[str, str]:
+    """Parse semicolon-separated `key=value` tokens from a ledger row's `note` field."""
+    out: dict[str, str] = {}
+    for part in (note or "").split(";"):
+        part = part.strip()
+        if "=" in part:
+            key, _, val = part.partition("=")
+            key = key.strip()
+            if key:
+                out[key] = val.strip()
+    return out
+
+
+def parse_case_values(token: str) -> dict[str, str]:
+    """Parse comma-separated `case:value` pairs from a `cases=` note token."""
+    out: dict[str, str] = {}
+    for entry in (token or "").split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            case, _, val = entry.partition(":")
+            case = case.strip()
+            if case:
+                out[case] = val.strip()
+    return out
+
+
+def format_with_note(cfg: EvalConfig, summary: dict, c_sha: str) -> str:
+    cases_str = ",".join(f"{c}:{fmt(summary['cases'][c])}" for c in cfg.cases if c in summary["cases"])
+    return f"regression={summary['reg_passed']}/{summary['reg_runs']};cases_sha={c_sha};cases={cases_str}"
+
+
+def format_without_note(cfg: EvalConfig, summary: dict, c_sha: str) -> str:
+    cases_str = ",".join(f"{c}:{fmt(summary['cases'][c])}" for c in cfg.capability if c in summary["cases"])
+    return f"cases_sha={c_sha};cases={cases_str}"
+
+
+def _matches_harness(row: dict[str, str], *, candidate: str | None = None,
+                     cases_sha_val: str | None = None) -> bool:
+    if candidate is not None and row.get("candidate") != candidate:
+        return False
+    if cases_sha_val is not None and note_tokens(row.get("note", "")).get("cases_sha") != cases_sha_val:
+        return False
+    return True
+
+
+def current_with_row(rows: list[dict[str, str]], item: str, sha: str, *, candidate: str | None = None,
+                     cases_sha: str | None = None) -> dict[str, str] | None:
+    """D9: newest baseline or kept `with` row matching item, item_sha, and optional (candidate, cases_sha)."""
     match = [r for r in rows if r["item"] == item and r["arm"] == "with" and r["item_sha"] == sha
-             and r["verdict"] in ("baseline", "kept")]
+             and r["verdict"] in ("baseline", "kept")
+             and _matches_harness(r, candidate=candidate, cases_sha_val=cases_sha)]
     return match[-1] if match else None
 
 
-def baseline_without_row(rows: list[dict[str, str]], item: str) -> dict[str, str] | None:
-    match = [r for r in rows if r["item"] == item and r["arm"] == "without" and r["verdict"] == "baseline"]
+def baseline_without_row(rows: list[dict[str, str]], item: str, *, candidate: str | None = None,
+                         cases_sha: str | None = None) -> dict[str, str] | None:
+    match = [r for r in rows if r["item"] == item and r["arm"] == "without" and r["verdict"] == "baseline"
+             and _matches_harness(r, candidate=candidate, cases_sha_val=cases_sha)]
     return match[-1] if match else None
 
 
-def previous_with_row(rows: list[dict[str, str]], item: str) -> dict[str, str] | None:
-    match = [r for r in rows if r["item"] == item and r["arm"] == "with" and r["verdict"] in ("baseline", "kept")]
+def previous_with_row(rows: list[dict[str, str]], item: str, *, candidate: str | None = None,
+                      cases_sha: str | None = None) -> dict[str, str] | None:
+    match = [r for r in rows if r["item"] == item and r["arm"] == "with" and r["verdict"] in ("baseline", "kept")
+             and _matches_harness(r, candidate=candidate, cases_sha_val=cases_sha)]
+    return match[-1] if match else None
+
+
+def matching_triggers_row(rows: list[dict[str, str]], item: str, *, candidate: str,
+                          triggers_sha: str) -> dict[str, str] | None:
+    match = [r for r in rows if r["item"] == item and r["arm"] == "triggers" and r.get("candidate") == candidate
+             and note_tokens(row_note := r.get("note", "")).get("triggers_sha") == triggers_sha
+             and row_note is not None]
     return match[-1] if match else None
 
 
@@ -1039,54 +1204,125 @@ def ensure_ready(ctx: Context, cfg: EvalConfig, *, need_candidate: bool, need_ju
         read_credential(harness, ctx.credential_source)
 
 
+def _should_repeat_case(cfg: EvalConfig, case: str, case_runs: list[dict],
+                        prev_with: dict[str, str] | None) -> bool:
+    """D5: adaptive repeat triggers confirming runs up to 3 on failure, prior flakiness, or value change."""
+    kind = cfg.kind(case)
+    if kind == "regression" and not all(r["passed"] for r in case_runs):
+        return True
+    if prev_with is None:
+        return False
+    prev_toks = note_tokens(prev_with.get("note", ""))
+    prev_cases = parse_case_values(prev_toks.get("cases", ""))
+    if kind == "regression":
+        prev_reg = regression_counts(prev_with.get("note", ""))
+        if prev_reg is not None and prev_reg[1] > 0 and prev_reg[0] < prev_reg[1]:
+            return True
+        if case in prev_cases and float(prev_cases[case]) < 1.0:
+            return True
+        init_val = sum(1 for r in case_runs if r["passed"]) / len(case_runs)
+    else:
+        init_val = statistics.median(r["score"] for r in case_runs)
+    return case in prev_cases and fmt(init_val) != prev_cases[case]
+
+
 def cmd_run(ctx: Context, args: argparse.Namespace) -> int:
     cfg = load_eval(ctx.repo, args.item)
     cases = args.cases.split(",") if args.cases else None
-    if args.hypothesis and args.arm != "with":
-        raise RunnerError("--hypothesis measures a skill change and needs --arm with (D17)")
-    trigger_prompts = parse_trigger_prompts((cfg.dir / "triggers.md").read_text(encoding="utf-8"))
-    n_triggers = len(trigger_prompts["load"]) + len(trigger_prompts["skip"])
-    plan = plan_runs(cfg, args.arm, cases, args.runs, triggers=n_triggers if not args.hypothesis else 0)
-    full = cases is None and args.runs >= 3 and not args.no_ledger
-    plan["ledger"] = "write" if full else "none"
-    print(json.dumps(plan))
-    if args.dry_run:
-        return 0
-    if plan["total"] > MAX_RUNS_WITHOUT_YES and not args.yes:
-        raise RunnerError(f"refusing {plan['total']} runs (more than {MAX_RUNS_WITHOUT_YES}) without --yes")
-    ledger_path = ctx.repo / "evals" / "ledger.tsv"
-    previous = None
-    if full:
+    if args.hypothesis and args.arm not in ("auto", "with"):
+        raise RunnerError("--hypothesis measures a skill change and needs --arm auto or --arm with (D17)")
+    full = (cases is None) and (not args.no_ledger) and (args.runs >= 1)
+    if args.hypothesis and not full:
+        raise RunnerError("a hill-climb measurement is a full measurement: drop --cases and --no-ledger")
+
+    if full and not args.dry_run:
         dirty = item_dir_status(ctx.repo, cfg.item)
         if dirty:
             raise RunnerError(f"skills/{cfg.item} has unstaged or untracked changes ({dirty[0].strip()}); stage them "
                               f"first: git add skills/{cfg.item} (the ledger row names the staged tree, D10)")
+
+    ledger_path = ctx.repo / "evals" / "ledger.tsv"
+    ledger_rows = read_ledger(ledger_path) if ledger_path.is_file() else []
+    c_sha = cases_sha(ctx.repo, cfg)
+    candidate = cfg.candidate_spec
+    chosen = cfg.cases if cases is None else cases
+
+    if args.arm == "both":
+        resolved_arms = ["with", "without"]
+    elif args.arm in ("with", "without"):
+        resolved_arms = [args.arm]
+    else:
+        has_cap = any(cfg.kind(c) == "capability" for c in chosen)
+        cached_without = baseline_without_row(ledger_rows, cfg.item, candidate=candidate, cases_sha=c_sha)
+        resolved_arms = ["with"] if (args.hypothesis or cached_without is not None or not has_cap) else ["with", "without"]
+
+    trigger_prompts = parse_trigger_prompts((cfg.dir / "triggers.md").read_text(encoding="utf-8"))
+    n_triggers = len(trigger_prompts["load"]) + len(trigger_prompts["skip"])
+    t_sha = ""
+    if args.triggers:
+        run_triggers = n_triggers > 0
+    elif args.no_triggers:
+        run_triggers = False
+    elif args.arm in ("with", "without"):
+        run_triggers = False
+    elif args.arm == "both":
+        run_triggers = n_triggers > 0
+    else:
+        t_sha = triggers_sha(ctx.repo, cfg)
+        run_triggers = (matching_triggers_row(ledger_rows, cfg.item, candidate=candidate, triggers_sha=t_sha) is None
+                        and n_triggers > 0)
+    if run_triggers and not t_sha:
+        t_sha = triggers_sha(ctx.repo, cfg)
+
+    plan = plan_runs(cfg, args.arm, cases, args.runs, resolved_arms=resolved_arms,
+                     triggers=n_triggers if run_triggers else 0, full=full)
+    print(json.dumps(plan))
+    if args.dry_run:
+        return 0
+    if plan["max_total"] > MAX_RUNS_WITHOUT_YES and not args.yes:
+        raise RunnerError(f"refusing {plan['max_total']} max runs (more than {MAX_RUNS_WITHOUT_YES}) without --yes")
+
+    previous = None
+    if full:
+        previous = previous_with_row(ledger_rows, cfg.item, candidate=candidate, cases_sha=c_sha)
         if args.hypothesis:
-            previous = previous_with_row(read_ledger(ledger_path), cfg.item)
             if previous is None:
-                raise RunnerError(f"no baseline `with` row for {cfg.item}: run the baseline measurement first "
-                                  f"(uv run python scripts/run_evals.py {cfg.item})")
-    elif args.hypothesis:
-        raise RunnerError("a hill-climb measurement is a full measurement: drop --cases, --no-ledger and use "
-                          "--runs 3 or more")
-    ensure_ready(ctx, cfg, need_candidate=True, need_judge=True)
+                raise RunnerError(f"no baseline `with` row for {cfg.item} matching ({candidate}, cases_sha={c_sha}): "
+                                  f"run the baseline measurement first (uv run python scripts/run_evals.py {cfg.item})")
+            if baseline_without_row(ledger_rows, cfg.item, candidate=candidate, cases_sha=c_sha) is None:
+                raise RunnerError(f"no baseline `without` row for {cfg.item} matching ({candidate}, cases_sha={c_sha}): "
+                                  f"run the baseline measurement first (uv run python scripts/run_evals.py {cfg.item})")
+
+    need_judge = bool(cfg.judge and any(cfg.kind(c) == "capability" for c in plan["cases"]))
+    ensure_ready(ctx, cfg, need_candidate=True, need_judge=need_judge)
 
     item_sha = tree_hash(ctx.repo / "skills" / cfg.item) if full else ""
     measurement = f"{utc_now():%Y%m%dT%H%M%S%f}-{uuid.uuid4().hex[:6]}"
     results: list[dict] = []
     done = 0
-    arms = ["with", "without"] if args.arm == "both" else [args.arm]
-    for arm in arms:
+    for arm in resolved_arms:
         for case in plan["cases"]:
             if arm == "without" and cfg.kind(case) != "capability":
                 continue
+            case_runs: list[dict] = []
             for n in range(1, args.runs + 1):
                 done += 1
                 ctx.log(f"[{done}/{plan['candidate']}] {arm} {case} #{n}")
-                results.append(execute_case_run(ctx, cfg, arm=arm, case=case, n=n, measurement=measurement,
-                                                item_sha=item_sha))
+                rec = execute_case_run(ctx, cfg, arm=arm, case=case, n=n, measurement=measurement,
+                                       item_sha=item_sha, c_sha=c_sha)
+                case_runs.append(rec)
+                results.append(rec)
+            if full and arm == "with" and args.runs < 3 and _should_repeat_case(cfg, case, case_runs, previous):
+                for n in range(args.runs + 1, 4):
+                    done += 1
+                    ctx.log(f"[{done} adaptive] {arm} {case} #{n}")
+                    rec = execute_case_run(ctx, cfg, arm=arm, case=case, n=n, measurement=measurement,
+                                           item_sha=item_sha, c_sha=c_sha)
+                    case_runs.append(rec)
+                    results.append(rec)
+
     trigger_results: list[dict] = []
-    if args.arm == "both" and n_triggers:
+    if run_triggers:
         index = 0
         for expect, key in ((True, "load"), (False, "skip")):
             for prompt in trigger_prompts[key]:
@@ -1095,8 +1331,9 @@ def cmd_run(ctx: Context, args: argparse.Namespace) -> int:
                 trigger_results.append(execute_trigger_run(ctx, cfg, prompt=prompt, expect_load=expect, index=index,
                                                            measurement=measurement))
 
-    summary: dict = {"item": cfg.item, "measurement": measurement, "arms": {}, "ledger": False, "ledger_ids": []}
-    for arm in arms:
+    summary: dict = {"item": cfg.item, "measurement": measurement, "cases_sha": c_sha, "arms": {},
+                     "ledger": False, "ledger_ids": []}
+    for arm in resolved_arms:
         s = arm_summary(results, arm)
         summary["arms"][arm] = {"median_pass": s["median"], "regression": f"{s['reg_passed']}/{s['reg_runs']}"}
     if trigger_results:
@@ -1104,35 +1341,45 @@ def cmd_run(ctx: Context, args: argparse.Namespace) -> int:
         summary["arms"]["triggers"] = {"median_pass": round(passed / len(trigger_results), 2),
                                        "passed": f"{passed}/{len(trigger_results)}"}
     rows_by_arm: dict[str, str] = {}
-    record: dict = {"measurement": measurement, "item": cfg.item, "item_sha": item_sha, "kind": "adhoc",
-                    "runs": [r["run_id"] for r in results], "trigger_runs": [r["run_id"] for r in trigger_results],
-                    "rows": {}, "ledger_ids": []}
+    record: dict = {"measurement": measurement, "item": cfg.item, "item_sha": item_sha, "cases_sha": c_sha,
+                    "kind": "adhoc", "runs": [r["run_id"] for r in results],
+                    "trigger_runs": [r["run_id"] for r in trigger_results], "rows": {}, "ledger_ids": []}
     if full:
         rows = read_ledger(ledger_path)
         counter = sum(1 for r in rows if r["item"] == cfg.item)
-        candidate = cfg.candidate_spec
         new_rows: list[dict[str, str]] = []
         if args.hypothesis:
+            assert previous is not None
             s = arm_summary(results, "with")
             before = float(previous["median_pass"])
             prev_counts = regression_counts(previous["note"]) or (0, 0)
-            reg_ok = s["reg_passed"] >= prev_counts[0]
-            improved = s["median"] > before or s["reg_passed"] > prev_counts[0]
+            prev_reg_rate = (prev_counts[0] / prev_counts[1]) if prev_counts[1] > 0 else 0.0
+            reg_rate = (s["reg_passed"] / s["reg_runs"]) if s["reg_runs"] > 0 else 0.0
+            reg_ok = s["reg_runs"] > 0 and reg_rate >= prev_reg_rate
+            improved = s["median"] > before or reg_rate > prev_reg_rate
             verdict = "kept" if reg_ok and improved else "reverted"
             counter += 1
-            new_rows.append(make_row(cfg.item, counter, item_sha, "with", candidate, args.runs, s["median"],
+            new_rows.append(make_row(cfg.item, counter, item_sha, "with", candidate, s["runs"], s["median"],
                                      verdict=verdict, hypothesis=args.hypothesis, change=args.change or "",
                                      before=fmt(before), delta=fmt(s["median"] - before),
-                                     note=f"regression={s['reg_passed']}/{s['reg_runs']}"))
+                                     note=format_with_note(cfg, s, c_sha)))
             rows_by_arm["with"] = new_rows[-1]["id"]
+            if trigger_results:
+                passed = sum(1 for r in trigger_results if r["passed"])
+                counter += 1
+                new_rows.append(make_row(cfg.item, counter, item_sha, "triggers", candidate, len(trigger_results),
+                                         passed / len(trigger_results), verdict="baseline",
+                                         hypothesis=args.hypothesis, change=args.change or "", before="", delta="",
+                                         note=f"triggers={passed}/{len(trigger_results)};triggers_sha={t_sha}"))
+                rows_by_arm["triggers"] = new_rows[-1]["id"]
             record["kind"] = "hill-climb"
             summary["verdict"] = verdict
         else:
-            for arm in arms:
+            for arm in resolved_arms:
                 s = arm_summary(results, arm)
                 counter += 1
-                note = f"regression={s['reg_passed']}/{s['reg_runs']}" if arm == "with" else ""
-                new_rows.append(make_row(cfg.item, counter, item_sha, arm, candidate, args.runs, s["median"],
+                note = format_with_note(cfg, s, c_sha) if arm == "with" else format_without_note(cfg, s, c_sha)
+                new_rows.append(make_row(cfg.item, counter, item_sha, arm, candidate, s["runs"], s["median"],
                                          verdict="baseline", note=note))
                 rows_by_arm[arm] = new_rows[-1]["id"]
             if trigger_results:
@@ -1140,7 +1387,7 @@ def cmd_run(ctx: Context, args: argparse.Namespace) -> int:
                 counter += 1
                 new_rows.append(make_row(cfg.item, counter, item_sha, "triggers", candidate, len(trigger_results),
                                          passed / len(trigger_results), verdict="baseline",
-                                         note=f"triggers={passed}/{len(trigger_results)}"))
+                                         note=f"triggers={passed}/{len(trigger_results)};triggers_sha={t_sha}"))
                 rows_by_arm["triggers"] = new_rows[-1]["id"]
             record["kind"] = "baseline"
         append_rows(ledger_path, new_rows)
@@ -1159,43 +1406,128 @@ def cmd_run(ctx: Context, args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------------------- calibration
 
 
+def _calibration_reason(total: int, agree: int, has_contrast: bool) -> str | None:
+    if not has_contrast:
+        return "uncalibrated: no contrast"
+    if total < 6:
+        return "uncalibrated: too few samples"
+    if agree < total - 1:
+        return "uncalibrated: low agreement"
+    return None
+
+
 def cmd_calibration_sheet(ctx: Context, args: argparse.Namespace) -> int:
     cfg = load_eval(ctx.repo, args.item)
     if not cfg.judge:
         raise RunnerError(f"{cfg.item} has no rubric.md, so there is nothing to calibrate")
-    measurement = latest_baseline(ctx.artifacts, cfg.item)
-    results = load_results(ctx.artifacts, cfg.item, measurement["runs"])
-    eligible = [r for r in results if judge_label(r) is not None]
-    passes = sorted((r for r in eligible if judge_label(r) == "PASS"), key=lambda r: r["run_id"])
-    fails = sorted((r for r in eligible if judge_label(r) == "FAIL"), key=lambda r: r["run_id"])
-    chosen: list[dict] = []
-    while len(chosen) < 10 and (passes or fails):
+    if args.samples < 6:
+        raise RunnerError("--samples must be at least 6")
+    if not cfg.capability:
+        raise RunnerError(f"{cfg.item} has no capability cases to calibrate")
+    c_sha = cases_sha(ctx.repo, cfg)
+
+    pool_entries: list[tuple[str, dict]] = []
+    has_baseline = False
+    for path in reversed(measurement_files(ctx.artifacts, cfg.item)):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("kind") == "baseline" and data.get("rows"):
+            has_baseline = True
+            for rid in data["runs"]:
+                r_path = ctx.artifacts / cfg.item / rid / "result.json"
+                if r_path.is_file():
+                    pool_entries.append((rid, json.loads(r_path.read_text(encoding="utf-8"))))
+            break
+    cal_dir = ctx.artifacts / cfg.item / "calibration-runs"
+    if cal_dir.is_dir():
+        for r_path in sorted(cal_dir.glob("*/result.json")):
+            rel = f"calibration-runs/{r_path.parent.name}"
+            pool_entries.append((rel, json.loads(r_path.read_text(encoding="utf-8"))))
+    if not has_baseline and not pool_entries and not args.collect:
+        latest_baseline(ctx.artifacts, cfg.item)
+
+    def is_eligible(result: dict) -> bool:
+        return (result.get("kind") == "capability" and judge_label(result) is not None
+                and result.get("cases_sha") == c_sha)
+
+    eligible: list[tuple[str, dict]] = [(rel, r) for rel, r in pool_entries if is_eligible(r)]
+    missing = max(0, args.samples - len(eligible))
+
+    if args.collect:
+        max_total = 2 * (missing + (2 if missing else 0))
+        plan = {"item": cfg.item, "candidate": missing, "judge": missing, "trigger": 0, "total": 2 * missing,
+                "max_total": max_total, "existing": len(eligible), "samples": args.samples}
+        print(json.dumps(plan))
+        if args.dry_run:
+            return 0
+        if plan["max_total"] > MAX_RUNS_WITHOUT_YES and not args.yes:
+            raise RunnerError(f"refusing {plan['max_total']} max runs (more than {MAX_RUNS_WITHOUT_YES}) without --yes")
+        if missing > 0:
+            ensure_ready(ctx, cfg, need_candidate=True, need_judge=True)
+            item_sha = tree_hash(ctx.repo / "skills" / cfg.item)
+            step = 0
+            for i in range(missing):
+                arm = "without" if step % 2 == 0 else "with"
+                case = cfg.capability[(step // 2) % len(cfg.capability)]
+                step += 1
+                ctx.log(f"[collect {i + 1}/{missing}] {arm} {case}")
+                rec = execute_case_run(ctx, cfg, arm=arm, case=case, n=step, measurement="calibration",
+                                       item_sha=item_sha, c_sha=c_sha, force_judge=True,
+                                       artifacts_subdir="calibration-runs")
+                if is_eligible(rec):
+                    eligible.append((f"calibration-runs/{rec['run_id']}", rec))
+            fallback = 0
+            while len(eligible) < args.samples and fallback < 2:
+                arm = "without" if step % 2 == 0 else "with"
+                case = cfg.capability[(step // 2) % len(cfg.capability)]
+                step += 1
+                fallback += 1
+                ctx.log(f"[collect fallback {fallback}/2] {arm} {case}")
+                rec = execute_case_run(ctx, cfg, arm=arm, case=case, n=step, measurement="calibration",
+                                       item_sha=item_sha, c_sha=c_sha, force_judge=True,
+                                       artifacts_subdir="calibration-runs")
+                if is_eligible(rec):
+                    eligible.append((f"calibration-runs/{rec['run_id']}", rec))
+            if len(eligible) < args.samples:
+                raise RunnerError(f"only {len(eligible)} non-N/A calibration sample(s) collected (need {args.samples})")
+    else:
+        if args.dry_run:
+            print(json.dumps({"item": cfg.item, "existing": len(eligible), "missing": missing, "samples": args.samples}))
+            return 0
+        if missing > 0:
+            raise RunnerError(f"only {len(eligible)} eligible calibration sample(s) for {cfg.item} "
+                              f"(need {args.samples}); pass --collect to run {missing} more")
+
+    passes = sorted((entry for entry in eligible if judge_label(entry[1]) == "PASS"), key=lambda e: e[1]["run_id"])
+    fails = sorted((entry for entry in eligible if judge_label(entry[1]) == "FAIL"), key=lambda e: e[1]["run_id"])
+    chosen: list[tuple[str, dict]] = []
+    while len(chosen) < args.samples and (passes or fails):
         for pool in (passes, fails):
-            if pool and len(chosen) < 10:
+            if pool and len(chosen) < args.samples:
                 chosen.append(pool.pop(0))
-    chosen.sort(key=lambda r: hashlib.sha1(r["run_id"].encode()).hexdigest())
+    chosen.sort(key=lambda entry: hashlib.sha1(entry[1]["run_id"].encode()).hexdigest())
     criteria = parse_rubric_criteria((cfg.dir / "rubric.md").read_text(encoding="utf-8"))
 
     def quote(text: str) -> str:
         return "\n".join(f"> {line}" if line else ">" for line in text.splitlines()) or ">"
 
-    parts = [f"# Calibration sheet: {cfg.item}\n",
+    parts = [f"# Calibration sheet: {REDACTED}\n",
              "Label each sample PASS (every applicable criterion holds) or FAIL, using the numbered criteria only. "
              "Fill `label:` and `critique:` at the end of each sample.\n"]
     mapping = {}
-    for number, result in enumerate(chosen, start=1):
-        run_dir = ctx.artifacts / cfg.item / result["run_id"]
-        mapping[str(number)] = result["run_id"]
+    for number, (rel_path, result) in enumerate(chosen, start=1):
+        run_dir = ctx.artifacts / cfg.item / rel_path
+        mapping[str(number)] = rel_path
         final = (run_dir / "final_message.txt").read_text(encoding="utf-8")
         state = (run_dir / "end_state.md").read_text(encoding="utf-8")
         parts.append(f"\n## Sample {number}\n\nCriteria:\n\n" + "\n".join(criteria) + "\n\nFinal message:\n\n"
                      + quote(final) + "\n\nEnd state:\n\n" + quote(state) + "\n\nTool calls:\n\n"
                      + quote("\n".join(result.get("tool_calls", [])[:40])) + "\n\nlabel:\ncritique:\n")
     sheet = ctx.artifacts / cfg.item / "calibration-sheet.md"
-    sheet.write_text("".join(parts), encoding="utf-8")
+    sheet.write_text("".join(parts).replace(cfg.item, REDACTED), encoding="utf-8")
     (ctx.artifacts / cfg.item / "calibration-map.json").write_text(json.dumps(mapping, indent=2), encoding="utf-8")
-    print(json.dumps({"sheet": str(sheet), "samples": len(chosen), "judge_pass": sum(
-        1 for r in chosen if judge_label(r) == "PASS"), "judge_fail": sum(1 for r in chosen if judge_label(r) == "FAIL")}))
+    print(json.dumps({"sheet": str(sheet), "samples": len(chosen),
+                      "judge_pass": sum(1 for _, r in chosen if judge_label(r) == "PASS"),
+                      "judge_fail": sum(1 for _, r in chosen if judge_label(r) == "FAIL")}))
     return 0
 
 
@@ -1227,17 +1559,23 @@ def cmd_calibrate(ctx: Context, args: argparse.Namespace) -> int:
         raise RunnerError(f"samples without a PASS or FAIL label: {', '.join(missing)}")
     rows = ["sample\towner_label\tjudge_label\tagree\towner_critique"]
     agree = 0
+    owner_labels: set[str] = set()
     for number in sorted(mapping, key=int):
         result = json.loads((ctx.artifacts / cfg.item / mapping[number] / "result.json").read_text(encoding="utf-8"))
         owner, critique = labels[int(number)]
+        assert owner is not None
+        owner_labels.add(owner)
         judged = judge_label(result) or "FAIL"
         ok = owner == judged
         agree += ok
         rows.append("\t".join([number, owner, judged, "true" if ok else "false", clean_cell(critique)]))
     (cfg.dir / "calibration.tsv").write_text("\n".join(rows) + "\n", encoding="utf-8")
     total = len(mapping)
-    print(json.dumps({"agree": agree, "total": total, "calibrated": total >= 10 and agree >= 9,
-                      "file": str(cfg.dir / "calibration.tsv")}))
+    has_contrast = ("PASS" in owner_labels and "FAIL" in owner_labels)
+    calibrated = (total >= 6) and (agree >= total - 1) and has_contrast
+    reason = None if calibrated else _calibration_reason(total, agree, has_contrast)
+    print(json.dumps({"agree": agree, "total": total, "has_contrast": has_contrast, "calibrated": calibrated,
+                      "reason": reason, "file": str(cfg.dir / "calibration.tsv")}))
     return 0
 
 
@@ -1246,10 +1584,23 @@ def cmd_rejudge(ctx: Context, args: argparse.Namespace) -> int:
     if not cfg.judge:
         raise RunnerError(f"{cfg.item} has no rubric.md, so there is nothing to re-judge")
     measurement = latest_baseline(ctx.artifacts, cfg.item)
+    measurement_path = Path(measurement.pop("_path"))
     committed = committed_ledger_ids(ctx.repo)
     already = [i for i in measurement["ledger_ids"] if i in committed]
-    plan = {"item": cfg.item, "candidate": 0, "judge": len(measurement["runs"]), "trigger": 0,
-            "total": len(measurement["runs"]), "measurement": measurement["measurement"]}
+    new_c_sha = cases_sha(ctx.repo, cfg)
+    criteria = parse_rubric_criteria((cfg.dir / "rubric.md").read_text(encoding="utf-8"))
+    map_path = ctx.artifacts / cfg.item / "calibration-map.json"
+    cal_refs = list(json.loads(map_path.read_text(encoding="utf-8")).values()) if map_path.is_file() else []
+
+    baseline_cap_passed: list[str] = []
+    for rid in measurement["runs"]:
+        res = json.loads((ctx.artifacts / cfg.item / rid / "result.json").read_text(encoding="utf-8"))
+        if res.get("kind") == "capability" and all(c["pass"] for c in res["code"]):
+            baseline_cap_passed.append(rid)
+    to_rejudge = list(dict.fromkeys([*cal_refs, *baseline_cap_passed]))
+
+    plan = {"item": cfg.item, "candidate": 0, "judge": len(to_rejudge), "trigger": 0,
+            "total": len(to_rejudge), "measurement": measurement["measurement"]}
     print(json.dumps(plan))
     if args.dry_run:
         return 0
@@ -1258,12 +1609,12 @@ def cmd_rejudge(ctx: Context, args: argparse.Namespace) -> int:
     if plan["total"] > MAX_RUNS_WITHOUT_YES and not args.yes:
         raise RunnerError(f"refusing {plan['total']} runs (more than {MAX_RUNS_WITHOUT_YES}) without --yes")
     ensure_ready(ctx, cfg, need_candidate=False, need_judge=True)
-    criteria = parse_rubric_criteria((cfg.dir / "rubric.md").read_text(encoding="utf-8"))
-    results = []
-    for number, rid in enumerate(measurement["runs"], start=1):
-        run_dir = ctx.artifacts / cfg.item / rid
+
+    rejudged_set = set(to_rejudge)
+    for number, ref in enumerate(to_rejudge, start=1):
+        run_dir = ctx.artifacts / cfg.item / ref
         result = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
-        ctx.log(f"[{number}/{len(measurement['runs'])}] re-judge {rid}")
+        ctx.log(f"[{number}/{len(to_rejudge)}] re-judge {ref}")
         transcript = [json.loads(x) for x in (run_dir / "judge-transcript.jsonl").read_text(
             encoding="utf-8").splitlines() if x]
         base = Path(tempfile.mkdtemp(prefix="run-"))
@@ -1272,24 +1623,52 @@ def cmd_rejudge(ctx: Context, args: argparse.Namespace) -> int:
                                       transcript, base)
         finally:
             shutil.rmtree(base, ignore_errors=True)
-        result.update({"judge": judged, "judge_error": error, "score": score_run(result["code"], judged),
-                       "passed": run_passed(result["code"], judged)})
+        result.update({
+            "judge": judged,
+            "judge_error": error,
+            "judge_skipped": None,
+            "score": score_run(result["code"], judged),
+            "passed": run_passed(result["code"], judged),
+            "cases_sha": new_c_sha,
+        })
         (run_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-        results.append(result)
+
+    baseline_results: list[dict] = []
+    for rid in measurement["runs"]:
+        run_dir = ctx.artifacts / cfg.item / rid
+        result = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+        if rid not in rejudged_set:
+            if result.get("kind") == "capability":
+                result.update({
+                    "judge": None,
+                    "judge_error": None,
+                    "judge_skipped": "code_failed",
+                    "score": gated_code_failed_score(result["code"], len(criteria)),
+                    "passed": False,
+                    "cases_sha": new_c_sha,
+                })
+            else:
+                result["cases_sha"] = new_c_sha
+            (run_dir / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        baseline_results.append(result)
+
     ledger_path = ctx.repo / "evals" / "ledger.tsv"
     rows = read_ledger(ledger_path)
     for arm, row_id in measurement["rows"].items():
         if arm == "triggers":
             continue
-        s = arm_summary(results, arm)
+        s = arm_summary(baseline_results, arm)
         for row in rows:
             if row["id"] == row_id:
                 row["median_pass"] = fmt(s["median"])
                 row["after"] = fmt(s["median"])
-                if arm == "with":
-                    row["note"] = f"regression={s['reg_passed']}/{s['reg_runs']}"
+                row["runs"] = str(s["runs"])
+                row["note"] = format_with_note(cfg, s, new_c_sha) if arm == "with" else format_without_note(
+                    cfg, s, new_c_sha)
     write_ledger(ledger_path, rows)
-    print(json.dumps({"rejudged": len(results), "ledger_ids": measurement["ledger_ids"]}))
+    measurement["cases_sha"] = new_c_sha
+    measurement_path.write_text(json.dumps(measurement, indent=2), encoding="utf-8")
+    print(json.dumps({"rejudged": len(to_rejudge), "ledger_ids": measurement["ledger_ids"], "cases_sha": new_c_sha}))
     return 0
 
 
@@ -1306,37 +1685,45 @@ def lesson_export(repo: Path) -> list[dict]:
 
 def cmd_signal(ctx: Context, args: argparse.Namespace) -> int:
     rows = read_ledger(ctx.repo / "evals" / "ledger.tsv")
-    items: dict[str, dict] = {}
+    items_out: dict[str, dict] = {}
     for cfg in all_evals(ctx.repo):
         sha = tree_hash(ctx.repo / "skills" / cfg.item)
-        current = current_with_row(rows, cfg.item, sha)
-        without = baseline_without_row(rows, cfg.item)
+        c_sha = cases_sha(ctx.repo, cfg)
+        cand = cfg.candidate_spec
+        current = current_with_row(rows, cfg.item, sha, candidate=cand, cases_sha=c_sha)
+        without = baseline_without_row(rows, cfg.item, candidate=cand, cases_sha=c_sha)
         entry: dict = {"in_signal": cfg.judge is not None,
                        "judge": "none" if not cfg.judge else
                        f"{cfg.judge['harness']}:{cfg.judge['model']}:{cfg.judge['effort']}"}
         if cfg.judge:
             cal_path = cfg.dir / "calibration.tsv"
-            cal_rows = cal_path.read_text(encoding="utf-8").splitlines()[1:] if cal_path.is_file() else []
+            cal_rows = ([ln for ln in cal_path.read_text(encoding="utf-8").splitlines()[1:] if ln.strip()]
+                        if cal_path.is_file() else [])
             agree = sum(1 for line in cal_rows if line.split("\t")[3:4] == ["true"])
-            entry["calibrated"] = {"agree": agree, "total": len(cal_rows),
-                                   "met": len(cal_rows) >= 10 and agree >= 9}
+            owner_labels = {line.split("\t")[1] for line in cal_rows if len(line.split("\t")) >= 2}
+            has_contrast = ("PASS" in owner_labels and "FAIL" in owner_labels)
+            total = len(cal_rows)
+            cal_met = total >= 6 and agree >= total - 1 and has_contrast
+            reason = None if cal_met else _calibration_reason(total, agree, has_contrast)
+            entry["calibrated"] = {"agree": agree, "total": total, "has_contrast": has_contrast,
+                                   "met": cal_met, "reason": reason}
         else:
             entry["calibrated"] = None
         counts = regression_counts(current["note"]) if current else None
         entry["regression"] = {"passed": counts[0] if counts else None, "runs": counts[1] if counts else None,
-                               "met": bool(counts and counts[1] > 0 and counts[0] == counts[1])}
+                               "met": bool(counts and counts[1] >= 1 and counts[0] == counts[1])}
         w = float(current["median_pass"]) if current else None
         wo = float(without["median_pass"]) if without else None
         entry["capability"] = {"with": w, "without": wo, "met": w is not None and wo is not None and w > wo}
-        items[cfg.item] = entry
+        items_out[cfg.item] = entry
     flagged = [{k: lesson.get(k) for k in ("id", "occurrences", "target_kind", "target", "origin")}
                for lesson in lesson_export(ctx.repo)
                if int(lesson.get("occurrences", 1)) >= 2 and lesson.get("target_kind") not in LESSON_CHECK_KINDS]
     lessons = {"met": not flagged, "flagged": flagged}
-    scoped = [e for e in items.values() if e["in_signal"]]
+    scoped = [e for e in items_out.values() if e["in_signal"]]
     met = lessons["met"] and all(e["calibrated"]["met"] and e["regression"]["met"] and e["capability"]["met"]
                                  for e in scoped)
-    print(json.dumps({"items": items, "lessons": lessons, "met": met}))
+    print(json.dumps({"items": items_out, "lessons": lessons, "met": met}))
     return 0
 
 
@@ -1346,20 +1733,25 @@ def cmd_signal(ctx: Context, args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="run_evals.py", description=__doc__.split("\n\n")[0])
     parser.add_argument("item", nargs="?", help="the evaluated skill, e.g. skill-chanchi-lessons")
-    parser.add_argument("--arm", choices=("with", "without", "both"), default="both")
+    parser.add_argument("--arm", choices=("auto", "with", "without", "both"), default="auto")
     parser.add_argument("--cases", help="comma list of cases (a partial measurement writes no ledger row)")
-    parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--runs", type=int, default=1)
+    trig_group = parser.add_mutually_exclusive_group()
+    trig_group.add_argument("--triggers", action="store_true", help="force trigger runs")
+    trig_group.add_argument("--no-triggers", action="store_true", help="skip trigger runs")
     parser.add_argument("--yes", action="store_true", help=f"allow more than {MAX_RUNS_WITHOUT_YES} runs")
     parser.add_argument("--dry-run", action="store_true", help="print the plan and exit")
     parser.add_argument("--no-ledger", action="store_true", help="never write a ledger row")
-    parser.add_argument("--hypothesis", help="hill-climb: the one change being measured (needs --arm with)")
+    parser.add_argument("--hypothesis", help="hill-climb: the one change being measured (needs --arm auto|with)")
     parser.add_argument("--change", help="hill-climb: the ref of the change (a branch or commit)")
     parser.add_argument("--calibration-sheet", action="store_true", help="write the owner's labeling sheet")
+    parser.add_argument("--samples", type=int, default=6, help="number of calibration samples (default 6)")
+    parser.add_argument("--collect", action="store_true", help="run missing capability runs for calibration")
     parser.add_argument("--calibrate", metavar="SHEET", help="compare the owner's labels with the judge")
     parser.add_argument("--rejudge", action="store_true", help="re-judge the latest baseline's saved outputs")
     parser.add_argument("--signal", action="store_true", help="print the phase-2 signal as JSON")
     parser.add_argument("--repo", default=str(REPO_ROOT), help="repository root (default: this repository)")
-    parser.add_argument("--timeout", type=int, default=1800, help="seconds per harness run")
+    parser.add_argument("--timeout", type=int, default=300, help="seconds per harness run")
     return parser
 
 
@@ -1377,7 +1769,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise RunnerError("an item is required (for example skill-chanchi-lessons)")
         if args.runs < 1:
             raise RunnerError("--runs must be at least 1")
-        ctx = Context(repo=Path(args.repo).resolve(), artifacts=artifacts_root())
+        if args.timeout < 1:
+            raise RunnerError("--timeout must be at least 1")
+        ctx = Context(repo=Path(args.repo).resolve(), artifacts=artifacts_root(), timeout=args.timeout)
         if args.signal:
             return cmd_signal(ctx, args)
         if args.calibration_sheet:
