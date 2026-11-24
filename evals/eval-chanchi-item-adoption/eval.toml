@@ -6,6 +6,6 @@ blind_allow = []
 
 [candidate]
 agent = "agent-chanchi-executor"
-harness = "claude"
-model = "sonnet"
-effort = "medium"
+harness = "agy"
+model = "claude-sonnet-5-5-low"
+effort = "low"
