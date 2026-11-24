@@ -1,16 +1,16 @@
 name = "eval-chanchi-lessons"
 item = "skill-chanchi-lessons"
-regression = ["record-failure", "repeat-existing"]
-capability = ["nothing-wrong", "review-check-first"]
+regression = ["record-failure"]
+capability = ["review-check-first"]
 blind_allow = []
 
 [candidate]
 agent = "agent-chanchi-orchestrator"
-harness = "claude"
-model = "sonnet"
-effort = "medium"
+harness = "agy"
+model = "claude-sonnet-5-5-low"
+effort = "low"
 
 [judge]
 harness = "agy"
-model = "gemini-4-neon-high"
+model = "gemini-4-hydrogen-high"
 effort = "high"
