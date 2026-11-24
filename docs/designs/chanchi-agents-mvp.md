@@ -9,10 +9,13 @@
   in [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). MVP phase 2 (layer 2, skills
   tested by evals) in progress.
 - **Date:** 2026-11-21
-- **Revision:** 4 (2026-11-24, draft — owner decision Option B: Layer 2 evals are code-graded by
-  default (`grade.py` + `triggers.md`); LLM judging (`rubric.md` + `[judge]` + `agent-chanchi-judge`)
-  and judge calibration stay shipped as an optional opt-in when deterministic graders cannot verify
-  a qualitative criterion, removing mandatory human labeling from phase 2. Revision 3 was accepted in
+- **Revision:** 4 (2026-11-24, accepted in chanchi audit 17 round 2 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; see
+  [chanchi-agents-mvp-code-only-phase2](reviews/chanchi-agents-mvp-code-only-phase2/): owner
+  decision Option B — Layer 2 evals are code-graded by default (`grade.py` + `triggers.md`); LLM
+  judging (`rubric.md` + `[judge]` + `agent-chanchi-judge`) and judge calibration stay shipped as
+  an optional opt-in when deterministic graders cannot verify a qualitative criterion, removing
+  mandatory human labeling from phase 2. Revision 3 was accepted in
   chanchi audit 16 round 2 — 3/3 approvals across `anthropic`, `google`, `tencent`; see
   [chanchi-agents-mvp-eval-cost-cut](reviews/chanchi-agents-mvp-eval-cost-cut/): amended Layer 2 eval
   protocol, calibration threshold, cost controls, and phase-2 exit signal. Revision 2 followed two
