@@ -9,12 +9,17 @@
   in [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). MVP phase 2 (layer 2, skills
   tested by evals) in progress.
 - **Date:** 2026-11-21
-- **Revision:** 3 (2026-11-23, accepted in chanchi audit 16 round 2 — 3/3 approvals across
-  `anthropic`, `google`, `tencent`; see [chanchi-agents-mvp-eval-cost-cut](reviews/chanchi-agents-mvp-eval-cost-cut/):
-  amended Layer 2 eval protocol, calibration threshold, cost controls, and phase-2 exit signal to
-  cut eval cost from ~40 runs/baseline and ~24 runs/change to ~7–9 runs/baseline and ~2–3
-  runs/change. Revision 2 followed two independent audits of Revision 1, both `PASS WITH FIXES`
-  and both agreeing with option A:
+- **Revision:** 4 (2026-11-24, accepted in chanchi audit 17 round 2 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; see
+  [chanchi-agents-mvp-code-only-phase2](reviews/chanchi-agents-mvp-code-only-phase2/): owner
+  decision Option B — Layer 2 evals are code-graded by default (`grade.py` + `triggers.md`); LLM
+  judging (`rubric.md` + `[judge]` + `agent-chanchi-judge`) and judge calibration stay shipped as
+  an optional opt-in when deterministic graders cannot verify a qualitative criterion, removing
+  mandatory human labeling from phase 2. Revision 3 was accepted in
+  chanchi audit 16 round 2 — 3/3 approvals across `anthropic`, `google`, `tencent`; see
+  [chanchi-agents-mvp-eval-cost-cut](reviews/chanchi-agents-mvp-eval-cost-cut/): amended Layer 2 eval
+  protocol, calibration threshold, cost controls, and phase-2 exit signal. Revision 2 followed two
+  independent audits of Revision 1, both `PASS WITH FIXES` and both agreeing with option A:
   [Claude Sonnet](reviews/chanchi-agents-mvp/audit-claude-sonnet.md) and
   [agy Gemini 4 Neon](reviews/chanchi-agents-mvp/audit-agy-gemini-4-neon.md))
 - **Brief:** [chanchi-agents-mvp.brief.md](chanchi-agents-mvp.brief.md). This document is complete
@@ -266,7 +271,8 @@ The skill is proven once end to end by an executor on a real change before phase
 ## Layer 2: skills tested by evals
 
 The protocol combines pstack's `eval.md` and `hillclimb.md` with Anthropic's guidance for agent
-evals and the Agent Skills evaluation guide. Graders run in this order: code first, judge second.
+evals and the Agent Skills evaluation guide. Evals are code-graded by default (`grade.py`); when an
+eval opts into a qualitative `rubric.md`, graders run in this order: code first, judge second.
 
 ### Layout
 
@@ -274,16 +280,17 @@ evals and the Agent Skills evaluation guide. Graders run in this order: code fir
 evals/
   ledger.tsv
   eval-chanchi-session-audit/
-    eval.toml                   # candidate agent, harness and model; judge harness and model
+    eval.toml                   # candidate agent, harness and model; optional signal flag and [judge]
     cases/<case>/prompt.md      # what the candidate reads: neutral words only
     cases/<case>/setup.sh       # builds the starting state in the work directory
     cases/<case>/grade.py       # code graders: read the end state, print one pass/fail per criterion
-    rubric.md                   # judge-only criteria, 3 to 6, pass/fail with a written critique
+    rubric.md                   # optional: judge-only criteria, 3 to 6, pass/fail with a written critique
     triggers.md                 # prompts that must and must not load the skill
 scripts/run_evals.py
 ```
 
-`rubric.md` (never copied into a work directory):
+Optional `rubric.md` (present only when `[judge]` is set in `eval.toml`; never copied into a work
+directory):
 
 ```markdown
 # Rubric: skill-chanchi-lessons
@@ -302,11 +309,13 @@ For each criterion answer PASS or FAIL, then one or two sentences of critique qu
 - Fix the failing test in tests/test_db.py.
 ```
 
-`eval.toml` names the candidate and the judge, for example for `skill-chanchi-session-audit`:
-candidate `agent-chanchi-orchestrator` on `agy` / `claude-sonnet-5-5-low` (effort `low`, family
-`anthropic`), judge on `agy` / `gemini-4-hydrogen-high` (effort `high`, family `google`). The
-runner remains harness-agnostic (`claude` and `agy` supported), and the judge is always of another
-model family than the candidate.
+`eval.toml` names the candidate (for example for `skill-chanchi-session-audit`:
+`agent-chanchi-orchestrator` on `agy` / `claude-sonnet-5-5-low`, effort `low`, family `anthropic`)
+and an optional `signal = true|false` flag marking whether the item is part of the phase exit signal.
+By default, Layer 2 evals are code-graded only (`grade.py` + `triggers.md`, no `rubric.md` or
+`[judge]`). When an eval opts into a qualitative `rubric.md`, `eval.toml` also names `[judge]`
+(for example `agy` / `gemini-4-hydrogen-high`, effort `high`, family `google`), always of another
+model family than the candidate. The runner remains harness-agnostic (`claude` and `agy` supported).
 
 ### One run
 
@@ -341,9 +350,11 @@ model family than the candidate.
    before `kept` or `reverted`.
 4. **Code graders.** `grade.py` checks the end state, such as the scratch chanchi database (sessions,
    incidents with evidence, verdict), files and exit codes. Regression cases are code-graded only.
-5. **Gated judge.** For capability cases with a `rubric.md`, `agent-chanchi-judge` from another
-   model family than the candidate runs **only when every code grader passes** (a run that already
-   failed code needs no judge). When it runs, the score is
+5. **Gated judge (optional).** Evals without `rubric.md` skip this step and use code-grader scores
+   directly (the default, avoiding both LLM-judge cost and manual calibration). For capability cases
+   of an eval that opts into `rubric.md` and `[judge]`, `agent-chanchi-judge` from another model
+   family than the candidate runs **only when every code grader passes** (a run that already failed
+   code needs no judge). When it runs, the score is
    `(passed_code + passed_rubric_applicable) / (len(code) + total_rubric_applicable)` (`N/A`
    excluded). When the judge is skipped due to a code failure, the run's score is
    `passed_code / (len(code) + len(rubric_criteria))`, guaranteeing that a code-failed run always
@@ -369,14 +380,16 @@ model family than the candidate.
    `before`) match on `(candidate, cases_sha)` so rows from different frozen harnesses are never
    compared.
 
-### Judge calibration
+### Judge calibration (optional, only when an eval uses a judge)
 
-Before a rubric's judge verdicts count, the owner labels **at least 6 outputs** pass or fail once,
-with a one-line critique, containing **contrast** (at least one owner `PASS` and at least one owner
-`FAIL`, preferring ≥ 2 of each when the pool allows; an all-identical sheet is uncalibrated), and
-the judge must agree with at most one disagreement (`total >= 6` and `agree >= total - 1`: ≥ 5 of 6
-for small skills, ≥ 9 of 10 for 10-sample sheets). This is the one deliberate human step in layer 2
-(Hamel Husain, *Using LLM-as-a-Judge*); after it, the loop needs no human.
+Code-graded evals require no calibration step: removing mandatory human labeling of synthetic eval
+outputs keeps routine skill evaluation autonomous (moving work away from the human). Only when an
+eval opts into `rubric.md` and `[judge]` must its judge be calibrated before its verdicts count: the
+owner labels **at least 6 outputs** pass or fail once, with a one-line critique, containing
+**contrast** (at least one owner `PASS` and at least one owner `FAIL`, preferring ≥ 2 of each when
+the pool allows; an all-identical sheet is uncalibrated), and the judge must agree with at most one
+disagreement (`total >= 6` and `agree >= total - 1`: ≥ 5 of 6 for small skills, ≥ 9 of 10 for
+10-sample sheets; Hamel Husain, *Using LLM-as-a-Judge*). After calibration, the loop needs no human.
 
 Because a 1-run-per-case baseline of 1–2 capability cases yields fewer than 6 judged outputs,
 calibration uses a one-time collection step (`--calibration-sheet --collect`) that reuses saved
@@ -403,19 +416,27 @@ improves. Regression cases (the ones that must always pass) are kept apart from 
 
 ### First items under eval
 
-1. `skill-chanchi-session-audit`: it writes audit data, and its end state is fully checkable in the
-   scratch database.
-2. `skill-chanchi-lessons`: the database fields are code-graded; cause and general-rule quality go
-   to the judge.
-3. `skill-chanchi-item-authoring`: names and layout are code-graded by the gate itself.
+All three phase-2 signal skills run **code-graded only** (`grade.py` + `triggers.md`, no `rubric.md`
+or `[judge]`; owner decision 2026-11-24). `agent-chanchi-judge` and the runner's judge/calibration
+workflow remain shipped for future skills that genuinely need qualitative judging:
+
+1. `skill-chanchi-session-audit`: it writes audit data, and its end state (reports, incidents with
+   evidence, verdict) is fully checkable in the scratch database.
+2. `skill-chanchi-lessons`: database fields (non-blank cause/general rule/target, valid enums,
+   writer role) and check-first replacement routing (`tool`/`hook`/`permission` + `duplicate`) are
+   code-graded in the scratch database.
+3. `skill-chanchi-item-authoring`: names, layout, eval structure, and hook isolation are
+   code-graded by `grade.py` and the repository naming check.
 
 ### Cost controls
 
 Evals never run in the gate. They run when an evaluated item changes, through
-`scripts/run_evals.py <item>`. With 1 regression + 1 capability case, 1 run by default, cached
-`without`, gated judging, and description-gated triggers, a routine skill change costs **2–3
-headless runs** (5–7 runs when adaptive confirmation repeats a changed case), and a first baseline
-costs **7–9 runs** (plus ~8–10 runs once per new rubric for calibration). The runner prints the
+`scripts/run_evals.py <item>`. With code-graded evals by default, 1 regression + 1 capability case,
+1 run by default, cached `without`, and description-gated triggers, a routine skill change costs
+**2 headless runs** (4 runs when adaptive confirmation repeats a changed case), and a first baseline
+costs **7 runs** (3 candidate + 4 triggers; 0 judge runs, 0 calibration runs). Evals that opt into
+a `rubric.md` + `[judge]` add 1–2 gated judge runs per measurement (up to 3–4 with adaptive
+confirmation) plus a one-time calibration collection (~8–12 runs). The runner prints the
 planned counts (initial and adaptive worst-case `max_total`) and refuses `max_total > 30` without
 `--yes`. Because neither `claude` nor `agy` CLI exposes a `--max-turns` flag (verified locally
 2026-11-23; `agy` exposes `--print-timeout`, while a uniform Python subprocess timeout preserves
@@ -555,15 +576,19 @@ and at least one with the note `verify:feature-map`.
 
 ### Phase 2: automatic verification and guardrails
 
-Items: `agent-chanchi-judge`; evals for the three skills, `scripts/run_evals.py`, the ledger and
-its gate check; the "can a check enforce it?" question in lesson review.
+Items: `agent-chanchi-judge` (shipped for optional qualitative evals); code-graded evals for the
+three skills, `scripts/run_evals.py`, the ledger and its gate check; the "can a check enforce it?"
+question in lesson review.
 
-**Signal to move on:** each evaluated skill has a calibrated judge (`total >= 6`,
-`agree >= total - 1`, and label contrast: at least one owner `PASS` and one owner `FAIL`), its
-regression cases pass 100% of executed runs (`1/1` when unchanged, `3/3` when confirmed), its
-capability median with the skill beats the cached arm without it (matching `candidate` and
-`cases_sha`), and no pending lesson with 2 or more occurrences proposes a prose rule where a check
-is possible.
+**Signal to move on:** for every signal skill (`signal = true` in `eval.toml`):
+1. if the eval opts into `rubric.md` + `[judge]`, its judge is calibrated (`total >= 6`,
+   `agree >= total - 1`, and label contrast: at least one owner `PASS` and one owner `FAIL`);
+   code-graded evals require no judge calibration (phase 2's three signal skills run code-graded
+   only, owner decision 2026-11-24);
+2. its regression cases pass 100% of executed runs (`1/1` when unchanged, `3/3` when confirmed);
+3. its capability median with the skill beats the cached arm without it (matching `candidate` and
+   `cases_sha`);
+4. no pending lesson with 2 or more occurrences proposes a prose rule where a check is possible.
 
 ### Phase 3: safe parallelism
 
@@ -620,8 +645,9 @@ budget chooses the executors.
 | A Claude `both` agent run as a main session loses the default prompt | Documented; `scope: main` exists for agents that run as main sessions |
 | Duplicate skill listings during the rename transition | Compatibility links only in `~/.agents/skills` and `~/.claude/skills`, removed by TODO 1 |
 | Ruff flags existing code | Fix findings in the same change; per-file ignores only with a reason comment |
-| Eval cost | Evals run only when an evaluated item changes; 1+1 cases to start, 1 run/case default (adaptive up to 3 on change), cached `without`, gated judge, triggers only on `description` change, 300s default timeout; the gate reads the ledger |
-| Single-run baseline variance & 6-sample calibration noise | Default 1 run/case can let a noisy baseline flip `with > without`, and 6-sample calibration has lower statistical power than 10 samples; mitigated by label-contrast requirement (≥ 1 owner PASS and ≥ 1 owner FAIL), adaptive 3-run confirmation on any changed/failing case, and re-measuring near-ties with `--runs 3 --arm both` |
+| Eval cost | Evals run only when an evaluated item changes; code-graded by default (optional judge gated on passing code when a rubric is present), 1+1 cases to start, 1 run/case default (adaptive up to 3 on change), cached `without`, triggers only on `description` change, 300s default timeout; the gate reads the ledger |
+| Single-run baseline variance & optional 6-sample calibration noise | Default 1 run/case can let a noisy baseline flip `with > without`, and optional 6-sample calibration (when an eval opts into a judge) has lower statistical power than 10 samples; mitigated by label-contrast requirement (≥ 1 owner PASS and ≥ 1 owner FAIL), adaptive 3-run confirmation on any changed/failing case, and re-measuring near-ties with `--runs 3 --arm both` |
+| Code-only evals do not automatically grade free-text prose quality | Mitigated by checking all structured end states (SQLite rows, evidence fields, git files, checks) via `grade.py`, auditing free-text outputs in real operational sessions, and keeping optional `rubric.md` + `agent-chanchi-judge` ready when a future skill genuinely needs qualitative judging |
 
 ## Verification plan
 
