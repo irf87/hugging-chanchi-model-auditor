@@ -6,11 +6,19 @@
   `global-items-phase2` and `global-items-phase3`: every `agent-chanchi-executor` session is
   `accepted` with `gate:first-green` (one attempt superseded by a `retry_reason: env` retry does not
   count), and 10 of those 11 sessions also carry `verify:feature-map` (`chanchi show`; evidence
-  in [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). MVP phase 2 (layer 2, skills
-  tested by evals) in progress.
+  in [phase1-exit.md](reviews/chanchi-agents-mvp/phase1-exit.md)). Phase 2 (layer 2, skills
+  tested by evals) implemented (2026-11-24, change `chanchi-agents-phase2`) and closed
+  (2026-11-24): `uv run python scripts/run_evals.py --signal` returns `met: true` across all three
+  signal skills (`skill-chanchi-session-audit`, `skill-chanchi-lessons`,
+  `skill-chanchi-item-authoring`), with `skill-chanchi-item-adoption` tracked outside the phase
+  signal (`signal = false`) and Condition 4 (lessons) met (`flagged: []`; evidence in
+  [phase2-exit.md](reviews/chanchi-agents-mvp/phase2-exit.md)). Phase 3 (safe parallelism) next.
 - **Date:** 2026-11-21
-- **Revision:** 4 (2026-11-24, accepted in chanchi audit 17 round 2 — 3/3 approvals across
-  `anthropic`, `google`, `tencent`; see
+- **Revision:** 5 (2026-11-24, accepted in chanchi audit 19 round 1 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; phase-2 closeout reconciliation of remaining plan adaptations
+  D3, D4, D6, D10, D11, D16, D19, D20, D21 and Phase 2 exit status; see
+  [phase2-exit.md](reviews/chanchi-agents-mvp/phase2-exit.md). Revision 4 was accepted in chanchi
+  audit 17 round 2 — 3/3 approvals across `anthropic`, `google`, `tencent`; see
   [chanchi-agents-mvp-code-only-phase2](reviews/chanchi-agents-mvp-code-only-phase2/): owner
   decision Option B — Layer 2 evals are code-graded by default (`grade.py` + `triggers.md`); LLM
   judging (`rubric.md` + `[judge]` + `agent-chanchi-judge`) and judge calibration stay shipped as
@@ -204,9 +212,10 @@ They follow Anthropic's **orchestrator-workers** pattern (*Building effective ag
 model splits the work, delegates bounded tasks and integrates the results. Workers keep their
 output in files (worktrees, reports) instead of relaying it through chat.
 
-`agent-chanchi-judge` (read-only, another model family than the candidate) arrives in phase 2 with
-the evals, completing the **evaluator-optimizer** pattern. Auditors and reviewers stay prompts of
-`researcher` or the judge until an audit shows a separate role pays for itself.
+`agent-chanchi-judge` (`scope: both`, `profile: read-only`, `install: repo`, `skills: []`,
+launched on another model family than the candidate) shipped in phase 2 for optional qualitative
+evals, completing the **evaluator-optimizer** pattern. Auditors and reviewers stay prompts of
+`researcher` or dedicated agents (`agent-chanchi-auditor`, added in global-items) when justified.
 
 ### Item-authoring skill
 
@@ -319,27 +328,41 @@ model family than the candidate. The runner remains harness-agnostic (`claude` a
 
 ### One run
 
-1. **Isolate.** Copy the case into a new directory under the system temp dir with a neutral name.
-   Nothing the candidate sees (paths, files, prompt) contains `eval`, `test`, `judge`,
-   `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate` or `arena` (pstack
-   `eval.md`). `CHANCHI_DB` points inside the work directory.
-2. **Two arms, with cached `without`.** Run the candidate headless (`claude -p --agent`,
-   `opencode run --agent`, `agy --agent <name> -p="<prompt>"`) **with the skill** and **without
-   it**, so the result measures the skill's lift, not the model. Regression cases run only in the
-   with-skill arm. The `without`-skill arm runs once per frozen capability harness (`cases_sha`:
-   first 12 hex of SHA-256 over canonical JSON of candidate spec, judge spec or `null`,
-   `agents/<agent>/AGENT.md`, sorted capability case files excluding `__pycache__`/`.pyc`/`.DS_Store`,
-   and `rubric.md` if present) and is reused across subsequent skill changes until that frozen
-   harness changes. The runner renders or copies the candidate wrapper
-   and, for the with-skill arm, the skill directory into the work directory's `.claude/`,
-   `.opencode/` or `.agents/` folder; the other arm gets the wrapper only. Before it starts, the
-   runner runs the candidate with `HOME` set to a temporary directory that holds only that
-   harness's credential files (hiding global skill directories such as `~/.claude/skills/` and
-   `~/.agents/skills/`), or stops with an error when it cannot isolate it. A baseline arm
-   contaminated by a global copy would measure nothing.
+1. **Isolate.** Copy the case into a new directory `W` = `<tmp>/work-<8 hex>` under the system temp dir
+   with a neutral name. `prompt.md` never contains a blinded word (`eval`, `test`, `judge`,
+   `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate` or `arena`, as a word or
+   word prefix, any case; pstack `eval.md`); `setup.sh` and case fixtures may hold a blinded word
+   only when explicitly listed in `blind_allow` in `eval.toml` (for domain necessities such as
+   `tests/` or `pytest`). The evaluated skill and candidate wrapper are exempt as the subject.
+   `CHANCHI_DB` points inside the work directory (`W/.state/chanchi.db`) and `CHANCHI_SYNC` points
+   to a sibling scratch folder (`<tmp>/sync-<8 hex>`) so neither the operational database nor the
+   user's `SYNC` is touched.
+2. **Two arms, with cached `without`.** Run the candidate headless (`claude -p --agent worker`,
+   `agy --agent worker -p="<prompt>"`; the runner currently supports `claude` and `agy`) **with the
+   skill** and **without it**, so the result measures the skill's lift, not the model. Regression
+   cases run only in the with-skill arm. The `without`-skill arm runs once per frozen capability
+   harness (`cases_sha`: first 12 hex of SHA-256 over canonical JSON of candidate spec, judge spec
+   or `null`, `agents/<agent>/AGENT.md`, sorted capability case files excluding
+   `__pycache__`/`.pyc`/`.DS_Store`, and `rubric.md` if present) and is reused across subsequent
+   skill changes until that frozen harness changes. Instead of copying the committed wrapper, the
+   runner renders the candidate wrapper with `agents_sync.render` from a copy of its source renamed
+   to the neutral name `worker` (so `chanchi agents sync` in a work directory never treats it as an
+   orphan), with `scope: both` (so on Claude the role is the system prompt) and `skills:` set to
+   `[<item>]` in the with-skill arm and `[]` in the without-skill arm, and copies only the
+   evaluated skill directory into the with-skill arm (`.claude/skills/` for Claude, `.agents/skills/`
+   for agy). When `W/.git` exists, the runner adds `.state/`, the injected wrapper, and the
+   injected skill folder to `W/.git/info/exclude` before the candidate starts so `W` starts
+   git-clean in both arms. Before launching, the runner sets `HOME` to a temporary directory that
+   holds only that harness's credential files (hiding global skill directories such as
+   `~/.claude/skills/` and `~/.agents/skills/`), or stops with an error when it cannot isolate it.
+   A baseline arm contaminated by a global copy would measure nothing. Headless runs pass each
+   harness's non-interactive permissions: Claude uses `--permission-mode acceptEdits --allowedTools
+   "Bash Read Grep Glob Edit Write Skill"` (`"Bash Read Grep Glob"` for the read-only judge),
+   `--add-dir` for the scratch `SYNC`, and `--` before the prompt; agy uses
+   `--dangerously-skip-permissions` and `--add-dir` for the scratch `SYNC`.
    Transcripts are captured from each CLI's structured output: `claude -p --verbose
-   --output-format stream-json` (Claude requires `--verbose` with it), `agy --output-format
-   stream-json -p="<prompt>"`, `opencode run --format json`.
+   --output-format stream-json` (Claude requires `--verbose` with it) and `agy --output-format
+   stream-json -p="<prompt>"`.
 3. **Repeat adaptively.** **One run per case by default.** A `with`-arm case is repeated up to
    3 runs (keeping the per-case pass rate for regression cases and the per-case score median for
    capability cases) only when its run-1 result differs from the previous matching `baseline`/`kept`
@@ -428,6 +451,10 @@ workflow remain shipped for future skills that genuinely need qualitative judgin
 3. `skill-chanchi-item-authoring`: names, layout, eval structure, and hook isolation are
    code-graded by `grade.py` and the repository naming check.
 
+A fourth backlog skill added before phase 2 (`skill-chanchi-item-adoption`) also ships with a
+code-graded eval (`signal = false` in `eval.toml`): it is covered by the ledger gate and its own
+regression check, while staying outside the phase-2 exit signal.
+
 ### Cost controls
 
 Evals never run in the gate. They run when an evaluated item changes, through
@@ -445,9 +472,15 @@ harness parity), the runner caps runaway turns with a default per-run timeout of
 its own items (TODO 4).
 
 The gate only reads the ledger: from phase 2 it fails when an evaluated item's current `item_sha`
-has no `kept` or `baseline` row, with the hint to run the command above. There is no exemption for
-text-only edits: a skill's text is its behavior, so any change to an evaluated item's directory
-needs a new ledger row.
+has no `kept` or `baseline` row, with the hint to run the command above. `tree_hash(path)` computes
+git's recursive tree SHA-1 over git-tracked and staged files in the item directory (blobs
+`100644`/`100755`, subtrees `40000`, ignoring untracked files), and the runner's CLI refuses to
+write a ledger row while the item directory has unstaged or untracked changes. There is no
+exemption for text-only edits: a skill's text is its behavior, so any change to an evaluated item's
+directory needs a new ledger row. `tests/test_evals.py` also enforces that every new skill in
+`skills/` has an eval directory with at least one case (exempting only the pre-phase-2
+`GRANDFATHERED` set: `skill-chanchi-audit-rounds`, `skill-chanchi-model-selection`,
+`skill-chanchi-verify`).
 
 ---
 
@@ -478,20 +511,24 @@ commands named in skills exist, no network module, thin `CLAUDE.md`). New ones:
 
 | # | Check | Catches |
 |---|---|---|
-| 1 | **Item names and references.** Every directory in `agents/`, `skills/`, `evals/`, `hooks/` matches `<item>-chanchi-<name>` with the right `<item>`, its frontmatter `name` equals the directory, and every `agent-chanchi-*` / `skill-chanchi-*` / `eval-chanchi-*` / `hook-chanchi-*` named in an operational file (`AGENTS.md`, `CLAUDE.md`, `README.md`, `FEATURE_MAP.md`, `agents/`, `skills/`, `evals/`) exists. `docs/` is excluded: designs name planned and example items. | wrong names, renames that leave dead references |
+| 1 | **Item names and references.** Every directory in `agents/`, `skills/`, `evals/`, `hooks/` matches `<item>-chanchi-<name>` with the right `<item>`, its frontmatter `name` equals the directory, and every `agent-chanchi-*` / `skill-chanchi-*` / `eval-chanchi-*` / `hook-chanchi-*` named in an operational file (`AGENTS.md`, `CLAUDE.md`, `README.md`, `FEATURE_MAP.md`, `agents/`, `skills/`, `evals/` — skipping `evals/*/cases/**` and `evals/*/triggers.md`, whose prompts may name fictional or planned items, while keeping `eval.toml` and `rubric.md` checked) exists. `docs/` is excluded: designs name planned and example items. | wrong names, renames that leave dead references |
 | 2 | **Wrappers in sync** (`chanchi agents sync --check`). | hand edits to generated files, a source changed without regenerating |
 | 3 | **Feature map coverage.** Every CLI subcommand has an entry; every `Covered by` file exists. | features an agent cannot find |
 | 4 | **Runtime stays stdlib.** `pyproject.toml` `dependencies` is empty and `src/chanchi` imports only the standard library and itself (extends the no-network test). | a dependency added by reflex |
 | 5 | **Import layers** (an AST test, no new dependency). Leaf modules (`errors`, `timeutil`, `dedup`, `hfsignals`) import no other chanchi module except `errors`; no module except `__main__` imports `cli`; only `cli` imports `render`. | layering erosion |
-| 6 | **Ruff against frequent agent shortcuts:** unused imports and names (`F`), bare and blind excepts (`E722`, `BLE001`), `try`-`except`-`pass` (`S110`), commented-out code (`ERA001`), `print` outside `cli.py`, `render.py` and `scripts/` (`T20`), mutable defaults (`B006`). Ruff is a dev dependency only. | silent failures, dead code, debug output |
+| 6 | **Ruff against frequent agent shortcuts:** unused imports and names (`F`), bare and blind excepts (`E722`, `BLE001`), `try`-`except`-`pass` (`S110`), commented-out code (`ERA001`), `print` outside `cli.py`, `render.py`, `scripts/`, `evals/*` and `tests/*` (`T20`), mutable defaults (`B006`). Ruff is a dev dependency only. | silent failures, dead code, debug output |
 | 7 | **Rules budget.** `AGENTS.md` stays at or under 150 lines and each `SKILL.md` / `AGENT.md` at or under 300; a longer file must move detail into `docs/` or `references/`. | rules files that grow until they are ignored |
 
 ### Repeated corrections become checks
 
 The path already exists: a failure becomes a chanchi lesson (`skill-chanchi-lessons`). A lesson
-whose `occurrences` reaches 2 is reviewed with one question first: can a check enforce it? If yes,
-the fix is a check (`target_kind: tool` or `hook`) and the prose rule is not added. The review
-section of `skill-chanchi-lessons` gains that question.
+whose `occurrences` reaches 2 is reviewed with one question first: can a check enforce it? If yes
+and its `target_kind` is not already `tool`, `hook` or `permission`, the reviewer does not approve
+it (because `chanchi lesson review` cannot change another conversation's `target_kind`): instead,
+the reviewer records a replacement lesson with that `target_kind` and `replaces` listing the
+original (adding `--force-new` if reported as a duplicate), then reviews the original as
+`duplicate --of <new id>`. The prose rule is never added. The review section of
+`skill-chanchi-lessons` carries this procedure.
 
 ---
 
@@ -666,3 +703,5 @@ budget chooses the executors.
    and `~/.claude/skills/chanchi-*` resolve; `unlink` removes all of them. One consumer harness
    loads a skill through a compatibility link.
 7. Phase 1's exit signal is read from `chanchi show` for the three changes.
+8. Phase 2's exit signal is read from `uv run python scripts/run_evals.py --signal`
+   ([phase2-exit.md](reviews/chanchi-agents-mvp/phase2-exit.md)).

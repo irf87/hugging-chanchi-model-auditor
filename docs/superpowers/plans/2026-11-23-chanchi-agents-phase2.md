@@ -39,13 +39,11 @@ the ledger (and calibration files when an eval opts into a judge), never from an
    (read on 2026-11-23: every pending lesson has 1 occurrence, so this holds today; re-read at
    the end).
 
-**Spec:** `docs/designs/chanchi-agents-mvp.md` (Revision 4), sections *Layer 2: skills tested by
-evals*, *Repeated corrections become checks*, *Adoption plan* (phase 2) and *Verification plan*.
-When this plan and the design disagree, the design wins (stop and report), except on the points the
-numbered decisions below adapt: those take precedence until G5 amends the design. The decisions
-below fill what the design leaves open; D3, D4, D6, D10, D16, D19 and D21 adapt it, and the gate
-commit (G5) reconciles any remaining plan-only details into the design text so both agree (D1, D2,
-D5, D7, D9, D14, D15, D17 and D23 are folded into Revision 4 of the design).
+**Spec:** `docs/designs/chanchi-agents-mvp.md` (Revision 5, reconciled at G5), sections *Layer 2:
+skills tested by evals*, *Repeated corrections become checks*, *Adoption plan* (phase 2) and
+*Verification plan*. All design-affecting plan adaptations are folded into Revision 5 of the design
+so design and shipped code agree (D13 and D18 remain plan-internal execution details that the
+design does not contradict).
 
 **Tech stack:** Python ≥ 3.11 standard library, pytest and ruff (dev only), uv.
 
@@ -114,11 +112,12 @@ D5, D7, D9, D14, D15, D17 and D23 are folded into Revision 4 of the design).
 | S5 | `agent-chanchi-executor` | tests / medium | recommended `agy:gemini-4-hydrogen-medium:medium` · chosen `agy:gemini-4-hydrogen-high:high` · explore: `agy:gemini-4-hydrogen-high:high` (5 sessions, budget 1; S5 blocks nothing; started with `--tags agent-chanchi-executor,explore`) | gate |
 | S6 | `agent-chanchi-executor` | tests / medium | completed prior to Rev 5 (replaced `eval-chanchi-item-authoring` capability cases on `feat/mvp2-s5`) | S8b |
 | S7 | `agent-chanchi-executor` | integration / medium | recommended `agy:gemini-4-hydrogen-high:high` (92.67, task_type) · chosen the same · completed (`accepted`, `gate:first-green`, merged `6ef6ff4`) | S8a, S8b, G1b |
-| S8a | `agent-chanchi-executor` | tests / low | recommended `agy:gemini-4-hydrogen-medium:medium` (99.59, complexity) · chosen the same · completed (`accepted`, `73903c1` on `feat/mvp2-s4`) | G1b, G2 |
-| S8b | `agent-chanchi-executor` | tests / low | recommended `agy:gemini-4-hydrogen-medium:medium` (99.59, complexity) · chosen the same · completed (`accepted`, `9d9309a` on `feat/mvp2-s5`) | G2 |
-| S9 | `agent-chanchi-executor` | integration / low | planned after Rev 6 audit acceptance with `chanchi recommend` (adds optional `signal` key in `eval.toml`, code-only `--signal` handling, tests and README update) | S10a, S10b |
-| S10a | `agent-chanchi-executor` | tests / low | planned after orchestrator rebases `feat/mvp2-s4` onto `main` containing S9 (removes `rubric.md` and `[judge]`, sets `signal = true` on `session-audit` and `lessons`) | G2 |
-| S10b | `agent-chanchi-executor` | tests / low | planned after orchestrator rebases `feat/mvp2-s5` onto `main` containing S9 (removes `rubric.md` and `[judge]` on `item-authoring`, sets `signal = true` on `item-authoring` and `signal = false` on `item-adoption`) | G2 |
+| S8a | `agent-chanchi-executor` | tests / low | recommended `agy:gemini-4-hydrogen-medium:medium` (99.59, complexity) · chosen the same · completed (`accepted`, `c88396f`, merged `46ae0c6`) | G1b, G2 |
+| S8b | `agent-chanchi-executor` | tests / low | recommended `agy:gemini-4-hydrogen-medium:medium` (99.59, complexity) · chosen the same · completed (`accepted`, `6b50369`, merged `2a115c1`) | G2 |
+| S9 | `agent-chanchi-executor` | integration / low | recommended `agy:gemini-4-hydrogen-medium:medium` · chosen the same · completed (`accepted`, `gate:first-green`, `ff3c456`, merged `b9b3228`) | S10a, S10b |
+| S10a | `agent-chanchi-executor` | tests / low | recommended `agy:gemini-4-hydrogen-medium:medium` · chosen the same · completed (`accepted`, `a9db5eb`, merged `46ae0c6`) | G2 |
+| S10b | `agent-chanchi-executor` | tests / low | recommended `agy:gemini-4-hydrogen-medium:medium` · chosen the same · completed (`accepted`, `baa96fa`, merged `2a115c1`) | G2 |
+| S11 | `agent-chanchi-executor` | docs / low | recommended `agy:gemini-4-hydrogen-medium:medium` · chosen the same · completed (`accepted`, `5196327`, refined through Audit 18 R1–R2 at `d780bbd`/`eb6c931`, merged `2a115c1`) | G4 |
 
 S4 and S5 branched from `main` after S2 merged and wrote to the D22 contract; the orchestrator
 **rebases** each branch onto `main` (never merges `main` into them, D18) after S7 and S9 merge.
@@ -390,7 +389,7 @@ a branch from `main` after Revision 5 audit acceptance.
   name checked by `tests/test_evals.py`.
 - [ ] Verify: `uv run pytest -q tests/test_run_evals.py tests/test_evals.py`, `scripts/check`.
 
-### Task S8a: trim S4 evals and update models on `feat/mvp2-s4` (Rev 5 — done `73903c1`; `[judge]`/`rubric.md` parts superseded by S10a)
+### Task S8a: trim S4 evals and update models on `feat/mvp2-s4` (Rev 5 — done `c88396f`; `[judge]`/`rubric.md` parts superseded by S10a)
 
 Worktree: `.claude/worktrees/chanchi-p2s4` (branch `feat/mvp2-s4`, after the orchestrator discards
 uncommitted `evals/ledger.tsv` and rebases `feat/mvp2-s4` onto `main` containing S7, D18). Files:
@@ -406,7 +405,7 @@ rebases; orchestrator audits and commits.
 - [ ] Verify: `uv run pytest -q tests/test_evals.py tests/test_items.py tests/test_skills_content.py`
   (only the ledger check is expected red until G2 commits the fresh baseline rows, D18).
 
-### Task S8b: trim S5 evals, update models and reset Rev-4 ledger on `feat/mvp2-s5` (Rev 5 — done `9d9309a`; `[judge]`/`rubric.md` parts superseded by S10b)
+### Task S8b: trim S5 evals, update models and reset Rev-4 ledger on `feat/mvp2-s5` (Rev 5 — done `6b50369`; `[judge]`/`rubric.md` parts superseded by S10b)
 
 Worktree: `.claude/worktrees/chanchi-p2s5` (branch `feat/mvp2-s5`, after the orchestrator rebases
 `feat/mvp2-s5` onto `main` containing S7, D18). Files: `evals/eval-chanchi-item-authoring/**`,
@@ -458,11 +457,11 @@ Worktree: `.claude/worktrees/chanchi-p2s5` (branch `feat/mvp2-s5`, after the orc
 ### Gate (orchestrator)
 
 - [x] **G1** Merge S1–S3 after audit; initial smoke run done (pre-Rev 5).
-- [x] **G1b** Merged S7 (`6ef6ff4`), rebased `feat/mvp2-s4` and `feat/mvp2-s5` onto `main`, completed and committed `S8a` (`73903c1`) and `S8b` (`9d9309a`), and verified the D2 pair in a 3-run smoke check (`24.1s` cap+judge, `12.2s` trigger `read_file` detected).
-- [ ] **G2 (Rev 6 code-only refresh)** Merge S9 after audit. Per D18, preserve valid cached `triggers` rows (renumbered to `<item>-1`) and `item-adoption`'s 3 code-only rows via per-worktree temp files, rebase `feat/mvp2-s4` and `feat/mvp2-s5` onto `main`, restore the preserved files, and run `S10a`/`S10b` (commit each after audit). Run `--dry-run` on each eval to confirm trigger/baseline cache hits (`0` triggers for all four; `resolved_arms: ["with"]` and `0` triggers for `item-adoption`, whose existing code-only `with` row already satisfies `test_ledger_matches_current_item_trees` so it needs `0` executed runs in G2), then run `run_evals.py <item>` (`--arm auto`, `--runs 1`, code-only) for `skill-chanchi-session-audit` (3 runs), `skill-chanchi-lessons` (3 runs), and `skill-chanchi-item-authoring` (3–5 runs) — **~9–11 runs** total. If either S4 skill fails to beat `without` or fails regression, hill-climb it on `feat/mvp2-s4` before merging; once both S4 skills hold, commit `evals/ledger.tsv` on `feat/mvp2-s4`, verify `scripts/check`, and merge `feat/mvp2-s4` (`--no-ff`) to `main`.
+- [x] **G1b** Merged S7 (`6ef6ff4`), rebased `feat/mvp2-s4` and `feat/mvp2-s5` onto `main`, completed and committed `S8a` (`c88396f`) and `S8b` (`6b50369`), and verified the D2 pair in a 3-run smoke check (`24.1s` cap+judge, `12.2s` trigger `read_file` detected).
+- [x] **G2 (Rev 6 code-only refresh)** Merged S9 (`b9b3228`), preserved valid cached `triggers` rows (renumbered to `<item>-1`) and `item-adoption`'s 3 code-only rows per D18, completed `S10a`/`S10b`, ran code-only baselines (11 runs total: `session-audit` `1/1`, `1.00` vs `0.50`; `lessons` `1/1`, `1.00` vs `0.00`; `item-authoring` `0/3`, `0.67` vs `0.67`), and merged `feat/mvp2-s4` (`46ae0c6`).
 - [x] **G3 (Calibration — N/A under Rev 6)** Code-graded phase-2 evals require no judge calibration (owner decision Option B, 2026-11-24; pre-Option-B calibration sheets under `~/.local/share/chanchi/evals/` are discarded).
-- [ ] **G4** Hill climb (D17) on `feat/mvp2-s5` for `skill-chanchi-item-authoring` (whose Rev-5 baseline failed `new-skill` `0/3` and tied `new-hook` `0.33` vs `0.33`). First inspect `new-skill` and `new-hook` `grade.py` and `setup.sh` to rule out any grader/setup defect before spending runs on skill edits. Each code-only hypothesis costs **2–6 runs** (`4–6 runs` while `new-skill` recovers from `< 100%` and `new-hook` confirms lift; `+4` if `description` changes; expected **~6–15 runs** total, well inside the 300-run budget). Re-measure any near-tie baseline with `--runs 3 --arm both`. Each kept skill change is audited (`skill-chanchi-audit-rounds`). Commit `evals/ledger.tsv` and audited skill changes on `feat/mvp2-s5`, **then** rebase `feat/mvp2-s5` onto `main` (resolving expected `evals/ledger.tsv` and `GRANDFATHERED` conflicts), verify `scripts/check`, and merge `--no-ff` to `main`.
-- [ ] **G5** `run_evals.py --signal` shows `met: true` with `in_signal: true` for all three signal skills (`skill-chanchi-session-audit`, `skill-chanchi-lessons`, `skill-chanchi-item-authoring`), `in_signal: false` for `skill-chanchi-item-adoption`, and Condition 4 (lessons) met; record the output in `docs/designs/reviews/chanchi-agents-mvp/phase2-exit.md`; update the design's status line and reconcile any remaining plan-only adaptations (audited as a rule change); `chanchi change close chanchi-agents-phase2`.
+- [x] **G4** Hill-climbed `skill-chanchi-item-authoring` on `feat/mvp2-s5` (S11 + Audit 18 rounds 1–2, 3/3 `PASS` across `anthropic`/`google`/`tencent`, `degraded: false`): `new-skill` lifted `0/3 -> 3/3`, `new-hook` lifted `0.67 -> 1.00` (`+0.33` over `without`), `verdict: kept`. Rebased onto `main` and merged `--no-ff` (`2a115c1`, `1026 passed`).
+- [x] **G5** `uv run python scripts/run_evals.py --signal` on `main` (`2a115c1`) returned `met: true`, `reason: null`, `in_signal: true` for all three signal skills (`session-audit`, `lessons`, `item-authoring`), `in_signal: false` for `item-adoption`, and `lessons.met: true` (`flagged: []`); recorded in `docs/designs/reviews/chanchi-agents-mvp/phase2-exit.md`, reconciled design Revision 5 (audited via `skill-chanchi-audit-rounds`), and closing `chanchi-agents-phase2` on merge.
 
 ## Verification plan (phase 2)
 
