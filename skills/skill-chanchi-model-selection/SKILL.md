@@ -16,7 +16,7 @@ All commands print JSON. On failure they print `{"ok": false, "error": {...}}` t
 
 1. Confirm the tool works: `chanchi db status`.
 2. Get the list of available executors **from the human's prompt**, as `agent:model[:effort]`
-   (agents: `claude`, `agy`, `opencode`). Never assume a model is available. If the prompt does not
+   (agents: `claude`, `agy`, `opencode`, `cursor`). Never assume a model is available. If the prompt does not
    list them, ask. In `--available`, list every effort of a model that the human made available,
    so the effort that holds a model's audits competes for `recommendation`.
 3. Make sure each one is in the catalog: `chanchi models list`. For a missing model, ask the human

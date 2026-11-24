@@ -38,7 +38,7 @@ GitHub Actions runs the same script on every push (`.github/workflows/check.yml`
 chanchi skills link /path/to/project
 ```
 
-This creates `.agents/skills/skill-chanchi-*` (read by opencode and agy) and `.claude/skills/skill-chanchi-*`
+This creates `.agents/skills/skill-chanchi-*` (read by opencode, agy and Cursor) and `.claude/skills/skill-chanchi-*`
 (read by Claude Code) as symlinks to this repository, and prints a line to add to the project's
 `openspec/config.yaml`. `chanchi skills link --global` does the same in your home directory;
 `chanchi skills unlink` removes only the links it created.
@@ -56,8 +56,8 @@ are updated.
 ## Agents
 
 chanchi's own agents are written once in `agents/agent-chanchi-<name>/AGENT.md` and compiled into
-committed wrappers for Claude Code (`.claude/agents/`), opencode (`.opencode/agents/`) and agy
-(`.agents/agents/`). Never edit a wrapper by hand:
+committed wrappers for Claude Code (`.claude/agents/`), opencode (`.opencode/agents/`), agy
+(`.agents/agents/`) and Cursor (`.cursor/agents/`). Never edit a wrapper by hand:
 
 ```bash
 chanchi agents sync                  # regenerate the wrappers after editing a source
@@ -73,10 +73,12 @@ chanchi agents link --user --remove  # remove user wrappers owned by this reposi
 - `agent-chanchi-auditor` — read-only user-installed auditor that checks one subject against a brief and writes a verdict report.
 - `agent-chanchi-item-builder` — user-installed builder that turns one stored item proposal into a global item draft in `SYNC/ITEMS`; never publishes and never writes chanchi records.
 
-Launch one with `claude --agent <name>`, `opencode run --agent <name>` or
-`agy --agent <name>`. Unattended headless lines need each harness's permission flags
-(`AGENTS.md`, Working Conventions); `chanchi audit open` prints them. `FEATURE_MAP.md` tells an
-agent how to reach and verify every command. Design: `docs/designs/chanchi-agents-mvp.md`.
+Launch one with `claude --agent <name>`, `opencode run --agent <name>`, `agy --agent <name>` or
+Cursor (`agent -p --trust --force -- "<prompt>"`). The Cursor desktop app reads
+`~/.cursor/agents/`, while the Cursor CLI reads `.cursor/agents/`. Unattended headless lines need
+each harness's permission flags (`AGENTS.md`, Working Conventions); `chanchi audit open` prints
+them. `FEATURE_MAP.md` tells an agent how to reach and verify every command. Design:
+`docs/designs/chanchi-agents-mvp.md`.
 
 ## Everyday commands
 
@@ -160,7 +162,8 @@ with `chanchi agents link --user`; orchestrator procedure in `skill-chanchi-audi
 `chanchi audit open` seats them from the roster and prints, per seat, the model, its family and
 a headless launch line to run; chanchi itself never launches a harness. The roster is
 `SYNC/config/auditors.toml` when that file exists, else a built-in list of four auditors (`SYNC`
-is `CHANCHI_SYNC`, else `<main checkout>/SYNC`).
+is `CHANCHI_SYNC`, else `<main checkout>/SYNC`); a Cursor auditor seat uses `harness = "cursor"`
+there (its CLI binary is `agent`).
 
 ```bash
 chanchi audit open --kind design --ref docs/designs/<topic>.md --author claude:opus:high --commit <sha>
@@ -219,13 +222,13 @@ chanchi items decide <item> --decision adopt|wrap|keep|deprecate --version <x.y.
 
 `items mirror` links each published skill into `~/.agents/skills` (plus relative links for Claude Code and the
 agy CLI) and writes each published agent for the installed harnesses (`~/.claude/agents`, the opencode
-`agents` folder, `~/.gemini/config/agents`). Drafts and retired items never appear. Every entry is recorded
+`agents` folder, `~/.gemini/config/agents` and `~/.cursor/agents`). Drafts and retired items never appear. Every entry is recorded
 in `mirror.json` next to the database; the mirror updates or removes only what it recorded, refuses to
 overwrite anything else, and leaves `chanchi skills link` and `chanchi agents link --user` entries alone.
 
 `items scan` is read-only on projects: it never writes into one and never follows a link. For each skill and
-agent it finds (`.agents/skills`, `.claude/skills`, `.opencode/skills`, `agents`, `.claude/agents`,
-`.opencode/agents`, `.agents/agents` and the folders from `project items-dirs`) it stores the path, a content
+agent it finds (`.agents/skills`, `.claude/skills`, `.opencode/skills`, `.cursor/skills`, `agents`, `.claude/agents`,
+`.opencode/agents`, `.agents/agents`, `.cursor/agents` and the folders from `project items-dirs`) it stores the path, a content
 hash, the line count and the frontmatter `description`, never the item text; wrappers that `chanchi agents sync`
 generated are skipped. Running it twice changes nothing. A global item named like a scanned project item is a
 `project_item_collision` in `items check`, `items publish` and `items mirror`.
