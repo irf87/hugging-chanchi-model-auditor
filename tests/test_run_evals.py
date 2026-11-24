@@ -1053,7 +1053,8 @@ def test_signal_reports_none_judge_and_unmet_conditions(world, capsys, tmp_path,
     assert item["judge"] == "none" and item["in_signal"] is False
     assert item["regression"]["met"] is False and item["capability"]["met"] is False
     assert report["lessons"] == {"met": True, "flagged": []}
-    assert report["met"] is True  # nothing in the signal is evaluated by a judge; the one item is out of scope
+    assert report["met"] is False
+    assert report["reason"] == "no signal evals"
 
 
 def test_unknown_item_and_mode_errors(world, capsys):
@@ -1493,3 +1494,219 @@ def test_signal_rejects_mismatched_candidate_or_cases_sha_or_no_contrast(world, 
     assert item["regression"]["met"] is False
     assert item["capability"]["met"] is False
     assert json.loads(out)["met"] is False
+
+
+def _make_code_only(eval_dir: Path, *, signal_line: str = "") -> None:
+    toml = (eval_dir / "eval.toml").read_text().split("\n[judge]")[0]
+    if signal_line:
+        toml = toml.replace("\n[candidate]\n", f"\n{signal_line}\n\n[candidate]\n")
+    (eval_dir / "eval.toml").write_text(toml + "\n")
+    rubric = eval_dir / "rubric.md"
+    if rubric.is_file():
+        rubric.unlink()
+
+
+def _write_ledger(repo: Path, rows: list[dict[str, str]]) -> None:
+    (repo / "evals" / "ledger.tsv").write_text(
+        "\t".join(LEDGER_COLUMNS) + "\n" + "".join("\t".join(r[c] for c in LEDGER_COLUMNS) + "\n" for r in rows)
+    )
+
+
+def test_signal_true_code_only_eval(world, capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("CHANCHI_DB", str(tmp_path / "ops_s9_1" / "chanchi.db"))
+    ev = world.repo / "evals" / "eval-chanchi-demo"
+    _make_code_only(ev, signal_line="signal = true")
+    cfg = R.load_eval(world.repo, ITEM)
+    sha = R.tree_hash(world.repo / "skills" / ITEM)
+    c_sha = R.cases_sha(world.repo, cfg)
+
+    # Passing regression (1/1) and capability (with > without) -> met True, reason None
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{ITEM}-1", item=ITEM, item_sha=sha, arm="with", verdict="baseline", median_pass="1.00",
+                   after="1.00", note=f"regression=1/1;cases_sha={c_sha};cases=cap-a:1.00",
+                   candidate=cfg.candidate_spec, runs="2"),
+        ledger_row(id=f"{ITEM}-2", item=ITEM, item_sha=sha, arm="without", verdict="baseline", median_pass="0.00",
+                   after="0.00", note=f"cases_sha={c_sha};cases=cap-a:0.00",
+                   candidate=cfg.candidate_spec, runs="1"),
+    ])
+    git(world.repo, "add", "-A")
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    report = json.loads(out)
+    item = report["items"][ITEM]
+    assert item["judge"] == "none" and item["calibrated"] is None and item["in_signal"] is True
+    assert report["met"] is True and report["reason"] is None
+
+    # Failing regression -> met False
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{ITEM}-1", item=ITEM, item_sha=sha, arm="with", verdict="baseline", median_pass="1.00",
+                   after="1.00", note=f"regression=0/1;cases_sha={c_sha};cases=cap-a:1.00",
+                   candidate=cfg.candidate_spec, runs="2"),
+        ledger_row(id=f"{ITEM}-2", item=ITEM, item_sha=sha, arm="without", verdict="baseline", median_pass="0.00",
+                   after="0.00", note=f"cases_sha={c_sha};cases=cap-a:0.00",
+                   candidate=cfg.candidate_spec, runs="1"),
+    ])
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    assert json.loads(out)["met"] is False
+
+    # Capability with <= without -> met False
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{ITEM}-1", item=ITEM, item_sha=sha, arm="with", verdict="baseline", median_pass="0.50",
+                   after="0.50", note=f"regression=1/1;cases_sha={c_sha};cases=cap-a:0.50",
+                   candidate=cfg.candidate_spec, runs="2"),
+        ledger_row(id=f"{ITEM}-2", item=ITEM, item_sha=sha, arm="without", verdict="baseline", median_pass="0.50",
+                   after="0.50", note=f"cases_sha={c_sha};cases=cap-a:0.50",
+                   candidate=cfg.candidate_spec, runs="1"),
+    ])
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    assert json.loads(out)["met"] is False
+
+
+def test_signal_true_judged_eval_still_requires_calibration(world, capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("CHANCHI_DB", str(tmp_path / "ops_s9_2" / "chanchi.db"))
+    ev = world.repo / "evals" / "eval-chanchi-demo"
+    toml = (ev / "eval.toml").read_text()
+    (ev / "eval.toml").write_text(toml.replace("\n[candidate]\n", "\nsignal = true\n\n[candidate]\n"))
+    cfg = R.load_eval(world.repo, ITEM)
+    sha = R.tree_hash(world.repo / "skills" / ITEM)
+    c_sha = R.cases_sha(world.repo, cfg)
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{ITEM}-1", item=ITEM, item_sha=sha, arm="with", verdict="baseline", median_pass="1.00",
+                   after="1.00", note=f"regression=1/1;cases_sha={c_sha};cases=cap-a:1.00",
+                   candidate=cfg.candidate_spec, runs="2"),
+        ledger_row(id=f"{ITEM}-2", item=ITEM, item_sha=sha, arm="without", verdict="baseline", median_pass="0.00",
+                   after="0.00", note=f"cases_sha={c_sha};cases=cap-a:0.00",
+                   candidate=cfg.candidate_spec, runs="1"),
+    ])
+    git(world.repo, "add", "-A")
+
+    # Missing calibration.tsv -> met False
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    report = json.loads(out)
+    assert report["items"][ITEM]["calibrated"]["met"] is False
+    assert report["met"] is False
+
+    # Too few samples (< 6) -> met False
+    cal = ["sample\towner_label\tjudge_label\tagree\towner_critique",
+           "1\tPASS\tPASS\ttrue\tok",
+           "2\tFAIL\tFAIL\ttrue\tok"]
+    (ev / "calibration.tsv").write_text("\n".join(cal) + "\n")
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    report = json.loads(out)
+    assert report["items"][ITEM]["calibrated"]["met"] is False
+    assert report["met"] is False
+
+
+def test_signal_false_excludes_eval_from_scoped(world, capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("CHANCHI_DB", str(tmp_path / "ops_s9_3" / "chanchi.db"))
+    ev = world.repo / "evals" / "eval-chanchi-demo"
+    toml = (ev / "eval.toml").read_text()
+    (ev / "eval.toml").write_text(toml.replace("\n[candidate]\n", "\nsignal = false\n\n[candidate]\n"))
+    git(world.repo, "add", "-A")
+
+    # Only signal = false eval exists -> met False, reason "no signal evals"
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    report = json.loads(out)
+    assert report["items"][ITEM]["in_signal"] is False
+    assert report["met"] is False and report["reason"] == "no signal evals"
+
+    # Add a passing signal = true code-only eval alongside the failing/uncalibrated signal = false eval -> met True
+    other_item = "skill-chanchi-other"
+    (world.repo / "skills" / other_item).mkdir(parents=True)
+    (world.repo / "skills" / other_item / "SKILL.md").write_text("---\nname: skill-chanchi-other\n---\n# Other\n")
+    ev2 = world.repo / "evals" / "eval-chanchi-other"
+    (ev2 / "cases" / "reg-a").mkdir(parents=True)
+    (ev2 / "cases" / "cap-a").mkdir(parents=True)
+    for c in ("reg-a", "cap-a"):
+        (ev2 / "cases" / c / "prompt.md").write_text("p\n")
+        (ev2 / "cases" / c / "setup.sh").write_text("#!/bin/sh\n")
+        (ev2 / "cases" / c / "grade.py").write_text("print('{}')\n")
+    (ev2 / "triggers.md").write_text("## Must load\n- a\n\n## Must not load\n- b\n")
+    (ev2 / "eval.toml").write_text(
+        'name = "eval-chanchi-other"\n'
+        'item = "skill-chanchi-other"\n'
+        'regression = ["reg-a"]\n'
+        'capability = ["cap-a"]\n'
+        'blind_allow = []\n'
+        'signal = true\n\n'
+        '[candidate]\n'
+        'agent = "agent-chanchi-executor"\n'
+        'harness = "claude"\n'
+        'model = "sonnet"\n'
+        'effort = "medium"\n'
+    )
+    git(world.repo, "add", "-A")
+    cfg2 = R.load_eval(world.repo, other_item)
+    sha2 = R.tree_hash(world.repo / "skills" / other_item)
+    c_sha2 = R.cases_sha(world.repo, cfg2)
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{other_item}-1", item=other_item, item_sha=sha2, arm="with", verdict="baseline",
+                   median_pass="1.00", after="1.00", note=f"regression=1/1;cases_sha={c_sha2};cases=cap-a:1.00",
+                   candidate=cfg2.candidate_spec, runs="2"),
+        ledger_row(id=f"{other_item}-2", item=other_item, item_sha=sha2, arm="without", verdict="baseline",
+                   median_pass="0.00", after="0.00", note=f"cases_sha={c_sha2};cases=cap-a:0.00",
+                   candidate=cfg2.candidate_spec, runs="1"),
+    ])
+    code, out, err = world.run(capsys, "--signal", item=None)
+    assert code == 0, err
+    report = json.loads(out)
+    assert report["items"][ITEM]["in_signal"] is False
+    assert report["items"][other_item]["in_signal"] is True
+    assert report["met"] is True and report["reason"] is None
+
+
+def test_signal_omitted_defaults_to_bool_judge(world):
+    # With rubric.md + [judge], signal defaults to True
+    cfg_judged = R.load_eval(world.repo, ITEM)
+    assert cfg_judged.judge is not None and cfg_judged.signal is True
+
+    # Code-only (no rubric.md), signal defaults to False
+    ev = world.repo / "evals" / "eval-chanchi-demo"
+    _make_code_only(ev)
+    cfg_code = R.load_eval(world.repo, ITEM)
+    assert cfg_code.judge is None and cfg_code.signal is False
+
+
+def test_load_eval_rejects_non_bool_signal(world):
+    ev = world.repo / "evals" / "eval-chanchi-demo"
+    toml = (ev / "eval.toml").read_text()
+    (ev / "eval.toml").write_text(toml.replace("\n[candidate]\n", '\nsignal = "true"\n\n[candidate]\n'))
+    with pytest.raises(R.RunnerError, match="must be a boolean"):
+        R.load_eval(world.repo, ITEM)
+
+
+def test_ledger_ids_unique_after_gaps_or_renumbering(world, capsys):
+    cfg = R.load_eval(world.repo, ITEM)
+    sha = R.tree_hash(world.repo / "skills" / ITEM)
+    c_sha = R.cases_sha(world.repo, cfg)
+    world.config(full_config())
+
+    # Preserved <item>-3 (gap where -1, -2 were discarded) -> next baseline rows are -4, -5, -6
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{ITEM}-3", item=ITEM, item_sha="oldsha", arm="with", verdict="baseline", median_pass="0.50",
+                   after="0.50", note=f"regression=1/1;cases_sha={c_sha};cases=cap-a:0.50",
+                   candidate=cfg.candidate_spec, runs="2"),
+    ])
+    code, _, err = world.run(capsys)
+    assert code == 0, err
+    ids = [r["id"] for r in world.ledger()]
+    assert ids == [f"{ITEM}-3", f"{ITEM}-4", f"{ITEM}-5", f"{ITEM}-6"]
+    assert len(ids) == len(set(ids))
+
+    # Renumbered <item>-1 -> next baseline rows are -2, -3, -4
+    world.config(full_config())
+    _write_ledger(world.repo, [
+        ledger_row(id=f"{ITEM}-1", item=ITEM, item_sha=sha, arm="with", verdict="baseline", median_pass="0.50",
+                   after="0.50", note=f"regression=1/1;cases_sha={c_sha};cases=cap-a:0.50",
+                   candidate=cfg.candidate_spec, runs="2"),
+    ])
+    code, _, err = world.run(capsys, "--arm", "both")
+    assert code == 0, err
+    ids = [r["id"] for r in world.ledger()]
+    assert ids == [f"{ITEM}-1", f"{ITEM}-2", f"{ITEM}-3", f"{ITEM}-4"]
+    assert len(ids) == len(set(ids))

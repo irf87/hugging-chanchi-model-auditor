@@ -91,6 +91,15 @@ def check_eval_layout(eval_dir: Path, root: Path = ROOT) -> dict:
 
     cand = cfg.get("candidate")
     assert isinstance(cand, dict), f"{rel}/eval.toml: missing [candidate] table. Add [candidate]."
+    assert "signal" not in cand, (
+        f"{rel}/eval.toml: 'signal' must be a top-level boolean placed before [candidate] "
+        "(never nested under [candidate]). Move 'signal = true|false' above [candidate]."
+    )
+    if "signal" in cfg:
+        assert isinstance(cfg["signal"], bool), (
+            f"{rel}/eval.toml: 'signal' must be a boolean (true or false). "
+            "Set 'signal = true' or 'signal = false'."
+        )
     for key in ("agent", "harness", "model", "effort"):
         _require_non_empty_str(cand, key, f"{rel}/eval.toml [candidate]")
 
@@ -419,3 +428,25 @@ def test_ledger_check_fails_when_item_changed(tmp_path):
     ledger = tmp_path / "evals" / "ledger.tsv"
     ledger.write_text("\t".join(LEDGER_COLUMNS) + "\n" + "\t".join(row) + "\n", encoding="utf-8")
     check_ledger(tmp_path)
+
+
+def test_layout_signal_key(tmp_path):
+    eval_dir = _build_valid_fixture(tmp_path, with_rubric=False)
+    toml_path = eval_dir / "eval.toml"
+    orig = toml_path.read_text(encoding="utf-8")
+
+    # Valid top-level signal = true and signal = false placed before [candidate]
+    for val in ("true", "false"):
+        toml_path.write_text(orig.replace("\n[candidate]\n", f"\nsignal = {val}\n\n[candidate]\n"), encoding="utf-8")
+        cfg = check_eval_layout(eval_dir, tmp_path)
+        assert cfg["signal"] is (val == "true")
+
+    # Non-bool top-level signal = "yes" fails
+    toml_path.write_text(orig.replace("\n[candidate]\n", '\nsignal = "yes"\n\n[candidate]\n'), encoding="utf-8")
+    with pytest.raises(AssertionError, match="must be a boolean"):
+        check_eval_layout(eval_dir, tmp_path)
+
+    # Nested signal = true inside [candidate] fails
+    toml_path.write_text(orig + "signal = true\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="top-level boolean placed before \\[candidate\\]"):
+        check_eval_layout(eval_dir, tmp_path)

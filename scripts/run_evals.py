@@ -172,6 +172,7 @@ class EvalConfig:
     regression: list[str]
     capability: list[str]
     blind_allow: list[str]
+    signal: bool = False
 
     @property
     def cases(self) -> list[str]:
@@ -192,9 +193,15 @@ def load_eval(repo: Path, item: str) -> EvalConfig:
         cfg = tomllib.loads(toml_path.read_text(encoding="utf-8"))
         if item in (cfg.get("item"), cfg.get("name")):
             judge = cfg.get("judge") if (toml_path.parent / "rubric.md").is_file() else None
+            if "signal" in cfg:
+                if not isinstance(cfg["signal"], bool):
+                    raise RunnerError(f"{toml_path}: 'signal' must be a boolean (true or false)")
+                signal = cfg["signal"]
+            else:
+                signal = judge is not None
             return EvalConfig(toml_path.parent, cfg["name"], cfg["item"], cfg["candidate"], judge,
                               list(cfg.get("regression", [])), list(cfg.get("capability", [])),
-                              list(cfg.get("blind_allow", [])))
+                              list(cfg.get("blind_allow", [])), signal=signal)
     raise RunnerError(f"no eval for item {item!r} under {evals_root}. Create evals/eval-chanchi-<name>/ "
                       "(skill-chanchi-item-authoring).")
 
@@ -1146,6 +1153,17 @@ def regression_counts(note: str) -> tuple[int, int] | None:
     return (int(match.group(1)), int(match.group(2))) if match else None
 
 
+def max_ledger_suffix(rows: list[dict[str, str]], item: str) -> int:
+    """Highest numeric `<item>-<N>` suffix among existing ledger rows for `item`."""
+    prefix = f"{item}-"
+    suffixes = [
+        int(row_id[len(prefix):])
+        for r in rows
+        if r.get("item") == item and (row_id := r.get("id", "")).startswith(prefix) and row_id[len(prefix):].isdigit()
+    ]
+    return max(suffixes, default=0)
+
+
 def make_row(item: str, n: int, sha: str, arm: str, candidate: str, runs: int, median: float, *, verdict: str,
              note: str = "", hypothesis: str = "", change: str = "", before: str = "", delta: str = "") -> dict[str, str]:
     return {"id": f"{item}-{n}", "date": f"{utc_now():%Y-%m-%d}", "item": item, "item_sha": sha,
@@ -1346,7 +1364,7 @@ def cmd_run(ctx: Context, args: argparse.Namespace) -> int:
                     "trigger_runs": [r["run_id"] for r in trigger_results], "rows": {}, "ledger_ids": []}
     if full:
         rows = read_ledger(ledger_path)
-        counter = sum(1 for r in rows if r["item"] == cfg.item)
+        counter = max_ledger_suffix(rows, cfg.item)
         new_rows: list[dict[str, str]] = []
         if args.hypothesis:
             assert previous is not None
@@ -1692,7 +1710,7 @@ def cmd_signal(ctx: Context, args: argparse.Namespace) -> int:
         cand = cfg.candidate_spec
         current = current_with_row(rows, cfg.item, sha, candidate=cand, cases_sha=c_sha)
         without = baseline_without_row(rows, cfg.item, candidate=cand, cases_sha=c_sha)
-        entry: dict = {"in_signal": cfg.judge is not None,
+        entry: dict = {"in_signal": cfg.signal,
                        "judge": "none" if not cfg.judge else
                        f"{cfg.judge['harness']}:{cfg.judge['model']}:{cfg.judge['effort']}"}
         if cfg.judge:
@@ -1721,9 +1739,13 @@ def cmd_signal(ctx: Context, args: argparse.Namespace) -> int:
                if int(lesson.get("occurrences", 1)) >= 2 and lesson.get("target_kind") not in LESSON_CHECK_KINDS]
     lessons = {"met": not flagged, "flagged": flagged}
     scoped = [e for e in items_out.values() if e["in_signal"]]
-    met = lessons["met"] and all(e["calibrated"]["met"] and e["regression"]["met"] and e["capability"]["met"]
-                                 for e in scoped)
-    print(json.dumps({"items": items_out, "lessons": lessons, "met": met}))
+    met = bool(scoped) and lessons["met"] and all(
+        (True if e["calibrated"] is None else e["calibrated"]["met"])
+        and e["regression"]["met"] and e["capability"]["met"]
+        for e in scoped
+    )
+    print(json.dumps({"items": items_out, "lessons": lessons, "met": met,
+                      "reason": None if scoped else "no signal evals"}))
     return 0
 
 
