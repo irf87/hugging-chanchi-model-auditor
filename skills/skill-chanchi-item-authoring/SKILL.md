@@ -33,6 +33,30 @@ Never put a model in it: the orchestrator picks models with `chanchi recommend`.
 After editing a source, run `chanchi agents sync` (inside this repository: `uv run chanchi agents sync`),
 and `chanchi agents link --user` when `install: user`, then commit the source and the wrappers.
 
+## Eval source
+
+Every new `skill-chanchi-<n>` ships with `evals/eval-chanchi-<n>/` containing:
+
+- `eval.toml`: top-level keys `name = "eval-chanchi-<n>"`, `item = "skill-chanchi-<n>"`,
+  `regression = ["<case>"]`, `capability = ["<case>"]` (or `[]` initially), `blind_allow = [...]`,
+  and optional `signal = true|false` placed before `[candidate]`; `[candidate]` with `agent`,
+  `harness`, `model`, `effort`; and optional `[judge]` only when `rubric.md` exists.
+- `triggers.md`: `## Must load` and `## Must not load` bullet lists.
+- `cases/<case>/`: at least one case directory holding `prompt.md` (neutral wording, no blinded
+  words), `setup.sh` (creates starting state in the work directory), and `grade.py` (reads the
+  work directory path from `sys.argv[1]` and prints one JSON line per criterion:
+  `{"criterion": "<id>", "pass": true|false, "detail": "<text>"}`).
+
+## Hook source
+
+A harness hook lives under `hooks/hook-chanchi-<n>/` (never `.githooks/` or `.git/hooks/` — git
+hooks are not items). Minimal harness-agnostic layout:
+
+- An executable hook script (e.g. `hook.sh` or `check.sh`, `chmod +x`) that runs the repository's
+  check command and exits non-zero with a failure message naming both the rule and the fix when
+  the check fails.
+- A brief `README.md` stating when the harness invokes it and how it signals a block.
+
 ## Rule or check?
 
 Before adding a sentence that tells agents what they must do, ask whether a test, a ruff rule, a
@@ -46,4 +70,11 @@ Move detail to `docs/` or `references/` and link to it.
 
 ## Last step
 
-Run `scripts/check`. It must pass before the change is handed off.
+When given a direct request to create or rename an item in the current repository, author the item
+directly in the current working tree using sensible repository conventions — never commit, never
+stop merely because no separate brief file or branch name was supplied, and use existing repository
+checks when minimal repositories lack `scripts/check`.
+
+Run `scripts/check` when present; otherwise run the repository checks named in `AGENTS.md` (such as
+`python3 tests/check_items.py` and `chanchi agents sync --check`). Checks must pass before handing
+off, and the final message must list every file created or changed.
