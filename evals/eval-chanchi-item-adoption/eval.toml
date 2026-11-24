@@ -3,6 +3,7 @@ item = "skill-chanchi-item-adoption"
 regression = ["propose-new"]
 capability = ["retired-entry"]
 blind_allow = []
+signal = false
 
 [candidate]
 agent = "agent-chanchi-executor"
