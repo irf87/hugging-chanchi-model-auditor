@@ -4,7 +4,7 @@
 - **Change:** `cursor-harness`
 - **Accepted design:** `docs/designs/cursor-harness.md` (Audit 14, Round 2 — accepted)
 - **Brief:** `docs/designs/cursor-harness.brief.md`
-- **Status:** Draft — pending plan audit
+- **Status:** Draft — Revision 2 after Audit 15 Round 1
 
 ## Constraints
 
@@ -111,52 +111,76 @@ Execution order: S1 runs on a worktree branched from `main`, is audited by the o
 
 6. **Task 1.6 — `tests/test_harnesses.py`:**
    - Update `test_keys` to expect `("claude", "opencode", "agy", "cursor")`.
-   - Replace `"cursor"` unknown-harness sentinel in `test_unknown_harness_lists_valid_keys` with `"codex"`.
-   - In `test_launch_carries_permission_flags_and_add_dirs`, replace the catch-all `else:` with explicit `elif key == "opencode":` and `elif key == "cursor":` branches; for `"cursor"`, assert `"agent -p --trust --force "` in line, `"--add-dir \"/tmp/r1\""` and `"--add-dir \"/tmp/r2\""` (`count == 2`), `" -- "` before the prompt, and `line.endswith("< /dev/null")`.
+   - In `test_unknown_harness_lists_valid_keys`, replace all three `"cursor"` calls (`lines 109, 113, 115`: `launch`, `home_dir`, `available`) with `"codex"`.
+   - In `test_launch_carries_permission_flags_and_add_dirs` (`lines 73-96`), replace the catch-all `else:` with explicit `elif key == "opencode":` and `elif key == "cursor":` branches; for `"cursor"`, assert `"agent -p --trust --force "` in line, `"--add-dir \"/tmp/r1\""` and `"--add-dir \"/tmp/r2\""` (`count == 2`), `" -- "` before the prompt, and `line.endswith("< /dev/null")`.
    - Add unit tests for:
      - `launch("cursor", ...)` with and without `effort` (verifying `effort` is ignored and role prompt wraps `<prompt>` cleanly);
      - bracketed model override quoting (e.g. `claude-opus-4-8[context=1m,effort=high,fast=false]` is quoted via `_arg()`);
      - prompt escaping inside `launch("cursor", ...)` (quotes, `$`, backticks, backslashes, and leading `-`);
      - `harnesses.binary("cursor") == "agent"` and `available("cursor", which=...)` looking up `"agent"`;
      - `home_dir("cursor", env={"OPENCODE_CONFIG_DIR": "/oc", "XDG_CONFIG_HOME": "/xdg"}, home=HOME) == HOME / ".cursor"`;
+     - `installed("cursor", env={}, home=tmp_path)` (`False` before `(tmp_path / ".cursor").mkdir()`, `True` after);
      - `user_agent_path("cursor", "agent-chanchi-auditor", env={}, home=tmp_path) == tmp_path / ".cursor" / "agents" / "agent-chanchi-auditor.md"`.
 
 7. **Task 1.7 — `tests/test_agents_sync.py`:**
-   - Update `test_render_paths` (add `.cursor/agents/agent-chanchi-demo.md`), `test_sync_then_check_is_clean` (`len == 4`), `test_render_by_kind_and_render_wrapper` (include `"cursor"`), `_setup_two_sources` (create `home / ".cursor"`), `test_link_user_writes_only_user_install_and_records_manifest` (4 files, manifest length `4`, kinds `("claude", "opencode", "agy", "cursor")`), `test_link_user_conflict_writes_nothing` (also assert cursor file not written), `test_link_user_preserves_other_owners_and_roots_and_removes_cleanly` (`removed` counts `3 -> 4`, assert cursor file removed), and `test_link_user_skips_missing_harness_and_honours_opencode_config_dir` (expect `["opencode", "cursor"]` and `["cursor"]`, or create `.cursor` and add a separate cursor-skipped assertion — choose expecting `["opencode", "cursor"]` and `["cursor"]` so skipping Cursor is directly covered).
-   - Add `test_cursor_frontmatter_readonly_and_skill_line`: assert `readonly: true` is emitted for `profile="read-only"`, omitted for `profile="workspace-write"` and `profile="orchestrator"`, `name:` and `description:` and generated header appear, and `Before starting, load these skills: ...` is appended when skills are non-empty (and omitted when empty).
+   - Update existing assertions for the fourth harness:
+     - `test_render_paths` (`lines 33-37`): add `".cursor/agents/agent-chanchi-demo.md"`.
+     - `test_sync_then_check_is_clean` (`line 81`): `len(first["written"]) == 4`.
+     - `_setup_two_sources` (`lines 152-154`): also create `(home / ".cursor").mkdir(parents=True)`.
+     - `test_render_by_kind_and_render_wrapper` (`lines 172-177`): include `"cursor"` and `".cursor/agents/agent-chanchi-demo.md"`.
+     - `test_link_user_writes_only_user_install_and_records_manifest` (`lines 183-210`): add `cursor = home / ".cursor" / "agents" / "agent-chanchi-user.md"`, manifest count `line 200` (`3 -> 4`), kind tuple `line 204` (`("claude", "opencode", "agy", "cursor")`), and idempotent `again["unchanged"]`.
+     - `test_link_user_skips_missing_harness_and_honours_opencode_config_dir` (`lines 213-231`): keep `home` with only `.claude` and `.gemini`, keep `len(res["written"]) == 2` (`line 223`), and update `skipped_harnesses` to `["opencode", "cursor"]` (`line 222`) and `["cursor"]` (`line 229`) so skipping Cursor is directly covered.
+     - `test_link_user_conflict_writes_nothing` (`lines 269-270`): also assert `not (home / ".cursor" / "agents" / "agent-chanchi-user.md").exists()`.
+     - `test_link_user_preserves_other_owners_and_roots_and_removes_cleanly` (`lines 303, 312-315`): update both `removed` counts (`line 303`: `3 -> 4`, `line 312`: `3 -> 4`) and assert `not (home / ".cursor" / "agents" / "agent-chanchi-user.md").exists()`.
+   - Confirm `test_repository_wrappers_are_in_sync` (`line 127`) passes against all 24 committed wrappers (`6 agents x 4 harnesses`) after running `uv run chanchi agents sync`.
+   - Add `test_cursor_frontmatter_readonly_and_skill_line`: assert `readonly: true` is emitted for `profile="read-only"`, omitted for `profile="workspace-write"` and `profile="orchestrator"`, `name:`, `description:`, and the generated header appear, and `Before starting, load these skills: ...` is appended when skills are non-empty (and omitted when empty).
    - Add `test_cursor_wrappers_frontmatter`: check every committed `.cursor/agents/agent-chanchi-*.md` has valid `---` frontmatter with `# generated by chanchi agents sync ...`, `name: {stem}`, `description: `, non-empty body, and `readonly: true` iff the corresponding source `agents/{stem}/AGENT.md` has `profile: read-only`.
 
 8. **Task 1.8 — `tests/test_taxonomy.py`, `tests/test_modelspec.py`, `tests/test_sync.py`, `tests/test_skills_link.py`:**
-   - `tests/test_taxonomy.py`: update expected `described["agents"]` to `["claude", "agy", "opencode", "cursor"]`.
-   - `tests/test_modelspec.py`: replace `"cursor:gpt"` invalid-agent test with `"codex:gpt"`, and add a valid parse test for `"cursor:gpt-5.4-high"` and `"cursor:auto"`.
-   - `tests/test_sync.py`: replace `"cursor"` unknown-harness sentinel with `"codex"`, update expected `valid_values` to `["claude", "opencode", "agy", "cursor"]`, and add a test confirming `harness = "cursor"` with `model = "gpt-5.4-high"` is accepted in `auditors.toml`.
+   - `tests/test_taxonomy.py` (`line 221`): update expected `described["agents"]` to `["claude", "agy", "opencode", "cursor"]`.
+   - `tests/test_modelspec.py` (`lines 51-52`): replace `"cursor:gpt"` invalid-agent sentinel with `"codex:gpt"`, update `info.value.valid_values` (`line 52`) to `["claude", "agy", "opencode", "cursor", "human"]`, and add valid parse tests for `"cursor:gpt-5.4-high"` and `"cursor:auto"`.
+   - `tests/test_sync.py` (`lines 111, 115`): replace `"cursor"` unknown-harness sentinel with `"codex"`, update expected `valid_values` to `["claude", "opencode", "agy", "cursor"]`, and add a test confirming `harness = "cursor"` with `model = "gpt-5.4-high"` is accepted in `auditors.toml`.
    - `tests/test_skills_link.py`: in `test_skill_targets_follow_the_installed_harnesses`, add assertion that `skills_link.skill_targets(home, ["x"], source, installed=only("cursor"))` emits only `["skill-primary"]` under `.agents/skills/` (no duplicate `.cursor/skills/`).
 
 9. **Task 1.9 — `tests/test_inventory.py` & `tests/test_mirror.py`:**
-   - `tests/test_inventory.py`: update `DEFAULT_ROOTS` (9 folders including `.cursor/skills` and `.cursor/agents`) and `AGENT_FILE_ROOTS` (add `".cursor/agents"`). Add a test verifying `inventory.walk` discovers `.cursor/skills/<name>/SKILL.md` (kind `skill`), `.cursor/agents/<name>.md` (kind `agent`), and skips generated `.cursor/agents/agent-chanchi-*.md` as `"generated"`.
-   - `tests/test_mirror.py`: add `".cursor"` to `world` fixture and `self.home / ".cursor" / "agents" / f"{name}.md"` to `World.agent_paths()` (with `cursor=True` toggle); update kind set assertion (`line 135`: add `"cursor"`), `test_no_installed_harness_writes_nothing` (`lines 160-164`: also `shutil.rmtree(world.home / ".cursor")` and expect `["claude", "opencode", "agy", "cursor"]`), hardcoded entry counts (`6 -> 7` on `lines 182, 486, 493`), and `index` parametrization (`[0, 1, 2, 3]` on `line 244`). Add a test confirming missing `~/.cursor` reports `skipped_harnesses == ["cursor"]` and writes no `.cursor` directory.
+   - `tests/test_inventory.py`: rename `test_defaults_are_the_seven_roots_in_order` (`line 117`) to `test_defaults_are_the_nine_roots_in_order`, update `DEFAULT_ROOTS` (9 folders including `.cursor/skills` and `.cursor/agents`) and `AGENT_FILE_ROOTS` (add `".cursor/agents"`). Add a test verifying `inventory.walk` discovers `.cursor/skills/<name>/SKILL.md` (kind `skill`), `.cursor/agents/<name>.md` (kind `agent`), and skips generated `.cursor/agents/agent-chanchi-*.md` as `"generated"`.
+   - `tests/test_mirror.py`: add `".cursor"` to `world` fixture and `self.home / ".cursor" / "agents" / f"{name}.md"` to `World.agent_paths()` (with `cursor=True` toggle); update kind set assertion (`line 135`: add `"cursor"`), `test_no_installed_harness_writes_nothing` (`lines 160-164`: also `shutil.rmtree(world.home / ".cursor")` and expect `["claude", "opencode", "agy", "cursor"]`), hardcoded entry counts (`6 -> 7` on `lines 182, 486, 493`), and `index` parametrization (`[0, 1, 2, 3]` on `line 244`). Add tests confirming: (a) missing `~/.cursor` reports `skipped_harnesses == ["cursor"]` and writes no `.cursor` directory; (b) hand-editing `~/.cursor/agents/<name>.md` fails `world.run(check=True)` with `stale_wrappers`, normal `world.run()` repairs it, and `world.run(remove=True)` removes `~/.cursor/agents/<name>.md`.
 
 10. **Task 1.10 — `tests/test_audits.py`:**
-    - Add a Cursor auditor-seat test using a dedicated `which_with("claude", "agy", "agent")` lookup (leaving `ON_PATH` untouched for existing tests) with a custom roster containing `{"harness": "cursor", "model": "gpt-5.4-high", "effort": None}` (and catalog row `cursor:gpt-5.4-high` with inferred family `openai`): assert seat is assigned with `family == "openai"`, `degraded is False`, and `launch` equals:
+    - Add a Cursor auditor-seat test using a dedicated `which_with("claude", "agy", "agent")` lookup (leaving `ON_PATH` untouched for existing tests), adding catalog row `cursor:gpt-5.4-high` (inferred family `openai`), and passing the explicit roster `[*sync.BUILTIN_ROSTER, {"harness": "cursor", "model": "gpt-5.4-high", "effort": None}]` (`opencode` drops out via `which`, so seats 1–3 are `anthropic`, `google`, `openai`): assert the Cursor seat is assigned with `family == "openai"`, `degraded is False`, and `launch` equals:
       `'agent -p --trust --force --model gpt-5.4-high --add-dir "<report-dir>" -- "Follow the agent-chanchi-auditor role (.cursor/agents/agent-chanchi-auditor.md or ~/.cursor/agents/agent-chanchi-auditor.md): <prompt>" < /dev/null'`.
-    - Add a test where `"agent"` is absent from `which` while `"cursor"` is on `which` (simulating Cursor desktop without CLI): assert the seat is skipped with `reason == "not_on_path"` and `hint == "install agent (cursor) or put it on PATH"`.
+    - Add a test where `"agent"` is absent from `which` while `"cursor"` is on `which` (`which_with("claude", "agy", "cursor")`, simulating Cursor desktop without CLI): assert the Cursor seat is skipped with `reason == "not_on_path"` and `hint == "install agent (cursor) or put it on PATH"`.
 
 ### S1 Verification Commands (exact)
 
-Run inside `.claude/worktrees/chanchi-cursor-s1` with scratch `CHANCHI_DB`, scratch `CHANCHI_SYNC`, and scratch `HOME`:
+Run inside `.claude/worktrees/chanchi-cursor-s1` using `uv run chanchi` (never bare `chanchi`, because the editable `PATH` shim points to `main` until S1 merges) with scratch `CHANCHI_DB`, scratch `CHANCHI_SYNC`, and scratch `HOME`:
 
 1. `scripts/check` (must report `All checks passed!` and all pytest tests passing)
 2. `uv run chanchi agents sync --check` (lists all 6 agents and all 24 wrappers in `unchanged`)
-3. Scratch `FEATURE_MAP.md` verification for `taxonomy`, `models`, `agents` (`link --user` / `--check` / `--remove` with `$scratch_home/.cursor`), `audit` (scratch `auditors.toml` with `harness = "cursor"`, `models add --agent cursor --model gpt-5.4-high --cost 2`), `project items-dirs`, and `items scan` / `items mirror` (with `.cursor/skills`, `.cursor/agents`, and `$scratch_home/.cursor`).
+3. Scratch `FEATURE_MAP.md` verification using `uv run chanchi`:
+   - `uv run chanchi taxonomy list` (`agents` contains `"cursor"`)
+   - `uv run chanchi models add --agent cursor --model gpt-5.4-high --cost 2` (`family` inferred as `openai`) and `uv run chanchi models add --agent cursor --model auto --cost 1` (`family` is `null`)
+   - `HOME="$scratch_home" OPENCODE_CONFIG_DIR= XDG_CONFIG_HOME= uv run chanchi agents link --user` (with `$scratch_home/.cursor` created), `--check`, and `--remove`
+   - Scratch `CHANCHI_SYNC/config/auditors.toml` containing `harness = "cursor"`, `model = "gpt-5.4-high"` -> `uv run chanchi audit open` prints the Cursor `launch` line
+   - `uv run chanchi project items-dirs` (lists 9 defaults including `.cursor/skills` and `.cursor/agents`), `uv run chanchi items scan` (discovers `.cursor/skills/` and `.cursor/agents/`), and `uv run chanchi items mirror` / `--check` / `--remove` against `$scratch_home/.cursor`.
 
 ---
 
 ## Pre-Merge Orchestrator Live Verification (after S1 audit, before merging S1 to `main`)
 
-Executed by the orchestrator in `.claude/worktrees/chanchi-cursor-s1` before `git merge --no-ff feat/cursor-harness-core`:
+Executed by the orchestrator from `.claude/worktrees/chanchi-cursor-s1` before `git merge --no-ff feat/cursor-harness-core`:
 
-- **Smoke 3a (generated wrapper subagent parsing):** Run one headless `agent -p --trust --output-format stream-json` command from `.claude/worktrees/chanchi-cursor-s1` asking which `agent-chanchi-*` subagents appear in `<available_subagent_types>`, confirming Cursor's parser accepts the `# generated by chanchi ...` first frontmatter line and `readonly: true`.
-- **Smoke 3b (generated launch line + consumer-project `~/.cursor/agents/` read path):** In a scratch consumer git repo *without* `.cursor/agents/` and a scratch `HOME` or user `~/.cursor/agents/agent-chanchi-auditor.md` (linked via `chanchi agents link --user` or temporary test copy cleaned up immediately if using real `~/.cursor` — prefer checking whether `agent` respects `HOME` or test with `chanchi agents link --user` after checking conflict safety), run the exact `launch` line emitted by `chanchi audit open` for `cursor:auto` (with `<report-dir>` substituted and a minimal brief asking it to write `VERDICT: PASS` to `<report-dir>/smoke.md` without editing workspace files). Verify exit 0, `<report-dir>/smoke.md` starts with `VERDICT: PASS`, and `git status` in the scratch repo is clean. If Cursor blocks reading `~/.cursor/agents/<agent>.md` outside workspace roots, fix `harnesses.py` (e.g. adding `--add-dir` or documenting the constraint) and re-run `scripts/check` before merging S1.
+- **Smoke 3a (generated wrapper subagent parsing):** Run one headless `agent -p --trust --output-format stream-json` command with `cwd` = `.claude/worktrees/chanchi-cursor-s1` asking which `agent-chanchi-*` subagents appear in `<available_subagent_types>`, confirming Cursor's YAML parser accepts the `# generated by chanchi ...` first frontmatter line and `readonly: true` on the real generated `.cursor/agents/agent-chanchi-*.md` files.
+- **Smoke 3b (generated launch line + consumer-project `~/.cursor/agents/` read path):**
+  1. Using a scratch `CHANCHI_DB`, scratch `CHANCHI_SYNC`, and scratch `HOME` (`$scratch_home/.cursor` created), run from `.claude/worktrees/chanchi-cursor-s1`:
+     - `uv run chanchi models add --agent cursor --model auto --cost 1`
+     - Write `$CHANCHI_SYNC/config/auditors.toml` with `harness = "cursor"`, `model = "auto"` (plus two other catalog rows so quorum >= 2 holds)
+     - `uv run chanchi audit open --kind other --ref smoke-cursor --author agy:gemini-4-neon-high:high --commit HEAD` and extract the exact `launch` line for the `cursor:auto` seat.
+     - `HOME="$scratch_home" OPENCODE_CONFIG_DIR= XDG_CONFIG_HOME= uv run chanchi agents link --user` (populating `$scratch_home/.cursor/agents/agent-chanchi-auditor.md`).
+  2. Create a scratch consumer git repo *without* `.cursor/agents/` and a scratch `<report-dir>`. Run the extracted `launch` line from that consumer repo with `HOME="$scratch_home"` (substituting `<report-dir>` and a minimal prompt asking the auditor to write `VERDICT: PASS` to `<report-dir>/smoke.md` without editing workspace files).
+  3. **Fallback only if `agent` fails login/auth under scratch `HOME`** (because Cursor stores auth under real `~/.cursor`): re-run with real `HOME` after verifying `~/.cursor/agents/agent-chanchi-auditor.md` does not already exist, installing it via `uv run chanchi agents link --user` against scratch `CHANCHI_DB`, running the extracted `launch` line from the scratch consumer repo, and immediately running `uv run chanchi agents link --user --remove` (same scratch `CHANCHI_DB`) and asserting `~/.cursor/agents/agent-chanchi-auditor.md` is gone.
+  4. **Pass criteria:** exit 0, `<report-dir>/smoke.md` starts with `VERDICT: PASS`, and `git status --porcelain` in the scratch consumer repo is empty.
+  5. **Failure contingency:** if Cursor blocks reading `~/.cursor/agents/<agent>.md` outside workspace roots, do **not** edit code inline as orchestrator; dispatch an S1 fix/retry updating `harnesses.py`, `tests/test_harnesses.py`, `tests/test_audits.py` (and amend `docs/designs/cursor-harness.md` if the launch contract changes), re-run `scripts/check` and Smoke 3b, and only merge S1 once both pass.
 
 ---
 
@@ -216,4 +240,4 @@ Run inside `.claude/worktrees/chanchi-cursor-s2`:
 1. After S2 merges to `main`, run `uv run chanchi agents link --user` and `uv run chanchi agents link --user --check` so `~/.cursor/agents/agent-chanchi-auditor.md` and `~/.cursor/agents/agent-chanchi-item-builder.md` are installed on this machine.
 2. Remove temporary worktrees (`.claude/worktrees/chanchi-cursor-s1`, `.claude/worktrees/chanchi-cursor-s2`) after merging both branches.
 3. Close the change (`chanchi change close cursor-harness`) and print `chanchi show cursor-harness`.
-4. Give the owner a one-line prompt to test `~/.cursor/agents/agent-chanchi-auditor.md` in the Cursor desktop app.
+4. Give the owner a one-line prompt to test `~/.cursor/agents/agent-chanchi-auditor.md` in the Cursor desktop app and a resume prompt for the next session.
