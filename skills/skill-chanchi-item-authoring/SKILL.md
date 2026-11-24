@@ -17,7 +17,7 @@ this and fails when an operational file names an item that does not exist.
 
 | Item | Source | Notes |
 |---|---|---|
-| agent | `agents/agent-chanchi-<n>/AGENT.md` | wrappers are generated; never edit `.claude/agents`, `.opencode/agents` or `.agents/agents` by hand |
+| agent | `agents/agent-chanchi-<n>/AGENT.md` | wrappers are generated; never edit `.claude/agents`, `.opencode/agents`, `.agents/agents` or `.cursor/agents` by hand |
 | skill | `skills/skill-chanchi-<n>/SKILL.md`, optional `references/` | linked into projects by `chanchi skills link` |
 | eval | `evals/eval-chanchi-<item>/` | phase 2: from then on every new skill ships with at least one eval case |
 | hook | `hooks/hook-chanchi-<n>/` | a harness hook; git hooks are not items |

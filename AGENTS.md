@@ -17,10 +17,11 @@ restates or overrides these rules (`tests/test_agent_rules.py` guards this).
 | Claude Code | Does not read `AGENTS.md`; `CLAUDE.md` imports it with `@AGENTS.md` | claude canary test, 2026-11-20 |
 | opencode | Natively; never reads `CLAUDE.md`, even when `AGENTS.md` is missing | opencode 2.2.6 canary test, 2026-11-20 |
 | Codex | Natively | documented |
+| Cursor (agent CLI) | Natively | agent 2026.11.22-e9042b2 canary test, 2026-11-23 |
 
 Do not add a `GEMINI.md`: Antigravity already loads `AGENTS.md`, so it would only
 add a second, drifting source. Skills are exposed per harness by
-`chanchi skills link`: `.agents/skills/` (opencode, agy) and `.claude/skills/`
+`chanchi skills link`: `.agents/skills/` (opencode, agy, Cursor) and `.claude/skills/`
 (Claude Code).
 
 ## Purpose
@@ -117,18 +118,18 @@ design), with their reviews in `docs/designs/reviews/<topic>/`. The first design
 - When delegating to another harness, use unique agent names, isolate work in a
   git worktree, and point `CHANCHI_DB` at a scratch database so tests never touch
   the operational one. Delegated agents run unattended with their harness's
-  auto-approval flags: agy (`--dangerously-skip-permissions`) and opencode (`--auto`)
-  always; headless claude (`claude -p`) with `--permission-mode acceptEdits
+  auto-approval flags: agy (`--dangerously-skip-permissions`), opencode (`--auto`) and
+  Cursor (`--trust --force`) always; headless claude (`claude -p`) with `--permission-mode acceptEdits
   --allowedTools` naming `Bash` and the tools its profile needs, never
   `--dangerously-skip-permissions`; interactive claude with
   `--dangerously-skip-permissions` only in another terminal pane such as a herdr
   pane, never as an in-process subagent. `harnesses.launch` builds the headless
   lines and `tests/test_harnesses.py` enforces them; confirm a flag in the CLI's
-  `--help`. The owner authorized the skip flags (2026-11-22) and the headless claude
-  tool grant (2026-11-23); this is not bypassing a rule, because a permission prompt
-  would stop the flow. These flags remove prompts, not limits: the agent still works
-  only in its worktree with a scratch database, and the orchestrator checks that on
-  handoff.
+  `--help`. The owner authorized the skip flags (2026-11-22), Cursor's `--trust --force`
+  (2026-11-23) and the headless claude tool grant (2026-11-23); this is not bypassing a
+  rule, because a permission prompt would stop the flow. These flags remove prompts, not
+  limits: the agent still works only in its worktree with a scratch database, and the
+  orchestrator checks that on handoff.
 - External research (repositories, posts, papers) is adapted, never adopted wholesale: rarely
   does anything cover our goal completely. Verify each claim at its primary source before relying
   on it, and give every design that uses external sources an "Adopt / Adapt / Avoid" section that

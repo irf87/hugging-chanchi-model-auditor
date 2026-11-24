@@ -120,7 +120,7 @@ For `agents link --user`, set a scratch `HOME` and scratch `CHANCHI_DB` (never t
 
     export CHANCHI_DB="$(mktemp -d)/chanchi.db"
     scratch_home="$(mktemp -d)"
-    mkdir -p "$scratch_home/.claude" "$scratch_home/.gemini"
+    mkdir -p "$scratch_home/.claude" "$scratch_home/.gemini" "$scratch_home/.cursor"
 
 ### Driving it
     chanchi agents sync --check <repo>
@@ -130,8 +130,8 @@ For `agents link --user`, set a scratch `HOME` and scratch `CHANCHI_DB` (never t
 
 ### Evidence
 `agents sync --check` returns `ok: true` with `agents` listing each compiled `agent-chanchi-*`, empty
-`written` and `removed`, and all generated `.claude/agents/`, `.opencode/agents/` and
-`.agents/agents/` wrappers listed in `unchanged`.
+`written` and `removed`, and all generated `.claude/agents/`, `.opencode/agents/`,
+`.agents/agents/` and `.cursor/agents/` wrappers listed in `unchanged`.
 `agents link --user` compiles sources with `install: user` into installed user harness folders
 (reporting `written`, `unchanged`, `removed`, `conflicts`, and missing harnesses in `skipped_harnesses`)
 and records ownership in `mirror.json` next to `CHANCHI_DB`; `--check` verifies without writing;
@@ -303,7 +303,7 @@ Covered by: tests/test_scoring.py, tests/test_cli.py, tests/test_cli_integration
 `project register` returns `project.slug` `scratch`; `project list` and `project show` report its
 `locators`, `writers` and `lessons`; `project writers --set` sets `roles` to
 `["planner", "orchestrator"]`; `project relink` confirms `locator` is linked to `scratch`.
-`project items-dirs` prints `project` `scratch`, the seven scanned-by-default folders in `defaults` and `dirs`
+`project items-dirs` prints `project` `scratch`, the nine scanned-by-default folders in `defaults` and `dirs`
 `[]`; `--add docs/agents` prints `added` `true` and `dirs` `["docs/agents"]`, the same command again prints
 `added` `false`; `--add ../outside` fails with `invalid_value`, `field` `path`; `--remove docs/agents` prints
 `removed` `true` and `dirs` `[]`.
@@ -473,7 +473,7 @@ Covered by: tests/test_sync.py, tests/test_cli.py
     printf -- '---\nname: agent-chanchi-global-demo\ndescription: Demo agent.\nscope: both\nprofile: read-only\nskills: [skill-chanchi-global-demo]\nversion: 0.1.0\nstatus: draft\n---\n\n# Demo\n\nState your agent name.\n' > "$item/AGENT.md"
     printf -- '# Changelog\n\n## 0.1.0 — 2026-11-22\n\n- First draft.\n' > "$item/CHANGELOG.md"
     scratch_home="$(mktemp -d)"   # `items mirror` writes user folders: never run it against the real home
-    mkdir -p "$scratch_home/.claude" "$scratch_home/.config/opencode" "$scratch_home/.gemini/antigravity-cli"
+    mkdir -p "$scratch_home/.claude" "$scratch_home/.config/opencode" "$scratch_home/.gemini/antigravity-cli" "$scratch_home/.cursor"
     # `items scan` reads registered projects: two scratch git repositories, registered from inside each
     proj_a="$(mktemp -d)/project-a" && mkdir -p "$proj_a" && git -C "$proj_a" init -q
     proj_b="$(mktemp -d)/project-b" && mkdir -p "$proj_b" && git -C "$proj_b" init -q
@@ -554,8 +554,9 @@ passes. `items retire` rewrites the status to `retired` and appends `{name, vers
 reason}` to `ITEMS/retired.json` (created when missing); `items list` then shows `retired` `true`.
 `items mirror` on drafts prints empty `written`, `unchanged` and `removed`, `conflicts` `[]` and `items` `[]`. After
 both items are published it prints `written` (the skill's primary `.agents/skills/<name>` link, its relative
-`.claude/skills` and `.gemini/antigravity-cli/skills` links, and the agent file for claude, opencode and agy at
-`.gemini/config/agents/<name>/agent.md`), `unchanged` `[]`, `skipped_harnesses` `[]` and both names in `items`;
+`.claude/skills` and `.gemini/antigravity-cli/skills` links, the agent file for claude, opencode and agy at
+`.gemini/config/agents/<name>/agent.md`, and the Cursor agent file at `~/.cursor/agents/<name>.md`),
+`unchanged` `[]`, `skipped_harnesses` `[]` and both names in `items`;
 `mirror.json` next to `$CHANCHI_DB` then holds one `{owner: "items-mirror", item, kind, path, link|sha256}` entry
 per path. After the hand edit, `mirror --check` fails with `stale_wrappers` and the edited path in
 `details.stale`; `mirror` lists only that path in `written` and `mirror --check` then passes with every path in
@@ -606,12 +607,13 @@ Covered by: tests/test_items_global.py, tests/test_audits.py, tests/test_agents_
   (`unknown_audit`), an audit that is not an `item` audit of this name (`invalid_value`, `field` `audit`), a last
   round that is not `accepted` at the item's current `<version>@<draft hash>` (`invalid_transition`: any edit
   after the audit needs a new round or a new version).
-- `items scan` is read-only on projects and needs no `SYNC`. It reads the seven default folders (`.agents/skills`,
-  `.claude/skills`, `.opencode/skills`, `agents`, `.claude/agents`, `.opencode/agents`, `.agents/agents`) and the
+- `items scan` is read-only on projects and needs no `SYNC`. It reads the nine default folders (`.agents/skills`,
+  `.claude/skills`, `.opencode/skills`, `.cursor/skills`, `agents`, `.claude/agents`, `.opencode/agents`,
+  `.agents/agents`, `.cursor/agents`) and the
   folders added with `project items-dirs --add`, at most 4 directory levels deep, never through a symbolic link
   and never into a name starting with `.` or `node_modules`. A directory holding `SKILL.md` is a skill, one
   holding `AGENT.md` (or `agent.md` directly under `.agents/agents`) an agent, and each `*.md` directly in
-  `.claude/agents` or `.opencode/agents` a single-file agent. `skipped` lists links (`symlink`), files that
+  `.claude/agents`, `.opencode/agents` or `.cursor/agents` a single-file agent. `skipped` lists links (`symlink`), files that
   `chanchi agents sync` generated (`generated`) and files that are not UTF-8 (`unreadable`). Only the
   fingerprint (`sha256`, `lines`) and the frontmatter `description` reach the database. A registered project whose
   folder is gone is listed under `missing` and keeps its rows. `--project <slug>` limits the scan to one registered
