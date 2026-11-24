@@ -94,7 +94,7 @@ Approved phase-2 ceiling: **300 headless runs** (owner decision 2026-11-23).
 | G1b smoke (`agy:claude-sonnet-5-5-low` + `agy:gemini-4-hydrogen-high`) | 3 | 1 capability + 1 judge + 1 trigger |
 | Rev-5 G2 baselines (4 skills, with judges & triggers) | 32 | Valid `triggers` & `item-adoption` rows reused in Rev 6 |
 | Rev-5 G3 calibration collection (before Option B pivot) | 32 | Unused sheets under `~/.local/share/chanchi/evals/` removed |
-| Rev-6 code-only G2 baselines (`session-audit`, `lessons`, `item-authoring`) | 11 | Reused 16 cached `triggers` + 3 `item-adoption` rows |
+| Rev-6 code-only G2 baselines (`session-audit`, `lessons`, `item-authoring`) | 11 | Reused 12 cached signal-skill trigger runs (3 rows) + 7 `item-adoption` runs (3 rows) |
 | G4 hill climb on `skill-chanchi-item-authoring` | 13 | 1 aborted on quota reset + 6 draft H1 + 6 clean H1 after Audit 18 R1 |
 | **Total spent** | **~251 / 300** | **~49 runs under budget** (0 Claude CLI eval runs spent in Rev 5/6) |
 
@@ -104,4 +104,5 @@ Approved phase-2 ceiling: **300 headless runs** (owner decision 2026-11-23).
 - Audit 16 (design Rev 3 + plan Rev 5 eval cost-cut, 2 rounds, `accepted`, 3/3 approvals, `degraded: false`)
 - Audit 17 (design Rev 4 + plan Rev 6 code-only phase-2 evals, 2 rounds, `accepted`, 3/3 approvals, `degraded: false`)
 - Audit 18 (`skill-chanchi-item-authoring` G4 edit, 2 rounds, `accepted`, 3/3 `PASS`, `degraded: false`)
-- Phase 2 closeout reconciliation audit: recorded in `phase2-close-round*-*.md` in this folder.
+- Audit 19 (phase-2 closeout reconciliation, 1 round, `accepted`, 3/3 approvals across `anthropic`,
+  `google`, `tencent`, `degraded: false`): recorded in `phase2-close-round1-*.md` in this folder.

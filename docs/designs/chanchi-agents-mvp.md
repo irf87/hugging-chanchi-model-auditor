@@ -14,8 +14,9 @@
   signal (`signal = false`) and Condition 4 (lessons) met (`flagged: []`; evidence in
   [phase2-exit.md](reviews/chanchi-agents-mvp/phase2-exit.md)). Phase 3 (safe parallelism) next.
 - **Date:** 2026-11-21
-- **Revision:** 5 (2026-11-24, phase-2 closeout reconciliation of remaining plan adaptations D3,
-  D4, D6, D10, D11, D16, D19, D20, D21 and Phase 2 exit status; see
+- **Revision:** 5 (2026-11-24, accepted in chanchi audit 19 round 1 — 3/3 approvals across
+  `anthropic`, `google`, `tencent`; phase-2 closeout reconciliation of remaining plan adaptations
+  D3, D4, D6, D10, D11, D16, D19, D20, D21 and Phase 2 exit status; see
   [phase2-exit.md](reviews/chanchi-agents-mvp/phase2-exit.md). Revision 4 was accepted in chanchi
   audit 17 round 2 — 3/3 approvals across `anthropic`, `google`, `tencent`; see
   [chanchi-agents-mvp-code-only-phase2](reviews/chanchi-agents-mvp-code-only-phase2/): owner
@@ -327,7 +328,7 @@ model family than the candidate. The runner remains harness-agnostic (`claude` a
 
 ### One run
 
-1. **Isolate.** Copy the case into a new directory `<tmp>/work-<8 hex>` under the system temp dir
+1. **Isolate.** Copy the case into a new directory `W` = `<tmp>/work-<8 hex>` under the system temp dir
    with a neutral name. `prompt.md` never contains a blinded word (`eval`, `test`, `judge`,
    `experiment`, `rubric`, `score`, `compare`, `benchmark`, `candidate` or `arena`, as a word or
    word prefix, any case; pstack `eval.md`); `setup.sh` and case fixtures may hold a blinded word

@@ -41,8 +41,9 @@ the ledger (and calibration files when an eval opts into a judge), never from an
 
 **Spec:** `docs/designs/chanchi-agents-mvp.md` (Revision 5, reconciled at G5), sections *Layer 2:
 skills tested by evals*, *Repeated corrections become checks*, *Adoption plan* (phase 2) and
-*Verification plan*. All plan adaptations (D1–D23) are folded into Revision 5 of the design so
-design and shipped code agree.
+*Verification plan*. All design-affecting plan adaptations are folded into Revision 5 of the design
+so design and shipped code agree (D13 and D18 remain plan-internal execution details that the
+design does not contradict).
 
 **Tech stack:** Python ≥ 3.11 standard library, pytest and ruff (dev only), uv.
 
