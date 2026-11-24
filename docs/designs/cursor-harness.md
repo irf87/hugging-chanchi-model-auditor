@@ -1,6 +1,6 @@
 # Cursor Harness Support — Design
 
-- **Status:** Draft — Revision 2 after Audit 14 Round 1 (2026-11-23)
+- **Status:** Accepted (Audit 14, Round 2 — 2026-11-23)
 - **Brief:** `docs/designs/cursor-harness.brief.md`
 - **Reference design:** `docs/designs/global-items.md` ("Harness adapters"), `docs/designs/chanchi-agents-mvp.md`
 
@@ -203,7 +203,7 @@ Primary sources inspected on 2026-11-23: local `agent --help` and `agent --list-
      - Split the catch-all `else:` branch in parametrized `test_launch_carries_permission_flags_and_add_dirs` (`lines 73–96`) into explicit `elif key == "opencode":` and `elif key == "cursor":` branches asserting `--trust --force`, `--add-dir` quoting, and `< /dev/null`.
      - Add unit tests for `launch("cursor", ...)` (with/without effort, bracketed model override quoting like `claude-opus-4-8[context=1m,effort=high,fast=false]`, prompt/agent escaping after `--`, repeatable `--add-dir`), `binary("cursor") == "agent"`, `home_dir("cursor")` including with `XDG_CONFIG_HOME` and `OPENCODE_CONFIG_DIR` set, `user_agent_path("cursor", ...)`, `installed("cursor")`, and `available("cursor")` looking up `"agent"`.
    - `tests/test_agents_sync.py`:
-     - Update wrapper count/path assertions (`3 -> 4`), kind set assertion (`line 204`: add `"cursor"`), and `_setup_two_sources` (add `.cursor`).
+     - Update wrapper count/path assertions (`3 -> 4`), kind set assertion (`line 204`: add `"cursor"`), `_setup_two_sources` (add `.cursor`), and `test_link_user_skips_missing_harness_and_honours_opencode_config_dir` (`lines 213–231`: create `home / ".cursor"` or expect `"cursor"` in `skipped_harnesses`).
      - Add `_cursor` frontmatter/body tests (`readonly: true` on `read-only`, omitted on `workspace-write`/`orchestrator`, `Before starting, load these skills:` appended when skills present), `link_user` tests with and without `~/.cursor`, and `test_cursor_wrappers_frontmatter` checking committed `.cursor/agents/agent-chanchi-*.md` files (mirroring `test_claude_wrappers_frontmatter`).
      - `test_repository_wrappers_are_in_sync` checks all four harnesses including committed `.cursor/agents/agent-chanchi-*.md`.
    - `tests/test_taxonomy.py` & `tests/test_modelspec.py`: update `AGENTS` expectation; replace `"cursor:gpt"` invalid-agent sentinel with `"codex:gpt"` and verify `parse("cursor:gpt-5.4-high")` succeeds.
