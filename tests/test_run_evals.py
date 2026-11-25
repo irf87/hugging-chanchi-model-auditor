@@ -1710,3 +1710,198 @@ def test_ledger_ids_unique_after_gaps_or_renumbering(world, capsys):
     ids = [r["id"] for r in world.ledger()]
     assert ids == [f"{ITEM}-1", f"{ITEM}-2", f"{ITEM}-3", f"{ITEM}-4"]
     assert len(ids) == len(set(ids))
+
+
+# ---------------------------------------------------------------- scratch keychain (agy on macOS)
+
+FAKE_SECURITY = r'''#!__PYTHON__
+import json, os, sys
+from pathlib import Path
+
+here = Path(__file__).resolve().parent
+cfg_path = here / "sec_config.json"
+cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
+calls_path = here / "sec_calls.jsonl"
+argv = sys.argv[1:]
+cmd = argv[0] if argv else ""
+
+with calls_path.open("a") as handle:
+    handle.write(json.dumps({"cmd": cmd, "argv": argv, "home": os.environ.get("HOME"), "path": os.environ.get("PATH")}) + "\n")
+
+if cfg.get("fail_on") == cmd:
+    if cfg.get("stdout"):
+        sys.stdout.write(cfg["stdout"])
+    if cfg.get("stderr"):
+        sys.stderr.write(cfg["stderr"])
+    sys.exit(cfg.get("exit_code", 1))
+
+if cmd == "create-keychain":
+    kc = Path(argv[-1])
+    kc.parent.mkdir(parents=True, exist_ok=True)
+    kc.write_bytes(b"fake-keychain")
+elif cmd == "delete-keychain":
+    kc = Path(argv[-1])
+    if kc.exists():
+        kc.unlink()
+sys.exit(0)
+'''
+
+
+def _install_fake_security(bin_dir: Path, fail_on: str | None = None, stderr: str = "") -> Path:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    sec = bin_dir / "security"
+    sec.write_text(FAKE_SECURITY.replace("__PYTHON__", sys.executable))
+    sec.chmod(0o755)
+    cfg = {}
+    if fail_on:
+        cfg = {"fail_on": fail_on, "exit_code": 1, "stderr": stderr}
+    (bin_dir / "sec_config.json").write_text(json.dumps(cfg))
+    calls = bin_dir / "sec_calls.jsonl"
+    if calls.exists():
+        calls.unlink()
+    return calls
+
+
+def _read_sec_calls(calls_path: Path) -> list[dict]:
+    if not calls_path.exists():
+        return []
+    return [json.loads(line) for line in calls_path.read_text().splitlines() if line.strip()]
+
+
+def test_agy_darwin_sets_up_and_cleans_up_scratch_keychain(world, capsys, tmp_path, monkeypatch):
+    monkeypatch.setattr(R.sys, "platform", "darwin")
+    calls_path = _install_fake_security(world.bin)
+
+    # Direct helper check for modes and cleanup
+    direct_home = tmp_path / "direct-home"
+    kc = R.setup_scratch_keychain(direct_home)
+    resolved_direct = direct_home.resolve()
+    assert kc == resolved_direct / "Library" / "Keychains" / "login.keychain-db"
+    assert (resolved_direct / "Library" / "Keychains").stat().st_mode & 0o777 == 0o700
+    assert kc.stat().st_mode & 0o777 == 0o600
+    R.cleanup_home(direct_home)
+    assert not direct_home.exists()
+
+    calls_path.unlink(missing_ok=True)
+
+    # End-to-end eval run with agy as candidate and judge (covers candidate, judge, and trigger runs)
+    ev = world.repo / "evals" / "eval-chanchi-demo"
+    toml_text = (ev / "eval.toml").read_text()
+    toml_text = toml_text.replace('harness = "claude"\nmodel = "sonnet"\neffort = "medium"',
+                                  'harness = "agy"\nmodel = "gemini-4-neon-high"\neffort = "high"')
+    (ev / "eval.toml").write_text(toml_text)
+    git(world.repo, "add", "-A")
+    world.config({
+        "candidate": [{"files": {"out.txt": "x"}, "final": "cand final"}] * 3,
+        "judge": [{"final": JUDGE_PASS}],
+        "trigger": [{"load_skill": True}, {"load_skill": False}],
+    })
+    code, _, err = world.run(capsys, "--arm", "both", "--runs", "1", "--no-ledger")
+    assert code == 0, err
+
+    sec_calls = _read_sec_calls(calls_path)
+    cmds = [c["cmd"] for c in sec_calls]
+    assert "default-keychain" not in cmds
+    assert "list-keychains" not in cmds
+    assert cmds.count("create-keychain") == 7  # 3 candidate + 2 judge + 2 trigger
+    assert cmds.count("set-keychain-settings") == 7
+    assert cmds.count("delete-keychain") == 7
+
+    for call in sec_calls:
+        home_str = call["home"]
+        assert home_str is not None
+        assert Path(home_str).resolve() == Path(home_str)
+        expected_kc = str(Path(home_str) / "Library" / "Keychains" / "login.keychain-db")
+        if call["cmd"] == "create-keychain":
+            assert call["argv"] == ["create-keychain", "-p", "", expected_kc]
+        elif call["cmd"] == "set-keychain-settings":
+            assert call["argv"] == ["set-keychain-settings", expected_kc]
+        elif call["cmd"] == "delete-keychain":
+            assert call["argv"] == ["delete-keychain", expected_kc]
+
+
+def test_claude_darwin_does_not_touch_keychain(world, capsys, monkeypatch):
+    monkeypatch.setattr(R.sys, "platform", "darwin")
+    calls_path = _install_fake_security(world.bin)
+    world.config({"candidate": [{"files": {"out.txt": "x"}, "final": "ok"}]})
+    code, _, err = world.run(capsys, "--arm", "with", "--cases", "reg-a", "--no-triggers", "--no-ledger")
+    assert code == 0, err
+    assert _read_sec_calls(calls_path) == []
+
+
+def test_agy_non_darwin_skips_keychain(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "fakebin"
+    calls_path = _install_fake_security(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(R.sys, "platform", "linux")
+
+    home = tmp_path / "linux-home"
+    R.build_home("agy", home, lambda _: b'{"token": "fake"}')
+    assert R.setup_scratch_keychain(home) is None
+    assert _read_sec_calls(calls_path) == []
+    R.cleanup_home(home)
+    assert not home.exists()
+    assert _read_sec_calls(calls_path) == []
+
+
+def test_scratch_keychain_error_handling(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "fakebin"
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(R.sys, "platform", "darwin")
+
+    calls_path = _install_fake_security(bin_dir, fail_on="create-keychain", stderr="create failed")
+    with pytest.raises(R.RunnerError, match="create failed"):
+        R.setup_scratch_keychain(tmp_path / "h1")
+    assert [c["cmd"] for c in _read_sec_calls(calls_path)] == ["create-keychain"]
+
+    calls_path = _install_fake_security(bin_dir, fail_on="set-keychain-settings", stderr="settings failed")
+    with pytest.raises(R.RunnerError, match="settings failed"):
+        R.setup_scratch_keychain(tmp_path / "h2")
+    assert [c["cmd"] for c in _read_sec_calls(calls_path)] == [
+        "create-keychain",
+        "set-keychain-settings",
+        "delete-keychain",
+    ]
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or shutil.which("/usr/bin/security") is None,
+    reason="macOS /usr/bin/security required",
+)
+def test_real_macos_scratch_keychain_roundtrip(tmp_path, monkeypatch):
+    sec_bin = "/usr/bin/security"
+    sys_path = "/usr/bin:/bin"
+    user_default = subprocess.run([sec_bin, "default-keychain"], capture_output=True, text=True, check=True).stdout
+    user_list = subprocess.run([sec_bin, "list-keychains"], capture_output=True, text=True, check=True).stdout
+
+    monkeypatch.setenv("PATH", sys_path)
+    tmp_home = (tmp_path / "agy-home").resolve()
+    kc = R.setup_scratch_keychain(tmp_home)
+    assert kc is not None and kc.is_file()
+    assert (tmp_home / "Library" / "Keychains").stat().st_mode & 0o777 == 0o700
+    assert kc.stat().st_mode & 0o777 == 0o600
+
+    scratch_env = {"HOME": str(tmp_home), "PATH": sys_path}
+    default_out = subprocess.run([sec_bin, "default-keychain"], env=scratch_env,
+                                 capture_output=True, text=True, check=True)
+    assert str(kc) in default_out.stdout
+
+    info_out = subprocess.run([sec_bin, "show-keychain-info", str(kc)], env=scratch_env,
+                              capture_output=True, text=True, check=True)
+    assert "no-timeout" in (info_out.stdout + info_out.stderr)
+
+    svc, acct, secret = "chanchi-scratch-test-svc", "chanchi-scratch-test-acct", "scratch-secret-value"
+    subprocess.run([sec_bin, "add-generic-password", "-U", "-s", svc, "-a", acct, "-w", secret],
+                   env=scratch_env, capture_output=True, text=True, check=True)
+    found = subprocess.run([sec_bin, "find-generic-password", "-s", svc, "-a", acct, "-w"],
+                           env=scratch_env, capture_output=True, text=True, check=True)
+    assert found.stdout.strip() == secret
+
+    R.cleanup_home(tmp_home)
+    assert not tmp_home.exists()
+
+    assert subprocess.run([sec_bin, "default-keychain"], capture_output=True, text=True, check=True).stdout == user_default
+    assert subprocess.run([sec_bin, "list-keychains"], capture_output=True, text=True, check=True).stdout == user_list
+    user_find = subprocess.run([sec_bin, "find-generic-password", "-s", svc, "-a", acct],
+                               capture_output=True, text=True, check=False)
+    assert user_find.returncode != 0

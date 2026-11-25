@@ -375,6 +375,49 @@ def read_credential(harness: str, source: Callable[[str], bytes | None] | None =
     return raw
 
 
+def setup_scratch_keychain(home: Path) -> Path | None:
+    """Create an isolated macOS login keychain under `home` so agy token refreshes never modal."""
+    if sys.platform != "darwin":
+        return None
+    sec = shutil.which("security")
+    if sec is None:
+        return None
+    home.mkdir(parents=True, exist_ok=True)
+    resolved_home = home.resolve()
+    kc_dir = resolved_home / "Library" / "Keychains"
+    kc_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    kc_dir.chmod(0o700)
+    kc = kc_dir / "login.keychain-db"
+    sec_env = {"HOME": str(resolved_home), "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+    created = subprocess.run([sec, "create-keychain", "-p", "", str(kc)],
+                             env=sec_env, capture_output=True, text=True, check=False)
+    if created.returncode != 0:
+        detail = (created.stderr or created.stdout or f"exit code {created.returncode}").strip()
+        raise RunnerError(f"security create-keychain failed: {detail}")
+    if kc.exists():
+        kc.chmod(0o600)
+    settings = subprocess.run([sec, "set-keychain-settings", str(kc)],
+                              env=sec_env, capture_output=True, text=True, check=False)
+    if settings.returncode != 0:
+        subprocess.run([sec, "delete-keychain", str(kc)],
+                       env=sec_env, capture_output=True, text=True, check=False)
+        detail = (settings.stderr or settings.stdout or f"exit code {settings.returncode}").strip()
+        raise RunnerError(f"security set-keychain-settings failed: {detail}")
+    return kc
+
+
+def cleanup_home(home: Path) -> None:
+    """Delete any macOS scratch keychain under `home`, then remove the temporary HOME directory."""
+    kc = home / "Library" / "Keychains" / "login.keychain-db"
+    if sys.platform == "darwin" and kc.exists():
+        sec = shutil.which("security")
+        if sec is not None:
+            sec_env = {"HOME": str(home.resolve()), "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+            subprocess.run([sec, "delete-keychain", str(kc.resolve())],
+                           env=sec_env, capture_output=True, check=False)
+    shutil.rmtree(home, ignore_errors=True)
+
+
 def build_home(harness: str, home: Path, source: Callable[[str], bytes | None] | None = None) -> None:
     """A temporary HOME holding only the harness credential (mode 600): the global skill folders are not in it."""
     data = read_credential(harness, source)
@@ -384,6 +427,8 @@ def build_home(harness: str, home: Path, source: Callable[[str], bytes | None] |
     with os.fdopen(fd, "wb") as handle:
         handle.write(data)
     target.chmod(0o600)
+    if harness == "agy":
+        setup_scratch_keychain(home)
 
 
 # --------------------------------------------------------------------------------------- harness launch
@@ -836,6 +881,7 @@ def run_judge(ctx: Context, cfg: EvalConfig, criteria: list[str], output_md: str
     failure counts every criterion as FAIL and returns the reason (D7)."""
     judge = cfg.judge
     assert judge is not None
+    base = base.resolve()
     harness = judge["harness"]
     sources = {s.name: s for s in agents_sync.load_sources(ctx.repo / "agents")}
     if JUDGE_AGENT not in sources:
@@ -861,7 +907,7 @@ def run_judge(ctx: Context, cfg: EvalConfig, criteria: list[str], output_md: str
                               prompt=prompt, tools=CLAUDE_JUDGE_TOOLS)
             result = launch(argv, work, base_env(home, None, None, None), ctx.timeout)
         finally:
-            shutil.rmtree(home, ignore_errors=True)
+            cleanup_home(home)
         events = parse_events(result.stdout)
         text, error = final_message(harness, events)
         if result.timed_out:
@@ -900,7 +946,7 @@ def execute_case_run(ctx: Context, cfg: EvalConfig, *, arm: str, case: str, n: i
     item_root = ctx.artifacts / cfg.item
     run_dir = (item_root / artifacts_subdir / run_id) if artifacts_subdir else (item_root / run_id)
     run_dir.mkdir(parents=True)
-    base = Path(tempfile.mkdtemp(prefix="run-"))
+    base = Path(tempfile.mkdtemp(prefix="run-")).resolve()
     tag = uuid.uuid4().hex[:8]
     work, sync, home = base / f"work-{tag}", base / f"sync-{tag}", base / f"home-{tag}"
     final_file = base / f"final-{tag}.txt"
@@ -923,7 +969,7 @@ def execute_case_run(ctx: Context, cfg: EvalConfig, *, arm: str, case: str, n: i
         try:
             result = launch(argv, work, env, ctx.timeout)
         finally:
-            shutil.rmtree(home, ignore_errors=True)
+            cleanup_home(home)
         (run_dir / "transcript.jsonl").write_text(result.stdout, encoding="utf-8")
         (run_dir / "stderr.txt").write_text(result.stderr, encoding="utf-8")
         events = parse_events(result.stdout)
@@ -978,7 +1024,7 @@ def execute_case_run(ctx: Context, cfg: EvalConfig, *, arm: str, case: str, n: i
             encoding="utf-8")
         return record
     finally:
-        shutil.rmtree(home, ignore_errors=True)
+        cleanup_home(home)
         save_tree(work, run_dir / "work")
         save_tree(sync, run_dir / "sync")
         shutil.rmtree(base, ignore_errors=True)
@@ -991,7 +1037,7 @@ def execute_trigger_run(ctx: Context, cfg: EvalConfig, *, prompt: str, expect_lo
     run_id = new_run_id("triggers", f"trigger{index}", 1)
     run_dir = ctx.artifacts / cfg.item / run_id
     run_dir.mkdir(parents=True)
-    base = Path(tempfile.mkdtemp(prefix="run-"))
+    base = Path(tempfile.mkdtemp(prefix="run-")).resolve()
     tag = uuid.uuid4().hex[:8]
     work, home = base / f"work-{tag}", base / f"home-{tag}"
     try:
@@ -1005,7 +1051,7 @@ def execute_trigger_run(ctx: Context, cfg: EvalConfig, *, prompt: str, expect_lo
         try:
             result = launch(argv, work, env, ctx.timeout)
         finally:
-            shutil.rmtree(home, ignore_errors=True)
+            cleanup_home(home)
         (run_dir / "transcript.jsonl").write_text(result.stdout, encoding="utf-8")
         events = parse_events(result.stdout)
         _, error = final_message(harness, events)
@@ -1017,7 +1063,7 @@ def execute_trigger_run(ctx: Context, cfg: EvalConfig, *, prompt: str, expect_lo
         (run_dir / "result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
         return record
     finally:
-        shutil.rmtree(home, ignore_errors=True)
+        cleanup_home(home)
         shutil.rmtree(base, ignore_errors=True)
 
 
@@ -1635,7 +1681,7 @@ def cmd_rejudge(ctx: Context, args: argparse.Namespace) -> int:
         ctx.log(f"[{number}/{len(to_rejudge)}] re-judge {ref}")
         transcript = [json.loads(x) for x in (run_dir / "judge-transcript.jsonl").read_text(
             encoding="utf-8").splitlines() if x]
-        base = Path(tempfile.mkdtemp(prefix="run-"))
+        base = Path(tempfile.mkdtemp(prefix="run-")).resolve()
         try:
             judged, error = run_judge(ctx, cfg, criteria, (run_dir / "output.md").read_text(encoding="utf-8"),
                                       transcript, base)
